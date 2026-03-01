@@ -1,7 +1,7 @@
 {
   "id": "seer",
   "name": "Seer",
-  "description": "Media discovery and request management powered by Overseerr/Jellyseerr",
+  "description": "Media discovery and request management powered by Seerr / Overseerr",
   "version": "1.0.0",
   "author": "Knaox",
   "entry": "dist/plugin-seer.iife.js",

@@ -138,6 +138,9 @@ if (typeof window !== "undefined") {
     registerPlugin: (plugin: TentaclePlugin) => void;
   } | undefined;
   if (tentacle) {
+    // Initialize translations + backend URL BEFORE registering
+    // so admin labels render correctly immediately
+    seerPlugin.initialize?.();
     tentacle.registerPlugin(seerPlugin);
   }
 }
