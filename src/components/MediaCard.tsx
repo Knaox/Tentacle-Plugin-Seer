@@ -49,6 +49,13 @@ export function MediaCard({ item, onRequest, onClick, requesting }: MediaCardPro
           </span>
         )}
 
+        {/* Already requested badge (always visible) */}
+        {hasMediaInfo && (
+          <span className="absolute left-2 bottom-2 rounded-md bg-emerald-600/90 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm">
+            {t("seer:alreadyRequested")}
+          </span>
+        )}
+
         {/* Hover overlay with request button */}
         <div className="absolute inset-0 flex items-end bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100">
           {item.mediaType === "movie" && !hasMediaInfo && onRequest && (

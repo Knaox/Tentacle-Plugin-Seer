@@ -17,16 +17,20 @@ export function SortSelector({ value, onChange }: SortSelectorProps) {
   ];
 
   return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value as SortOption)}
-      className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/80 outline-none transition-colors focus:border-purple-500"
-    >
+    <div className="flex gap-2">
       {SORT_OPTIONS.map((opt) => (
-        <option key={opt.value} value={opt.value} className="bg-[#1a1a2e]">
+        <button
+          key={opt.value}
+          onClick={() => onChange(opt.value)}
+          className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+            value === opt.value
+              ? "bg-purple-600 text-white"
+              : "bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/70"
+          }`}
+        >
           {t(opt.key)}
-        </option>
+        </button>
       ))}
-    </select>
+    </div>
   );
 }
