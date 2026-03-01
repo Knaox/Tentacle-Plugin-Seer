@@ -209,9 +209,8 @@ function ToggleRow({
         }`}
       >
         <span
-          className={`pointer-events-none inline-block h-5 w-5 translate-y-0.5 rounded-full bg-white shadow transition-transform duration-200 ${
-            checked ? "translate-x-[22px]" : "translate-x-0.5"
-          }`}
+          className="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transition-transform duration-200"
+          style={{ transform: `translate(${checked ? "22px" : "2px"}, 2px)` }}
         />
       </button>
     </div>
