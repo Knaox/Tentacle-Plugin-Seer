@@ -48,10 +48,10 @@ export function SeerConfigPage() {
     setStatus("testing");
     setMessage("");
     try {
-      const res = await fetch(`${backendBase}/api/admin/test-seerr`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ url: config.url, apiKey: config.apiKey }),
+      const baseUrl = config.url.replace(/\/$/, "");
+      const res = await fetch(`${baseUrl}/api/v1/status`, {
+        headers: { "X-Api-Key": config.apiKey },
+        signal: AbortSignal.timeout(8000),
       });
       if (res.ok) {
         setStatus("connected");

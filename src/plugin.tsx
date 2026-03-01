@@ -118,12 +118,12 @@ export const seerPlugin: TentaclePlugin = {
 
     // Register i18n translations with the host app's i18next instance
     const shared = (window as Record<string, unknown>).TentacleShared as Record<string, unknown> | undefined;
-    const i18next = (shared?.ReactI18next as Record<string, unknown>)?.i18n as {
+    const i18nInstance = shared?.i18n as {
       addResourceBundle: (lng: string, ns: string, resources: Record<string, string>, deep?: boolean, overwrite?: boolean) => void;
     } | undefined;
-    if (i18next) {
-      i18next.addResourceBundle("en", "seer", enTranslations, true, true);
-      i18next.addResourceBundle("fr", "seer", frTranslations, true, true);
+    if (i18nInstance) {
+      i18nInstance.addResourceBundle("en", "seer", enTranslations, true, true);
+      i18nInstance.addResourceBundle("fr", "seer", frTranslations, true, true);
     }
   },
 
