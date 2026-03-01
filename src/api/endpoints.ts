@@ -44,7 +44,10 @@ export async function proxyFetch<T>(
     body: JSON.stringify({
       url: `${_seerrUrl}${seerrPath}`,
       method: options?.method ?? "GET",
-      headers: { "X-Api-Key": _seerrApiKey },
+      headers: {
+        "X-Api-Key": _seerrApiKey,
+        ...(options?.body ? { "Content-Type": "application/json" } : {}),
+      },
       body: options?.body,
     }),
   });
