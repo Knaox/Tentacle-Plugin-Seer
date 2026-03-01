@@ -1,0 +1,10 @@
+{
+  "id": "seer",
+  "name": "Seer",
+  "description": "Media discovery and request management powered by Overseerr/Jellyseerr",
+  "version": "1.0.0",
+  "author": "Knaox",
+  "entry": "dist/plugin-seer.iife.js",
+  "platforms": ["web", "desktop"],
+  "minTentacleVersion": "0.9.0"
+}
