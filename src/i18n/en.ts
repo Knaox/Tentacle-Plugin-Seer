@@ -83,4 +83,9 @@ export default {
   statusAvailable: "Available",
   statusFailed: "Failed",
   statusCancelled: "Cancelled",
+  seasonRequested: "Requested",
+  seasonAvailable: "Available",
+  seasonDownloading: "Downloading",
+  seasonPartial: "Partial",
+  allSeasonsRequested: "All seasons already requested",
 } as const;

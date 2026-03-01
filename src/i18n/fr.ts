@@ -83,4 +83,9 @@ export default {
   statusAvailable: "Disponible",
   statusFailed: "Echec",
   statusCancelled: "Annule",
+  seasonRequested: "Demande",
+  seasonAvailable: "Disponible",
+  seasonDownloading: "Telechargement",
+  seasonPartial: "Partiel",
+  allSeasonsRequested: "Toutes les saisons sont deja demandees",
 } as const;

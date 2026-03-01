@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useMediaDetail } from "../hooks/useMediaDetail";
 import { useRequestMedia } from "../hooks/useRequestMedia";
@@ -22,6 +23,19 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
   const backdrop = backdropUrl(item.backdropPath);
   const poster = posterUrl(item.posterPath);
 
+  const tvDetail = detail as SeerrTvDetail | undefined;
+
+  // Build a map of seasonNumber -> status from Seerr mediaInfo
+  const requestedSeasonMap = useMemo(() => {
+    const map = new Map<number, number>();
+    if (tvDetail?.mediaInfo?.seasons) {
+      for (const s of tvDetail.mediaInfo.seasons) {
+        map.set(s.seasonNumber, s.status);
+      }
+    }
+    return map;
+  }, [tvDetail?.mediaInfo?.seasons]);
+
   const handleSeasonRequest = (seasons: number[]) => {
     requestMedia.mutate({
       mediaType: "tv",
@@ -29,16 +43,24 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
       title: title,
       posterPath: item.posterPath ?? undefined,
       seasons,
+    }, {
+      onSuccess: () => onClose(),
     });
+  };
+
+  const handleMovieRequest = () => {
+    onRequest(item);
+    // Close modal after a short delay for movie requests
+    setTimeout(() => onClose(), 300);
   };
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm sm:items-center"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 backdrop-blur-sm sm:items-center"
       onClick={onClose}
     >
       <div
-        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl bg-[#12121a] sm:rounded-2xl"
+        className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl bg-[#12121a] sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Backdrop */}
@@ -48,6 +70,16 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
             <div className="absolute inset-0 bg-gradient-to-t from-[#12121a] via-transparent" />
           </div>
         )}
+
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          className="absolute right-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white/60 hover:text-white"
+        >
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
 
         <div className="flex gap-4 px-5 pb-6" style={{ marginTop: backdrop ? -40 : 20 }}>
           {/* Poster */}
@@ -70,23 +102,13 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
               </p>
             )}
           </div>
-
-          {/* Close button */}
-          <button
-            onClick={onClose}
-            className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white/60 hover:text-white"
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
         </div>
 
         {/* Action section */}
         <div className="px-5 pb-6">
           {item.mediaType === "movie" && (
             <button
-              onClick={() => onRequest(item)}
+              onClick={handleMovieRequest}
               disabled={requesting}
               className="w-full rounded-lg bg-purple-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-purple-500 disabled:opacity-50"
             >
@@ -97,6 +119,7 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
           {item.mediaType === "tv" && !isLoading && detail && (detail as SeerrTvDetail).seasons && (
             <SeriesSeasonPicker
               seasons={(detail as SeerrTvDetail).seasons ?? []}
+              requestedSeasons={requestedSeasonMap}
               onRequest={handleSeasonRequest}
               requesting={requestMedia.isPending}
             />

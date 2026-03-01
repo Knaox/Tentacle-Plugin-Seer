@@ -81,7 +81,10 @@ export interface SeerrTvDetail {
   numberOfSeasons?: number;
   seasons?: SeerrSeason[];
   genres?: { id: number; name: string }[];
-  mediaInfo?: { status: number };
+  mediaInfo?: {
+    status: number;
+    seasons?: { id: number; seasonNumber: number; status: number }[];
+  };
 }
 
 export interface SeerrSeason {
