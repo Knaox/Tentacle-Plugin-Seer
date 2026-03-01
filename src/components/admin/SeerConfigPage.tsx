@@ -49,11 +49,17 @@ export function SeerConfigPage() {
     setMessage("");
     try {
       const baseUrl = config.url.replace(/\/$/, "");
-      const res = await fetch(`${baseUrl}/api/v1/status`, {
-        headers: { "X-Api-Key": config.apiKey },
-        signal: AbortSignal.timeout(8000),
+      const res = await fetch(`${backendBase}/api/plugins/seer/proxy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          url: `${baseUrl}/api/v1/status`,
+          method: "GET",
+          headers: { "X-Api-Key": config.apiKey },
+        }),
       });
-      if (res.ok) {
+      const data = await res.json();
+      if (res.ok && data.ok) {
         setStatus("connected");
         setMessage(t("seer:connectionSuccess"));
       } else {
