@@ -200,14 +200,17 @@ function ToggleRow({
         <p className="text-xs text-white/40">{description}</p>
       </div>
       <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
         onClick={() => onChange(!checked)}
-        className={`relative h-6 w-11 rounded-full transition-colors ${
+        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ${
           checked ? "bg-purple-600" : "bg-white/20"
         }`}
       >
-        <div
-          className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
-            checked ? "left-[22px]" : "left-0.5"
+        <span
+          className={`pointer-events-none inline-block h-5 w-5 translate-y-0.5 rounded-full bg-white shadow transition-transform duration-200 ${
+            checked ? "translate-x-[22px]" : "translate-x-0.5"
           }`}
         />
       </button>
