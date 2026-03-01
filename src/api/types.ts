@@ -96,41 +96,8 @@ export interface SeerrSeason {
   posterPath?: string;
 }
 
-/** Local request stored in Tentacle DB */
-export interface LocalMediaRequest {
-  id: string;
-  jellyfinUserId: string;
-  username: string;
-  mediaType: MediaType;
-  tmdbId: number;
-  title: string;
-  posterPath?: string;
-  status: RequestStatus;
-  seerrRequestId?: number;
-  seerrMediaId?: number;
-  retryCount: number;
-  lastError?: string;
-  seasons?: number[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-export type RequestStatus =
-  | "queued"
-  | "processing"
-  | "sent_to_seer"
-  | "approved"
-  | "downloading"
-  | "available"
-  | "failed"
-  | "cancelled";
-
-export interface RequestsPageResponse {
-  requests: LocalMediaRequest[];
-  total: number;
-  page: number;
-  limit: number;
-}
+/** Seerr request status: 1=pending, 2=approved, 3=declined */
+export type SeerrRequestStatus = 1 | 2 | 3;
 
 export type DiscoverCategory = "movies" | "tv" | "anime" | "trending";
 export type SortOption = "popularity" | "vote_average" | "release_date" | "trending";

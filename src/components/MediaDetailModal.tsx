@@ -40,8 +40,6 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
     requestMedia.mutate({
       mediaType: "tv",
       tmdbId: item.id,
-      title: title,
-      posterPath: item.posterPath ?? undefined,
       seasons,
     }, {
       onSuccess: () => onClose(),

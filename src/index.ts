@@ -6,12 +6,11 @@ export type {
   SeerrSearchResult,
   SeerrPagedResponse,
   SeerrMediaRequest,
+  SeerrRequestsResponse,
   SeerrMovieDetail,
   SeerrTvDetail,
   SeerrSeason,
-  LocalMediaRequest,
-  RequestStatus,
-  RequestsPageResponse,
+  SeerrRequestStatus,
   DiscoverCategory,
   SortOption,
   MediaFilter,
@@ -21,6 +20,6 @@ export type {
 // Re-export hooks
 export { useSeerSearch } from "./hooks/useSearch";
 export { useDiscoverMedia } from "./hooks/useDiscoverMedia";
-export { useMyRequests, useDeleteRequest, useRetryRequest } from "./hooks/useRequests";
+export { useMyRequests, useDeleteRequest } from "./hooks/useRequests";
 export { useRequestMedia } from "./hooks/useRequestMedia";
 export { useMediaDetail } from "./hooks/useMediaDetail";

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getMyRequests, deleteRequest, retryRequest } from "../api/seer-client";
+import { getMyRequests, deleteRequest } from "../api/seer-client";
 
 export function useMyRequests(page = 1, limit = 20) {
   return useQuery({
@@ -12,17 +12,7 @@ export function useMyRequests(page = 1, limit = 20) {
 export function useDeleteRequest() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => deleteRequest(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["seer-my-requests"] });
-    },
-  });
-}
-
-export function useRetryRequest() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => retryRequest(id),
+    mutationFn: (id: number) => deleteRequest(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["seer-my-requests"] });
     },

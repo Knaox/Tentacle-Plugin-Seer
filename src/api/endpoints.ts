@@ -1,8 +1,10 @@
 /* ------------------------------------------------------------------ */
-/*  Seer API endpoints (proxied through Tentacle backend)              */
+/*  Seer API — proxy helper + config management                       */
 /* ------------------------------------------------------------------ */
 
 let _backendBase = "";
+let _seerrUrl = "";
+let _seerrApiKey = "";
 
 export function setSeerBackendUrl(url: string) {
   _backendBase = url.replace(/\/$/, "");
@@ -12,33 +14,48 @@ export function getSeerBackendUrl(): string {
   return _backendBase;
 }
 
-export const SEER_ENDPOINTS = {
-  search: (query: string, page = 1) =>
-    `${_backendBase}/api/seerr/search?query=${encodeURIComponent(query)}&page=${page}`,
-  discoverMovies: (page = 1) =>
-    `${_backendBase}/api/seerr/discover/movies?page=${page}`,
-  discoverTv: (page = 1) =>
-    `${_backendBase}/api/seerr/discover/tv?page=${page}`,
-  discoverAnime: (page = 1) =>
-    `${_backendBase}/api/seerr/discover/anime?page=${page}`,
-  discoverTrending: (page = 1) =>
-    `${_backendBase}/api/seerr/discover/trending?page=${page}`,
-  movie: (id: number) =>
-    `${_backendBase}/api/seerr/movie/${id}`,
-  tv: (id: number) =>
-    `${_backendBase}/api/seerr/tv/${id}`,
-  request: () =>
-    `${_backendBase}/api/requests`,
-  requests: (page = 1, limit = 20) =>
-    `${_backendBase}/api/requests?page=${page}&limit=${limit}`,
-  requestById: (id: string) =>
-    `${_backendBase}/api/requests/${id}`,
-  retryRequest: (id: string) =>
-    `${_backendBase}/api/requests/${id}/retry`,
-  queueStatus: () =>
-    `${_backendBase}/api/requests/queue/status`,
-  config: () =>
-    `${_backendBase}/api/plugins/seer/config`,
-  testConnection: () =>
-    `${_backendBase}/api/admin/test-seerr`,
-} as const;
+export function setSeerrConfig(url: string, apiKey: string) {
+  _seerrUrl = url.replace(/\/$/, "");
+  _seerrApiKey = apiKey;
+}
+
+export function getSeerrUrl(): string {
+  return _seerrUrl;
+}
+
+function getToken(): string {
+  return localStorage.getItem("tentacle_token") ?? "";
+}
+
+/**
+ * Route all Seerr API calls through the generic Tentacle plugin proxy.
+ * POST /api/plugins/seer/proxy → backend fetches Seerr on our behalf (no CORS).
+ */
+export async function proxyFetch<T>(
+  seerrPath: string,
+  options?: { method?: string; body?: unknown },
+): Promise<T> {
+  const res = await fetch(`${_backendBase}/api/plugins/seer/proxy`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${getToken()}`,
+    },
+    body: JSON.stringify({
+      url: `${_seerrUrl}${seerrPath}`,
+      method: options?.method ?? "GET",
+      headers: { "X-Api-Key": _seerrApiKey },
+      body: options?.body,
+    }),
+  });
+  const proxy = await res.json();
+  if (!res.ok || !proxy.ok) {
+    throw new Error(`Seerr API error: ${proxy.status || res.status}`);
+  }
+  return proxy.data as T;
+}
+
+/** Direct call to the Tentacle plugin config endpoint (not proxied to Seerr) */
+export function configUrl(): string {
+  return `${_backendBase}/api/plugins/seer/config`;
+}

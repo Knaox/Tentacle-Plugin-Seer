@@ -1,10 +1,10 @@
-import { SEER_ENDPOINTS } from "./endpoints";
+import { proxyFetch, configUrl, setSeerrConfig } from "./endpoints";
 import type {
   SeerrPagedResponse,
   SeerrMovieDetail,
   SeerrTvDetail,
-  LocalMediaRequest,
-  RequestsPageResponse,
+  SeerrRequestsResponse,
+  SeerrMediaRequest,
   DiscoverCategory,
   MediaType,
 } from "./types";
@@ -13,26 +13,10 @@ function getToken(): string {
   return localStorage.getItem("tentacle_token") ?? "";
 }
 
-function headers(): HeadersInit {
-  return {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${getToken()}`,
-  };
-}
-
-async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, { headers: headers(), ...init });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Seer API ${res.status}: ${text}`);
-  }
-  return res.json();
-}
-
 /* ---- Search ---- */
 
 export async function searchMedia(query: string, page = 1): Promise<SeerrPagedResponse> {
-  return fetchJson(SEER_ENDPOINTS.search(query, page));
+  return proxyFetch(`/api/v1/search?query=${encodeURIComponent(query)}&page=${page}&language=fr`);
 }
 
 /* ---- Discover ---- */
@@ -41,76 +25,68 @@ export async function discoverMedia(
   category: DiscoverCategory,
   page = 1,
 ): Promise<SeerrPagedResponse> {
-  const urlMap: Record<DiscoverCategory, string> = {
-    movies: SEER_ENDPOINTS.discoverMovies(page),
-    tv: SEER_ENDPOINTS.discoverTv(page),
-    anime: SEER_ENDPOINTS.discoverAnime(page),
-    trending: SEER_ENDPOINTS.discoverTrending(page),
+  const paths: Record<DiscoverCategory, string> = {
+    movies: `/api/v1/discover/movies?page=${page}&language=fr`,
+    tv: `/api/v1/discover/tv?page=${page}&language=fr`,
+    anime: `/api/v1/discover/tv?page=${page}&language=fr&genre=16`,
+    trending: `/api/v1/discover/trending?page=${page}&language=fr`,
   };
-  return fetchJson(urlMap[category]);
+  return proxyFetch(paths[category]);
 }
 
 /* ---- Media details ---- */
 
 export async function getMovieDetail(id: number): Promise<SeerrMovieDetail> {
-  return fetchJson(SEER_ENDPOINTS.movie(id));
+  return proxyFetch(`/api/v1/movie/${id}?language=fr`);
 }
 
 export async function getTvDetail(id: number): Promise<SeerrTvDetail> {
-  return fetchJson(SEER_ENDPOINTS.tv(id));
+  return proxyFetch(`/api/v1/tv/${id}?language=fr`);
 }
 
-/* ---- Requests (local queue) ---- */
+/* ---- Requests (direct to Seerr API) ---- */
 
 export async function createRequest(body: {
   mediaType: MediaType;
   tmdbId: number;
-  title: string;
-  posterPath?: string;
   seasons?: number[];
-}): Promise<LocalMediaRequest> {
-  return fetchJson(SEER_ENDPOINTS.request(), {
+}): Promise<SeerrMediaRequest> {
+  return proxyFetch(`/api/v1/request`, {
     method: "POST",
-    body: JSON.stringify(body),
+    body: {
+      mediaType: body.mediaType,
+      mediaId: body.tmdbId,
+      seasons: body.seasons,
+    },
   });
 }
 
 export async function getMyRequests(
   page = 1,
   limit = 20,
-): Promise<RequestsPageResponse> {
-  return fetchJson(SEER_ENDPOINTS.requests(page, limit));
+): Promise<SeerrRequestsResponse> {
+  const skip = (page - 1) * limit;
+  return proxyFetch(`/api/v1/request?take=${limit}&skip=${skip}&sort=added&requestedBy=1`);
 }
 
-export async function deleteRequest(id: string): Promise<void> {
-  await fetch(SEER_ENDPOINTS.requestById(id), {
-    method: "DELETE",
-    headers: headers(),
-  });
-}
-
-export async function retryRequest(id: string): Promise<LocalMediaRequest> {
-  return fetchJson(SEER_ENDPOINTS.retryRequest(id), { method: "POST" });
+export async function deleteRequest(id: number): Promise<void> {
+  await proxyFetch(`/api/v1/request/${id}`, { method: "DELETE" });
 }
 
 /* ---- Config check ---- */
 
-export async function testSeerConnection(): Promise<{ ok: boolean; message?: string }> {
-  try {
-    const res = await fetch(SEER_ENDPOINTS.testConnection(), { headers: headers() });
-    if (!res.ok) return { ok: false, message: `Status ${res.status}` };
-    return { ok: true };
-  } catch {
-    return { ok: false, message: "Connection failed" };
-  }
-}
-
 export async function isSeerConfigured(): Promise<boolean> {
   try {
-    const res = await fetch(SEER_ENDPOINTS.config(), { headers: headers() });
+    const res = await fetch(configUrl(), {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
     if (!res.ok) return false;
     const data = await res.json();
-    return data.enabled === true && !!data.url;
+    if (data.enabled && data.url) {
+      setSeerrConfig(data.url, data.apiKey);
+      return true;
+    }
+    return false;
   } catch {
     return false;
   }

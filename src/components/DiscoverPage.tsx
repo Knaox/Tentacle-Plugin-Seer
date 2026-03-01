@@ -63,8 +63,6 @@ export function DiscoverPage() {
       requestMedia.mutate({
         mediaType: "movie",
         tmdbId: item.id,
-        title: item.title ?? item.name ?? "",
-        posterPath: item.posterPath ?? undefined,
       });
     }
   }, [requestMedia]);

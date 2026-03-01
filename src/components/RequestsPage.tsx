@@ -1,31 +1,37 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useMyRequests, useDeleteRequest, useRetryRequest } from "../hooks/useRequests";
+import { useMyRequests, useDeleteRequest } from "../hooks/useRequests";
 import { RequestCard } from "./RequestCard";
-import type { RequestStatus } from "../api/types";
+
+type StatusFilter = "all" | "pending" | "approved" | "declined" | "available";
 
 export function RequestsPage() {
   const { t } = useTranslation("seer");
   const [page, setPage] = useState(1);
-  const [statusFilter, setStatusFilter] = useState<RequestStatus | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const { data, isLoading } = useMyRequests(page, 20);
   const deleteMutation = useDeleteRequest();
-  const retryMutation = useRetryRequest();
 
-  const STATUS_TABS: { value: RequestStatus | "all"; key: string }[] = [
+  const STATUS_TABS: { value: StatusFilter; key: string }[] = [
     { value: "all", key: "seer:filterAll" },
-    { value: "queued", key: "seer:filterQueued" },
-    { value: "processing", key: "seer:filterProcessing" },
+    { value: "pending", key: "seer:filterQueued" },
     { value: "approved", key: "seer:filterApproved" },
     { value: "available", key: "seer:filterAvailable" },
-    { value: "failed", key: "seer:filterFailed" },
+    { value: "declined", key: "seer:filterFailed" },
   ];
 
-  const requests = data?.requests ?? [];
+  const requests = data?.results ?? [];
   const filtered = statusFilter === "all"
     ? requests
-    : requests.filter((r) => r.status === statusFilter);
-  const totalPages = data ? Math.ceil(data.total / data.limit) : 1;
+    : statusFilter === "available"
+      ? requests.filter((r) => r.media.status === 5)
+      : statusFilter === "pending"
+        ? requests.filter((r) => r.status === 1)
+        : statusFilter === "approved"
+          ? requests.filter((r) => r.status === 2)
+          : requests.filter((r) => r.status === 3);
+
+  const totalPages = data?.pageInfo?.pages ?? 1;
 
   return (
     <div className="px-4 pt-4 md:px-12">
@@ -60,9 +66,7 @@ export function RequestsPage() {
               key={request.id}
               request={request}
               onDelete={(id) => deleteMutation.mutate(id)}
-              onRetry={(id) => retryMutation.mutate(id)}
               deleting={deleteMutation.isPending}
-              retrying={retryMutation.isPending}
             />
           ))}
         </div>

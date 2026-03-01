@@ -1,76 +1,79 @@
 import { useTranslation } from "react-i18next";
-import type { LocalMediaRequest } from "../api/types";
-import { posterUrl } from "../utils/media-helpers";
-import { RequestStatusBadge } from "./RequestStatusBadge";
+import type { SeerrMediaRequest } from "../api/types";
 
 interface RequestCardProps {
-  request: LocalMediaRequest;
-  onDelete?: (id: string) => void;
-  onRetry?: (id: string) => void;
+  request: SeerrMediaRequest;
+  onDelete?: (id: number) => void;
   deleting?: boolean;
-  retrying?: boolean;
 }
 
-export function RequestCard({ request, onDelete, onRetry, deleting, retrying }: RequestCardProps) {
+const REQUEST_STATUS_MAP: Record<number, string> = {
+  1: "seer:statusQueued",
+  2: "seer:statusApproved",
+  3: "seer:statusFailed",
+};
+
+const MEDIA_STATUS_MAP: Record<number, string> = {
+  1: "seer:statusQueued",
+  2: "seer:statusProcessing",
+  3: "seer:statusPartial",
+  4: "seer:statusDownloading",
+  5: "seer:statusAvailable",
+};
+
+export function RequestCard({ request, onDelete, deleting }: RequestCardProps) {
   const { t } = useTranslation("seer");
-  const poster = posterUrl(request.posterPath);
-  const typeLabel = request.mediaType === "movie" ? t("seer:typeMovie") : t("seer:typeSeries");
+  const typeLabel = request.media.mediaType === "movie" ? t("seer:typeMovie") : t("seer:typeSeries");
   const date = new Date(request.createdAt).toLocaleDateString(undefined, {
     day: "numeric",
     month: "short",
     year: "numeric",
   });
 
+  const requestStatusKey = REQUEST_STATUS_MAP[request.status] ?? "seer:statusQueued";
+  const mediaStatusKey = MEDIA_STATUS_MAP[request.media.status] ?? "";
+
+  // Use media status if available (more detailed), fallback to request status
+  const displayStatusKey = request.media.status >= 2 ? mediaStatusKey : requestStatusKey;
+
+  const statusColor =
+    request.media.status === 5 ? "bg-emerald-500/20 text-emerald-400" :
+    request.status === 2 ? "bg-purple-500/20 text-purple-400" :
+    request.status === 3 ? "bg-red-500/20 text-red-400" :
+    "bg-yellow-500/20 text-yellow-400";
+
   return (
     <div className="flex gap-4 rounded-xl bg-white/5 p-3 transition-colors hover:bg-white/8">
-      {/* Poster */}
-      <div className="h-24 w-16 flex-shrink-0 overflow-hidden rounded-lg">
-        {poster ? (
-          <img src={poster} alt={request.title} className="h-full w-full object-cover" loading="lazy" />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-white/5 text-white/20 text-[10px]">
-            {t("seer:notAvailable")}
-          </div>
-        )}
+      {/* Icon placeholder */}
+      <div className="flex h-16 w-12 flex-shrink-0 items-center justify-center rounded-lg bg-white/5">
+        <span className="text-lg">{request.media.mediaType === "movie" ? "🎬" : "📺"}</span>
       </div>
 
       {/* Content */}
       <div className="flex min-w-0 flex-1 flex-col justify-between">
         <div>
-          <h3 className="truncate text-sm font-semibold text-white">{request.title}</h3>
-          <div className="mt-1 flex items-center gap-2">
+          <div className="flex items-center gap-2">
             <span className="text-[10px] font-medium text-white/40">{typeLabel}</span>
-            <RequestStatusBadge status={request.status} />
+            <span className="text-[10px] text-white/30">TMDB #{request.media.tmdbId}</span>
           </div>
-          {request.seasons && request.seasons.length > 0 && (
-            <p className="mt-0.5 text-[10px] text-white/30">
-              {t("seer:seasonsLabel", { seasons: request.seasons.join(", ") })}
-            </p>
-          )}
+          <div className="mt-1 flex items-center gap-2">
+            <span className={`rounded-md px-2 py-0.5 text-[10px] font-medium ${statusColor}`}>
+              {t(displayStatusKey)}
+            </span>
+          </div>
         </div>
 
         <div className="flex items-center justify-between">
           <span className="text-[10px] text-white/30">{date}</span>
-          <div className="flex gap-2">
-            {request.status === "failed" && onRetry && (
-              <button
-                onClick={() => onRetry(request.id)}
-                disabled={retrying}
-                className="rounded-md bg-purple-600/20 px-2.5 py-1 text-[10px] font-medium text-purple-400 transition-colors hover:bg-purple-600/30 disabled:opacity-50"
-              >
-                {retrying ? "..." : t("seer:retry")}
-              </button>
-            )}
-            {onDelete && request.status !== "available" && (
-              <button
-                onClick={() => onDelete(request.id)}
-                disabled={deleting}
-                className="rounded-md bg-red-600/20 px-2.5 py-1 text-[10px] font-medium text-red-400 transition-colors hover:bg-red-600/30 disabled:opacity-50"
-              >
-                {deleting ? "..." : t("seer:delete")}
-              </button>
-            )}
-          </div>
+          {onDelete && request.status !== 2 && request.media.status < 5 && (
+            <button
+              onClick={() => onDelete(request.id)}
+              disabled={deleting}
+              className="rounded-md bg-red-600/20 px-2.5 py-1 text-[10px] font-medium text-red-400 transition-colors hover:bg-red-600/30 disabled:opacity-50"
+            >
+              {deleting ? "..." : t("seer:delete")}
+            </button>
+          )}
         </div>
       </div>
     </div>

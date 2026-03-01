@@ -5,8 +5,6 @@ import type { MediaType, SeerrPagedResponse } from "../api/types";
 interface RequestMediaPayload {
   mediaType: MediaType;
   tmdbId: number;
-  title: string;
-  posterPath?: string;
   seasons?: number[];
 }
 
