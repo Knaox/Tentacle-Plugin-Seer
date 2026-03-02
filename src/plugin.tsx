@@ -11,9 +11,6 @@ const DiscoverPage = lazy(() =>
 const RequestsPage = lazy(() =>
   import("./components/RequestsPage").then((m) => ({ default: m.RequestsPage }))
 );
-const NotificationsPanel = lazy(() =>
-  import("./components/NotificationsPanel").then((m) => ({ default: m.NotificationsPanel }))
-);
 const StatsPage = lazy(() =>
   import("./components/StatsPage").then((m) => ({ default: m.StatsPage }))
 );
@@ -35,14 +32,6 @@ function RequestsIcon({ className }: { className?: string }) {
   return (
     <svg className={className ?? "h-5 w-5"} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
-    </svg>
-  );
-}
-
-function NotificationsIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className ?? "h-5 w-5"} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
     </svg>
   );
 }
@@ -92,15 +81,6 @@ export const seerPlugin: TentaclePlugin = {
       requiresAuth: true,
     },
     {
-      path: "/notifications",
-      component: NotificationsPanel,
-      label: "seer:navNotifications",
-      icon: NotificationsIcon,
-      showInMobileNav: false,
-      showInSidebar: true,
-      requiresAuth: true,
-    },
-    {
       path: "/stats",
       component: StatsPage,
       label: "seer:navStats",
@@ -123,12 +103,6 @@ export const seerPlugin: TentaclePlugin = {
       path: "/requests",
       icon: RequestsIcon,
       platforms: ["web", "desktop", "mobile"],
-    },
-    {
-      label: "seer:navNotifications",
-      path: "/notifications",
-      icon: NotificationsIcon,
-      platforms: ["web", "desktop"],
     },
     {
       label: "seer:navStats",

@@ -8,7 +8,6 @@ import type {
   LocalRequest,
   LocalRequestsResponse,
   QueueStatus,
-  NotificationsResponse,
   StatsResponse,
 } from "./types";
 
@@ -109,31 +108,6 @@ export async function retryRequest(id: string): Promise<LocalRequest> {
 
 export async function getQueueStatus(): Promise<QueueStatus> {
   return backendFetch("/queue/status");
-}
-
-/* ── Notifications ───────────────────────────────────────────────── */
-
-export async function getNotifications(
-  opts?: { unread?: boolean; limit?: number; page?: number },
-): Promise<NotificationsResponse> {
-  const params = new URLSearchParams();
-  if (opts?.unread) params.set("unread", "true");
-  if (opts?.limit) params.set("limit", String(opts.limit));
-  if (opts?.page) params.set("page", String(opts.page));
-  return backendFetch(`/notifications?${params}`);
-}
-
-export async function getUnreadCount(): Promise<number> {
-  const data = await backendFetch<{ count: number }>("/notifications/unread-count");
-  return data.count;
-}
-
-export async function markNotificationRead(id: string): Promise<void> {
-  await backendFetch(`/notifications/${id}/read`, { method: "PUT" });
-}
-
-export async function markAllNotificationsRead(): Promise<void> {
-  await backendFetch("/notifications/read-all", { method: "POST" });
 }
 
 /* ── Stats ────────────────────────────────────────────────────────── */

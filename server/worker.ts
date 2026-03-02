@@ -8,7 +8,6 @@ import {
   updateRequestStatus,
   getRequestsToSync,
   getRequestById,
-  createNotification,
 } from "./db";
 import type { SeerRequest } from "./types";
 
@@ -130,14 +129,15 @@ async function processNextRequest(prisma: PrismaClient, config: WorkerConfig): P
       sentAt: new Date(),
     });
 
-    // Notification
-    await createNotification(prisma, {
-      jellyfinUserId: request.jellyfinUserId,
-      type: "request_sent",
-      title: request.title,
-      message: `Your request for "${request.title}" has been sent to Seerr`,
-      posterPath: request.posterPath,
-      refId: request.id,
+    // Push notification into Tentacle's built-in notification system
+    await prisma.notification.create({
+      data: {
+        jellyfinUserId: request.jellyfinUserId,
+        type: "request_status",
+        title: `"${request.title}" — Sent to Seerr`,
+        body: `Your request for "${request.title}" has been sent`,
+        refId: request.id,
+      },
     });
 
     console.log(`[SeerWorker] Sent request for "${request.title}" (seerr #${data.id})`);
@@ -151,13 +151,14 @@ async function processNextRequest(prisma: PrismaClient, config: WorkerConfig): P
         lastError: errMsg,
         retryCount: newRetryCount,
       });
-      await createNotification(prisma, {
-        jellyfinUserId: request.jellyfinUserId,
-        type: "request_failed",
-        title: request.title,
-        message: `Your request for "${request.title}" failed after ${newRetryCount} attempts`,
-        posterPath: request.posterPath,
-        refId: request.id,
+      await prisma.notification.create({
+        data: {
+          jellyfinUserId: request.jellyfinUserId,
+          type: "request_status",
+          title: `"${request.title}" — Failed`,
+          body: `Your request for "${request.title}" failed after ${newRetryCount} attempts`,
+          refId: request.id,
+        },
       });
       console.warn(`[SeerWorker] Request for "${request.title}" FAILED after ${newRetryCount} retries: ${errMsg}`);
     } else {
@@ -219,14 +220,17 @@ async function syncStatuses(prisma: PrismaClient, config: WorkerConfig): Promise
 
         await updateRequestStatus(prisma, request.id, newStatus, extra as any);
 
-        // Generate notification on status change
+        // Push notification on status change
         const notif = statusNotification(request, newStatus);
         if (notif) {
-          await createNotification(prisma, {
-            jellyfinUserId: request.jellyfinUserId,
-            ...notif,
-            posterPath: request.posterPath,
-            refId: request.id,
+          await prisma.notification.create({
+            data: {
+              jellyfinUserId: request.jellyfinUserId,
+              type: "request_status",
+              title: notif.title,
+              body: notif.message,
+              refId: request.id,
+            },
           });
         }
 

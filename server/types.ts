@@ -39,18 +39,6 @@ export interface SeerRequest {
   completedAt: string | null;
 }
 
-export interface SeerNotification {
-  id: string;
-  jellyfinUserId: string;
-  type: string;
-  title: string;
-  message: string;
-  posterPath: string | null;
-  refId: string | null;
-  read: boolean;
-  createdAt: string;
-}
-
 export interface CreateRequestBody {
   mediaType: "movie" | "tv";
   tmdbId: number;

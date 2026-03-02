@@ -10,15 +10,9 @@ import {
   getRequestById,
   getUserRequests,
   getAllRequests,
-  updateRequestStatus,
   deleteRequestById,
   findDuplicate,
   getQueueStatus,
-  createNotification,
-  getUserNotifications,
-  getUnreadCount,
-  markNotificationRead,
-  markAllNotificationsRead,
   getUserStats,
   getGlobalStats,
 } from "./db";
@@ -244,36 +238,6 @@ export default async function seerBackend(
       ...status,
       workerRunning: isWorkerRunning(),
     };
-  });
-
-  /* ── Notifications ───────────────────────────────────────────────── */
-
-  app.get("/notifications", async (request) => {
-    const user = getUser(request);
-    const query = request.query as { unread?: string; limit?: string; page?: string };
-    return getUserNotifications(prisma, user.userId, {
-      unread: query.unread === "true",
-      limit: Number(query.limit) || 20,
-      page: Number(query.page) || 1,
-    });
-  });
-
-  app.get("/notifications/unread-count", async (request) => {
-    const user = getUser(request);
-    const count = await getUnreadCount(prisma, user.userId);
-    return { count };
-  });
-
-  app.put("/notifications/:id/read", async (request, reply) => {
-    const { id } = request.params as { id: string };
-    await markNotificationRead(prisma, id);
-    return { success: true };
-  });
-
-  app.post("/notifications/read-all", async (request) => {
-    const user = getUser(request);
-    await markAllNotificationsRead(prisma, user.userId);
-    return { success: true };
   });
 
   /* ── Stats ───────────────────────────────────────────────────────── */

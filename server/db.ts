@@ -3,7 +3,7 @@
 /* ------------------------------------------------------------------ */
 
 import type { PrismaClient } from "@prisma/client";
-import type { SeerRequest, SeerNotification, RequestStatus } from "./types";
+import type { SeerRequest, RequestStatus } from "./types";
 
 type Prisma = PrismaClient;
 
@@ -41,20 +41,6 @@ export async function ensureTables(prisma: Prisma): Promise<void> {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
 
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS seer_notifications (
-      id               VARCHAR(36) NOT NULL PRIMARY KEY,
-      jellyfin_user_id VARCHAR(255) NOT NULL,
-      type             VARCHAR(50) NOT NULL,
-      title            VARCHAR(500) NOT NULL,
-      message          TEXT NOT NULL,
-      poster_path      VARCHAR(500),
-      ref_id           VARCHAR(36),
-      is_read          TINYINT(1) NOT NULL DEFAULT 0,
-      created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      INDEX idx_seer_notif_user (jellyfin_user_id, is_read)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
 }
 
 /* ── Helpers ────────────────────────────────────────────────────────── */
@@ -88,20 +74,6 @@ function rowToRequest(r: Record<string, unknown>): SeerRequest {
     updatedAt: toIso(r.updated_at),
     sentAt: r.sent_at ? toIso(r.sent_at) : null,
     completedAt: r.completed_at ? toIso(r.completed_at) : null,
-  };
-}
-
-function rowToNotification(r: Record<string, unknown>): SeerNotification {
-  return {
-    id: r.id as string,
-    jellyfinUserId: r.jellyfin_user_id as string,
-    type: r.type as string,
-    title: r.title as string,
-    message: r.message as string,
-    posterPath: (r.poster_path as string) || null,
-    refId: (r.ref_id as string) || null,
-    read: !!(r.is_read as number),
-    createdAt: toIso(r.created_at),
   };
 }
 
@@ -349,97 +321,6 @@ export async function getQueueStatus(
     queued: Number(countRows[0].queued) || 0,
     retryPending: Number(countRows[0].retry_pending) || 0,
   };
-}
-
-/* ── Notification CRUD ─────────────────────────────────────────────── */
-
-export async function createNotification(
-  prisma: Prisma,
-  data: {
-    jellyfinUserId: string;
-    type: string;
-    title: string;
-    message: string;
-    posterPath?: string | null;
-    refId?: string | null;
-  },
-): Promise<SeerNotification> {
-  const id = uuid();
-  await prisma.$executeRawUnsafe(
-    `INSERT INTO seer_notifications (id, jellyfin_user_id, type, title, message, poster_path, ref_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    id,
-    data.jellyfinUserId,
-    data.type,
-    data.title,
-    data.message,
-    data.posterPath || null,
-    data.refId || null,
-  );
-  const rows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
-    `SELECT * FROM seer_notifications WHERE id = ?`,
-    id,
-  );
-  return rowToNotification(rows[0]);
-}
-
-export async function getUserNotifications(
-  prisma: Prisma,
-  jellyfinUserId: string,
-  opts: { unread?: boolean; limit?: number; page?: number },
-): Promise<{ results: SeerNotification[]; total: number; page: number; pages: number }> {
-  const page = opts.page || 1;
-  const limit = Math.min(opts.limit || 20, 100);
-  const offset = (page - 1) * limit;
-
-  let where = `WHERE jellyfin_user_id = ?`;
-  const params: unknown[] = [jellyfinUserId];
-
-  if (opts.unread) {
-    where += ` AND is_read = 0`;
-  }
-
-  const countRows = await prisma.$queryRawUnsafe<[{ cnt: bigint }]>(
-    `SELECT COUNT(*) as cnt FROM seer_notifications ${where}`,
-    ...params,
-  );
-  const total = Number(countRows[0].cnt);
-
-  const rows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
-    `SELECT * FROM seer_notifications ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-    ...params,
-    limit,
-    offset,
-  );
-
-  return {
-    results: rows.map(rowToNotification),
-    total,
-    page,
-    pages: Math.ceil(total / limit) || 1,
-  };
-}
-
-export async function getUnreadCount(prisma: Prisma, jellyfinUserId: string): Promise<number> {
-  const rows = await prisma.$queryRawUnsafe<[{ cnt: bigint }]>(
-    `SELECT COUNT(*) as cnt FROM seer_notifications WHERE jellyfin_user_id = ? AND is_read = 0`,
-    jellyfinUserId,
-  );
-  return Number(rows[0].cnt);
-}
-
-export async function markNotificationRead(prisma: Prisma, id: string): Promise<void> {
-  await prisma.$executeRawUnsafe(
-    `UPDATE seer_notifications SET is_read = 1 WHERE id = ?`,
-    id,
-  );
-}
-
-export async function markAllNotificationsRead(prisma: Prisma, jellyfinUserId: string): Promise<void> {
-  await prisma.$executeRawUnsafe(
-    `UPDATE seer_notifications SET is_read = 1 WHERE jellyfin_user_id = ? AND is_read = 0`,
-    jellyfinUserId,
-  );
 }
 
 /* ── Stats ─────────────────────────────────────────────────────────── */
