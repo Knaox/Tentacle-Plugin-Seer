@@ -151,7 +151,7 @@ export function DiscoverPage() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t("seer:searchPlaceholder")}
-          className="w-full rounded-xl border border-white/10 bg-white/5 py-3 pl-11 pr-24 text-sm text-white placeholder-white/30 outline-none backdrop-blur transition-all focus:border-purple-500/50 focus:bg-white/[0.07] focus:shadow-lg focus:shadow-purple-500/5"
+          className="w-full rounded-xl border border-white/10 bg-white/5 py-3 pl-12 pr-24 text-sm text-white placeholder-white/30 outline-none backdrop-blur transition-all focus:border-purple-500/50 focus:bg-white/[0.07] focus:shadow-lg focus:shadow-purple-500/5"
         />
         {query && (
           <button

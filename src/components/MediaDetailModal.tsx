@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useMediaDetail } from "../hooks/useMediaDetail";
 import { useMediaVideos } from "../hooks/useMediaVideos";
@@ -27,20 +27,31 @@ interface MediaDetailModalProps {
 export function MediaDetailModal({ item, onClose, onRequest, requesting }: MediaDetailModalProps) {
   const { t } = useTranslation("seer");
   const toast = useToast();
-  const mediaType = item.mediaType === "movie" ? "movie" as const : "tv" as const;
-  const { data: detail, isLoading } = useMediaDetail(mediaType, item.id);
-  const { data: trailer } = useMediaVideos(mediaType, item.id);
-  const { data: similar } = useMediaSimilar(mediaType, item.id);
-  const { data: providers } = useWatchProviders(mediaType, item.id);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Internal navigation: allow switching item within the modal (for similar media)
+  const [currentItem, setCurrentItem] = useState(item);
+
+  const mediaType = currentItem.mediaType === "movie" ? "movie" as const : "tv" as const;
+  const { data: detail, isLoading } = useMediaDetail(mediaType, currentItem.id);
+  const { data: trailer } = useMediaVideos(mediaType, currentItem.id);
+  const { data: similar } = useMediaSimilar(mediaType, currentItem.id);
+  const { data: providers } = useWatchProviders(mediaType, currentItem.id);
   const requestMedia = useRequestMedia();
   const [synopsisExpanded, setSynopsisExpanded] = useState(false);
 
-  const title = mediaTitle(item) || t("seer:untitled");
-  const year = mediaYear(item);
-  const backdrop = backdropUrl(item.backdropPath);
-  const poster = posterUrl(item.posterPath);
+  const title = mediaTitle(currentItem) || t("seer:untitled");
+  const year = mediaYear(currentItem);
+  const backdrop = backdropUrl(currentItem.backdropPath);
+  const poster = posterUrl(currentItem.posterPath);
   const tvDetail = detail as SeerrTvDetail | undefined;
-  const rating = detail?.voteAverage ?? item.voteAverage;
+  const rating = detail?.voteAverage ?? currentItem.voteAverage;
+
+  // Lock body scroll while modal is open
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -58,9 +69,9 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
 
   const handleSeasonRequest = (seasons: number[]) => {
     requestMedia.mutate({
-      mediaType: "tv", tmdbId: item.id, title,
-      posterPath: item.posterPath, backdropPath: item.backdropPath,
-      overview: item.overview, year, seasons,
+      mediaType: "tv", tmdbId: currentItem.id, title,
+      posterPath: currentItem.posterPath, backdropPath: currentItem.backdropPath,
+      overview: currentItem.overview, year, seasons,
     }, {
       onSuccess: () => { toast.show("success", t("requestAdded")); onClose(); },
       onError: () => toast.show("error", t("requestError")),
@@ -68,11 +79,17 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
   };
 
   const handleMovieRequest = () => {
-    onRequest(item);
+    onRequest(currentItem);
     setTimeout(() => onClose(), 300);
   };
 
-  const overview = detail?.overview ?? item.overview;
+  const handleSelectSimilar = (newItem: SeerrSearchResult) => {
+    setCurrentItem(newItem);
+    setSynopsisExpanded(false);
+    scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const overview = detail?.overview ?? currentItem.overview;
   const cast = detail?.credits?.cast;
 
   return (
@@ -81,8 +98,9 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
       onClick={onClose}
       style={{ animation: "fadeIn 200ms ease forwards" }}
     >
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-black/90 backdrop-blur-sm" />
       <div
+        ref={scrollRef}
         className="relative max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl bg-[#12121a] scrollbar-hide sm:max-h-[90vh] sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
         style={{ animation: "fadeSlideUp 300ms ease forwards" }}
@@ -156,7 +174,7 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
           {cast && cast.length > 0 && <CastRow cast={cast} />}
 
           {/* Action */}
-          {item.mediaType === "movie" && (
+          {currentItem.mediaType === "movie" && (
             <button
               onClick={handleMovieRequest}
               disabled={requesting}
@@ -166,7 +184,7 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
             </button>
           )}
 
-          {item.mediaType === "tv" && !isLoading && detail && (detail as SeerrTvDetail).seasons && (
+          {currentItem.mediaType === "tv" && !isLoading && detail && (detail as SeerrTvDetail).seasons && (
             <SeriesSeasonPicker
               seasons={(detail as SeerrTvDetail).seasons ?? []}
               requestedSeasons={requestedSeasonMap}
@@ -175,13 +193,15 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
             />
           )}
 
-          {isLoading && item.mediaType === "tv" && (
+          {isLoading && currentItem.mediaType === "tv" && (
             <div className="flex justify-center py-4">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" />
             </div>
           )}
 
-          {similar && similar.length > 0 && <SimilarMedia items={similar} onSelect={(s) => { onClose(); }} />}
+          {similar && similar.length > 0 && (
+            <SimilarMedia items={similar} onSelect={handleSelectSimilar} />
+          )}
         </div>
       </div>
     </div>

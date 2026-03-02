@@ -516,7 +516,7 @@ function getUser(request) {
 }
 function getPluginConfig(ctx) {
   try {
-    const installedPath = resolve(__pluginDir, "installed.json");
+    const installedPath = resolve(__pluginDir, "..", "installed.json");
     if (!existsSync(installedPath)) return {};
     const installed = JSON.parse(readFileSync(installedPath, "utf-8"));
     const plugin = installed.find(

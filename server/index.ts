@@ -44,7 +44,7 @@ function getUser(request: FastifyRequest): JellyfinUser {
 /** Helper to read plugin config from installed.json */
 function getPluginConfig(ctx: PluginBackendContext): Record<string, unknown> {
   try {
-    const installedPath = resolve(__pluginDir, "installed.json");
+    const installedPath = resolve(__pluginDir, "..", "installed.json");
     if (!existsSync(installedPath)) return {};
     const installed = JSON.parse(readFileSync(installedPath, "utf-8"));
     const plugin = installed.find(
