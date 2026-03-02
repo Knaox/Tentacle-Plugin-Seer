@@ -5,7 +5,7 @@
   "version": "1.0.0-beta",
   "author": "Knaox",
   "entry": "dist/plugin-seer.iife.js",
-  "server": "server/index.js",
+  "server": "server/index.mjs",
   "platforms": ["web", "desktop"],
   "minTentacleVersion": "0.9.0"
 }

@@ -7,7 +7,7 @@
     "build": "vite build && npm run build:server",
     "build:server": "node build-server.mjs",
     "typecheck": "tsc --noEmit",
-    "package": "npm run build && tar -czf plugin-seer-v$npm_package_version.tar.gz dist/ server/index.js plugin.json"
+    "package": "npm run build && tar -czf plugin-seer-v$npm_package_version.tar.gz dist/ server/index.mjs plugin.json"
   },
   "devDependencies": {
     "@tanstack/react-query": "^5.62.0",

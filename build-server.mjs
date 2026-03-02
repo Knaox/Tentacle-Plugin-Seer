@@ -6,7 +6,7 @@ await build({
   platform: "node",
   target: "node20",
   format: "esm",
-  outfile: "server/index.js",
+  outfile: "server/index.mjs",
   // Mark node built-ins and Prisma as external (provided by host)
   external: ["@prisma/client", "path", "fs", "fs/promises", "crypto", "child_process", "stream/promises"],
   banner: {
@@ -14,4 +14,4 @@ await build({
   },
 });
 
-console.log("[build-server] server/index.js built successfully");
+console.log("[build-server] server/index.mjs built successfully");
