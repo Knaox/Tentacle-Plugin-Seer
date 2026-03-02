@@ -127,18 +127,20 @@ export function DiscoverPage() {
 
   return (
     <div className="px-4 pt-4 md:px-8">
-      {/* Hero Carousel */}
-      {!isSearching && mediaFilter === "all" && trendingData?.results && (
-        <HeroCarousel
-          items={trendingData.results}
-          onSelect={setSelectedItem}
-          onRequest={handleRequest}
-        />
+      {/* Hero Carousel — always visible except when searching */}
+      {!isSearching && trendingData?.results && (
+        <div className="-mx-4 -mt-4 mb-6 md:-mx-8">
+          <HeroCarousel
+            items={trendingData.results}
+            onSelect={setSelectedItem}
+            onRequest={handleRequest}
+          />
+        </div>
       )}
 
       {/* Search bar */}
       <div className="relative mb-4">
-        <svg className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <svg className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
         </svg>
         <input
@@ -147,19 +149,19 @@ export function DiscoverPage() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t("seer:searchPlaceholder")}
-          className="w-full rounded-xl border border-white/10 bg-white/5 py-3 pl-10 pr-20 text-sm text-white placeholder-white/30 outline-none backdrop-blur transition-all focus:border-purple-500/50 focus:bg-white/[0.07] focus:shadow-lg focus:shadow-purple-500/5"
+          className="w-full rounded-xl border border-white/10 bg-white/5 py-3 pl-11 pr-24 text-sm text-white placeholder-white/30 outline-none backdrop-blur transition-all focus:border-purple-500/50 focus:bg-white/[0.07] focus:shadow-lg focus:shadow-purple-500/5"
         />
         {query && (
           <button
             onClick={() => setQuery("")}
-            className="absolute right-14 top-1/2 -translate-y-1/2 text-white/30 transition-colors hover:text-white/60"
+            className="absolute right-16 top-1/2 -translate-y-1/2 text-white/30 transition-colors hover:text-white/60"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
             </svg>
           </button>
         )}
-        <kbd className="absolute right-3.5 top-1/2 -translate-y-1/2 rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] text-white/30">
+        <kbd className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] text-white/30">
           Ctrl+K
         </kbd>
       </div>
@@ -202,7 +204,7 @@ export function DiscoverPage() {
                 requesting={requestMedia.isPending}
                 style={{
                   opacity: 0,
-                  animation: `fade-slide-up 400ms cubic-bezier(0.25,0.46,0.45,0.94) ${i * 50}ms forwards`,
+                  animation: `fadeSlideUp 400ms cubic-bezier(0.25,0.46,0.45,0.94) ${i * 50}ms forwards`,
                 }}
               />
             ))}

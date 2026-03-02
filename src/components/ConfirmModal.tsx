@@ -38,7 +38,7 @@ export function ConfirmModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ animation: "fade-in 200ms ease" }}
+      style={{ animation: "fadeIn 200ms ease forwards" }}
     >
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onCancel} />
       <div
@@ -47,7 +47,7 @@ export function ConfirmModal({
           background: "rgba(15,15,25,0.95)",
           backdropFilter: "blur(20px)",
           boxShadow: "0 20px 50px rgba(0,0,0,0.5)",
-          animation: "scale-in 200ms ease forwards",
+          animation: "scaleIn 200ms ease forwards",
         }}
       >
         <h3 className="text-base font-semibold text-white">{title}</h3>

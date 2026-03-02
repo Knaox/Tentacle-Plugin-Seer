@@ -42,7 +42,7 @@ export function Toast({ toast, onDismiss }: ToastProps) {
       style={{
         background: "rgba(15,15,25,0.92)",
         backdropFilter: "blur(20px)",
-        animation: "fade-slide-down 300ms ease forwards",
+        animation: "fadeSlideDown 300ms ease forwards",
       }}
     >
       {toast.posterUrl && (

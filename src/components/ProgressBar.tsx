@@ -55,7 +55,7 @@ export function ProgressBar({ status }: ProgressBarProps) {
                       ? "w-full bg-purple-500"
                       : "w-0"
                 }`}
-                style={isCurrent ? { animation: "pulse-glow 2s ease-in-out infinite" } : undefined}
+                style={isCurrent ? { animation: "pulseGlow 2s ease-in-out infinite" } : undefined}
               />
             </div>
             <span

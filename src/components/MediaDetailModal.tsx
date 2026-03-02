@@ -79,13 +79,13 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
     <div
       className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
       onClick={onClose}
-      style={{ animation: "fade-in 200ms ease" }}
+      style={{ animation: "fadeIn 200ms ease forwards" }}
     >
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
       <div
         className="relative max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl bg-[#12121a] scrollbar-hide sm:max-h-[90vh] sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
-        style={{ animation: "fade-slide-up 300ms ease forwards" }}
+        style={{ animation: "fadeSlideUp 300ms ease forwards" }}
       >
         {/* Backdrop */}
         {backdrop && (

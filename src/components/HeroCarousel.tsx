@@ -36,7 +36,7 @@ export function HeroCarousel({ items, onSelect, onRequest }: HeroCarouselProps) 
 
   return (
     <div
-      className="relative mb-6 h-[320px] overflow-hidden rounded-2xl sm:h-[380px] lg:h-[420px]"
+      className="relative h-[320px] overflow-hidden sm:h-[380px] lg:h-[420px]"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
     >
@@ -45,14 +45,14 @@ export function HeroCarousel({ items, onSelect, onRequest }: HeroCarouselProps) 
         className="absolute inset-0 bg-cover bg-center transition-opacity duration-1000"
         style={{ backgroundImage: backdrop ? `url(${backdrop})` : undefined }}
       >
-        <div className="absolute inset-0 bg-gradient-to-t from-[#080812] via-[#080812]/60 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#080812]/80 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/70 to-black/10" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/30 to-transparent" />
       </div>
 
       {/* Content */}
       <div
         className="relative flex h-full items-end gap-5 px-6 pb-8 sm:px-10"
-        style={{ animation: "fade-slide-up 600ms ease forwards" }}
+        style={{ animation: "fadeSlideUp 600ms ease forwards" }}
         key={index}
       >
         {/* Poster */}
@@ -65,13 +65,16 @@ export function HeroCarousel({ items, onSelect, onRequest }: HeroCarouselProps) 
         )}
 
         <div className="flex min-w-0 flex-1 flex-col gap-3">
-          <h2 className="text-2xl font-bold leading-tight text-white drop-shadow-lg sm:text-3xl lg:text-4xl">
+          <h2
+            className="text-3xl font-bold leading-tight text-white sm:text-4xl lg:text-5xl"
+            style={{ textShadow: "0 2px 12px rgba(0,0,0,0.8)" }}
+          >
             {title}
           </h2>
-          <div className="flex flex-wrap items-center gap-2 text-sm text-white/60">
+          <div className="flex flex-wrap items-center gap-2 text-sm text-white/80">
             {year && <span>{year}</span>}
             {item.voteAverage != null && item.voteAverage > 0 && (
-              <span className="flex items-center gap-1 text-amber-400">
+              <span className="flex items-center gap-1 font-semibold text-amber-400">
                 <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 20 20">
                   <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
                 </svg>
@@ -79,13 +82,13 @@ export function HeroCarousel({ items, onSelect, onRequest }: HeroCarouselProps) 
               </span>
             )}
             {item.genreIds && item.genreIds.length > 0 && (
-              <span className="text-white/40">
+              <span className="text-white/60">
                 {item.mediaType === "movie" ? t("typeMovie") : t("typeSeries")}
               </span>
             )}
           </div>
           {item.overview && (
-            <p className="line-clamp-2 max-w-xl text-sm leading-relaxed text-white/50">
+            <p className="line-clamp-2 max-w-xl text-sm leading-relaxed text-white/80" style={{ textShadow: "0 1px 8px rgba(0,0,0,0.6)" }}>
               {item.overview}
             </p>
           )}

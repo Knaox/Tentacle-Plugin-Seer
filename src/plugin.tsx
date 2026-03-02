@@ -156,6 +156,14 @@ export const seerPlugin: TentaclePlugin = {
       i18nInstance.addResourceBundle("en", "seer", enTranslations, true, true);
       i18nInstance.addResourceBundle("fr", "seer", frTranslations, true, true);
     }
+
+    // Inject plugin-specific keyframes not provided by host
+    if (!document.getElementById("seer-keyframes")) {
+      const style = document.createElement("style");
+      style.id = "seer-keyframes";
+      style.textContent = `@keyframes fadeIn{from{opacity:0}to{opacity:1}}`;
+      document.head.appendChild(style);
+    }
   },
 
   async destroy() {
