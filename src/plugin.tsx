@@ -157,11 +157,16 @@ export const seerPlugin: TentaclePlugin = {
       i18nInstance.addResourceBundle("fr", "seer", frTranslations, true, true);
     }
 
-    // Inject plugin-specific keyframes not provided by host
+    // Inject plugin-specific keyframes not provided by host.
+    // Host Tailwind purges keyframes whose animate-* class isn't used in host code.
     if (!document.getElementById("seer-keyframes")) {
       const style = document.createElement("style");
       style.id = "seer-keyframes";
-      style.textContent = `@keyframes fadeIn{from{opacity:0}to{opacity:1}}`;
+      style.textContent = [
+        "@keyframes fadeIn{from{opacity:0}to{opacity:1}}",
+        "@keyframes fadeSlideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}",
+        "@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}",
+      ].join("");
       document.head.appendChild(style);
     }
   },

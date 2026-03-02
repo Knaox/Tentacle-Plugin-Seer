@@ -19,6 +19,7 @@ export default {
   noResults: "Aucun résultat",
   noContent: "Aucun contenu disponible",
   noContentHint: "Essayez de modifier vos filtres ou termes de recherche",
+  connectionError: "Impossible de se connecter à Seerr",
   moreInfo: "Plus d'infos",
   resetFilters: "Réinitialiser",
 

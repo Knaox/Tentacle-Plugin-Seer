@@ -35,6 +35,9 @@ export async function proxyFetch<T>(
   seerrPath: string,
   options?: { method?: string; body?: unknown },
 ): Promise<T> {
+  if (!_seerrUrl) {
+    throw new Error("Seer not configured: missing Seerr URL");
+  }
   const res = await fetch(`${_backendBase}/api/plugins/seer/proxy`, {
     method: "POST",
     headers: {

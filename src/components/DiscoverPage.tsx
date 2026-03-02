@@ -41,7 +41,7 @@ export function DiscoverPage() {
           : "movies";
 
   // Hero uses trending
-  const { data: trendingData } = useDiscoverMedia("trending", 1);
+  const { data: trendingData, isError: trendingError } = useDiscoverMedia("trending", 1);
 
   // Infinite scroll for discover
   const infinite = useInfiniteDiscover(category);
@@ -50,6 +50,8 @@ export function DiscoverPage() {
 
   const isSearching = debouncedQuery.length >= 2;
   const isLoading = isSearching ? searchLoading : infinite.isLoading;
+  const hasError = infinite.isError || trendingError;
+  const errorMessage = infinite.error?.message || "";
 
   // Flatten infinite pages
   const allDiscoverResults = infinite.data?.pages.flatMap((p) => p.results) ?? [];
@@ -192,6 +194,22 @@ export function DiscoverPage() {
       {/* Results */}
       {isLoading ? (
         <SkeletonList count={12} />
+      ) : hasError && filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center gap-3 py-16">
+          <svg className="h-10 w-10 text-red-400/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+          </svg>
+          <p className="text-sm font-medium text-white/60">{t("seer:connectionError")}</p>
+          {errorMessage && (
+            <p className="max-w-md text-center text-xs text-white/30">{errorMessage}</p>
+          )}
+          <button
+            onClick={() => { infinite.refetch(); }}
+            className="mt-2 rounded-lg bg-purple-600/80 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-purple-600"
+          >
+            {t("seer:retry")}
+          </button>
+        </div>
       ) : filtered.length > 0 ? (
         <>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
