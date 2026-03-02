@@ -40,6 +40,11 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
     requestMedia.mutate({
       mediaType: "tv",
       tmdbId: item.id,
+      title,
+      posterPath: item.posterPath,
+      backdropPath: item.backdropPath,
+      overview: item.overview,
+      year,
       seasons,
     }, {
       onSuccess: () => onClose(),
@@ -48,9 +53,11 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
 
   const handleMovieRequest = () => {
     onRequest(item);
-    // Close modal after a short delay for movie requests
     setTimeout(() => onClose(), 300);
   };
+
+  // Cast (from detail data, if available)
+  const cast = detail?.credits?.cast?.slice(0, 10);
 
   return (
     <div
@@ -93,14 +100,58 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
             <h2 className="text-xl font-bold text-white">{title}</h2>
             <p className="mt-0.5 text-sm text-white/40">
               {year} {item.mediaType === "movie" ? t("seer:typeMovie") : t("seer:typeSeries")}
+              {detail && "runtime" in detail && detail.runtime && (
+                <span className="ml-2">{detail.runtime} min</span>
+              )}
             </p>
+            {/* Genres */}
+            {detail?.genres && detail.genres.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {detail.genres.map((g) => (
+                  <span key={g.id} className="rounded-md bg-white/10 px-2 py-0.5 text-[10px] text-white/60">
+                    {g.name}
+                  </span>
+                ))}
+              </div>
+            )}
             {item.overview && (
-              <p className="mt-3 line-clamp-3 text-xs leading-relaxed text-white/50">
+              <p className="mt-3 line-clamp-4 text-xs leading-relaxed text-white/50">
                 {item.overview}
               </p>
             )}
           </div>
         </div>
+
+        {/* Cast */}
+        {cast && cast.length > 0 && (
+          <div className="px-5 pb-4">
+            <h3 className="mb-2 text-xs font-semibold text-white/60">{t("seer:castTitle")}</h3>
+            <div className="flex gap-3 overflow-x-auto pb-2">
+              {cast.map((person) => (
+                <div key={person.id} className="flex flex-shrink-0 flex-col items-center w-14">
+                  {person.profilePath ? (
+                    <img
+                      src={`https://image.tmdb.org/t/p/w92${person.profilePath}`}
+                      alt={person.name}
+                      className="h-14 w-14 rounded-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/10 text-white/30 text-xs">
+                      {person.name[0]}
+                    </div>
+                  )}
+                  <span className="mt-1 w-full truncate text-center text-[9px] text-white/50">
+                    {person.name}
+                  </span>
+                  <span className="w-full truncate text-center text-[8px] text-white/30">
+                    {person.character}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Action section */}
         <div className="px-5 pb-6">

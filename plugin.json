@@ -2,9 +2,10 @@
   "id": "seer",
   "name": "Seer",
   "description": "Media discovery and request management powered by Seerr / Overseerr",
-  "version": "0.10.0-beta",
+  "version": "1.0.0-beta",
   "author": "Knaox",
   "entry": "dist/plugin-seer.iife.js",
+  "server": "server/index.js",
   "platforms": ["web", "desktop"],
   "minTentacleVersion": "0.9.0"
 }

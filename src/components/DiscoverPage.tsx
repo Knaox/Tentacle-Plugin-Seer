@@ -3,10 +3,12 @@ import { useTranslation } from "react-i18next";
 import { useDiscoverMedia } from "../hooks/useDiscoverMedia";
 import { useSeerSearch } from "../hooks/useSearch";
 import { useRequestMedia } from "../hooks/useRequestMedia";
+import type { RequestMediaPayload } from "../hooks/useRequestMedia";
 import { MediaCard } from "./MediaCard";
 import { MediaTypeFilter } from "./MediaTypeFilter";
 import { SortSelector } from "./SortSelector";
 import { MediaDetailModal } from "./MediaDetailModal";
+import { mediaTitle, mediaYear } from "../utils/media-helpers";
 import type { SeerrSearchResult, DiscoverCategory, MediaFilter, SortOption } from "../api/types";
 
 export function DiscoverPage() {
@@ -59,11 +61,17 @@ export function DiscoverPage() {
   }, [query]);
 
   const handleRequest = useCallback((item: SeerrSearchResult) => {
-    if (item.mediaType === "movie") {
-      requestMedia.mutate({
-        mediaType: "movie",
+    if (item.mediaType === "movie" || item.mediaType === "tv") {
+      const payload: RequestMediaPayload = {
+        mediaType: item.mediaType,
         tmdbId: item.id,
-      });
+        title: mediaTitle(item) || "Unknown",
+        posterPath: item.posterPath,
+        backdropPath: item.backdropPath,
+        overview: item.overview,
+        year: mediaYear(item),
+      };
+      requestMedia.mutate(payload);
     }
   }, [requestMedia]);
 
@@ -92,8 +100,16 @@ export function DiscoverPage() {
 
       {/* Results grid */}
       {isLoading ? (
-        <div className="flex justify-center py-12">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-purple-500 border-t-transparent" />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+          {[...Array(12)].map((_, i) => (
+            <div key={i} className="animate-pulse overflow-hidden rounded-xl bg-white/5">
+              <div className="aspect-[2/3] w-full bg-white/10" />
+              <div className="space-y-2 p-2.5">
+                <div className="h-4 w-3/4 rounded bg-white/10" />
+                <div className="h-3 w-1/3 rounded bg-white/5" />
+              </div>
+            </div>
+          ))}
         </div>
       ) : filtered && filtered.length > 0 ? (
         <>

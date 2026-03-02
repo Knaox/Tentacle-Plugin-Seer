@@ -11,6 +11,12 @@ const DiscoverPage = lazy(() =>
 const RequestsPage = lazy(() =>
   import("./components/RequestsPage").then((m) => ({ default: m.RequestsPage }))
 );
+const NotificationsPanel = lazy(() =>
+  import("./components/NotificationsPanel").then((m) => ({ default: m.NotificationsPanel }))
+);
+const StatsPage = lazy(() =>
+  import("./components/StatsPage").then((m) => ({ default: m.StatsPage }))
+);
 const SeerConfigPage = lazy(() =>
   import("./components/admin/SeerConfigPage").then((m) => ({ default: m.SeerConfigPage }))
 );
@@ -33,6 +39,22 @@ function RequestsIcon({ className }: { className?: string }) {
   );
 }
 
+function NotificationsIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className ?? "h-5 w-5"} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+    </svg>
+  );
+}
+
+function StatsIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className ?? "h-5 w-5"} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+    </svg>
+  );
+}
+
 function ConfigIcon({ className }: { className?: string }) {
   return (
     <svg className={className ?? "h-5 w-5"} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
@@ -47,7 +69,7 @@ function ConfigIcon({ className }: { className?: string }) {
 export const seerPlugin: TentaclePlugin = {
   id: "seer",
   name: "seer:pluginName",
-  version: "0.10.0-beta",
+  version: "1.0.0-beta",
   description: "seer:pluginDescription",
 
   routes: [
@@ -69,6 +91,24 @@ export const seerPlugin: TentaclePlugin = {
       showInSidebar: true,
       requiresAuth: true,
     },
+    {
+      path: "/notifications",
+      component: NotificationsPanel,
+      label: "seer:navNotifications",
+      icon: NotificationsIcon,
+      showInMobileNav: false,
+      showInSidebar: true,
+      requiresAuth: true,
+    },
+    {
+      path: "/stats",
+      component: StatsPage,
+      label: "seer:navStats",
+      icon: StatsIcon,
+      showInMobileNav: false,
+      showInSidebar: true,
+      requiresAuth: true,
+    },
   ],
 
   navItems: [
@@ -83,6 +123,18 @@ export const seerPlugin: TentaclePlugin = {
       path: "/requests",
       icon: RequestsIcon,
       platforms: ["web", "desktop", "mobile"],
+    },
+    {
+      label: "seer:navNotifications",
+      path: "/notifications",
+      icon: NotificationsIcon,
+      platforms: ["web", "desktop"],
+    },
+    {
+      label: "seer:navStats",
+      path: "/stats",
+      icon: StatsIcon,
+      platforms: ["web", "desktop"],
     },
   ],
 
@@ -112,12 +164,12 @@ export const seerPlugin: TentaclePlugin = {
 
   async initialize() {
     // Configure backend URL from host app
-    const tentacle = (window as Record<string, unknown>).__tentacle as Record<string, unknown> | undefined;
+    const tentacle = (window as unknown as Record<string, unknown>).__tentacle as Record<string, unknown> | undefined;
     const hostBackendUrl = (tentacle?.backendUrl as string) ?? "";
     setSeerBackendUrl(hostBackendUrl);
 
     // Register i18n translations with the host app's i18next instance
-    const shared = (window as Record<string, unknown>).TentacleShared as Record<string, unknown> | undefined;
+    const shared = (window as unknown as Record<string, unknown>).TentacleShared as Record<string, unknown> | undefined;
     const i18nInstance = shared?.i18n as {
       addResourceBundle: (lng: string, ns: string, resources: Record<string, string>, deep?: boolean, overwrite?: boolean) => void;
     } | undefined;
@@ -134,7 +186,7 @@ export const seerPlugin: TentaclePlugin = {
 
 // Auto-register when loaded as an external plugin bundle
 if (typeof window !== "undefined") {
-  const tentacle = (window as Record<string, unknown>).__tentacle as {
+  const tentacle = (window as unknown as Record<string, unknown>).__tentacle as {
     registerPlugin: (plugin: TentaclePlugin) => void;
   } | undefined;
   if (tentacle) {

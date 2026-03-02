@@ -1,25 +1,48 @@
-import { proxyFetch, configUrl, setSeerrConfig } from "./endpoints";
+import { proxyFetch, configUrl, setSeerrConfig, getSeerBackendUrl } from "./endpoints";
 import type {
   SeerrPagedResponse,
   SeerrMovieDetail,
   SeerrTvDetail,
-  SeerrRequestsResponse,
-  SeerrMediaRequest,
   DiscoverCategory,
   MediaType,
+  LocalRequest,
+  LocalRequestsResponse,
+  QueueStatus,
+  NotificationsResponse,
+  StatsResponse,
 } from "./types";
 
 function getToken(): string {
   return localStorage.getItem("tentacle_token") ?? "";
 }
 
-/* ---- Search ---- */
+function authHeaders(): Record<string, string> {
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${getToken()}`,
+  };
+}
+
+/** Fetch from the Seer plugin backend (not Seerr proxy) */
+async function backendFetch<T>(path: string, opts?: RequestInit): Promise<T> {
+  const res = await fetch(`${getSeerBackendUrl()}/api/plugins/seer${path}`, {
+    ...opts,
+    headers: { ...authHeaders(), ...opts?.headers },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error(body.message || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+/* ── Search (Seerr proxy) ────────────────────────────────────────── */
 
 export async function searchMedia(query: string, page = 1): Promise<SeerrPagedResponse> {
   return proxyFetch(`/api/v1/search?query=${encodeURIComponent(query)}&page=${page}&language=fr`);
 }
 
-/* ---- Discover ---- */
+/* ── Discover (Seerr proxy) ──────────────────────────────────────── */
 
 export async function discoverMedia(
   category: DiscoverCategory,
@@ -34,7 +57,7 @@ export async function discoverMedia(
   return proxyFetch(paths[category]);
 }
 
-/* ---- Media details ---- */
+/* ── Media details (Seerr proxy) ─────────────────────────────────── */
 
 export async function getMovieDetail(id: number): Promise<SeerrMovieDetail> {
   return proxyFetch(`/api/v1/movie/${id}?language=fr`);
@@ -44,36 +67,82 @@ export async function getTvDetail(id: number): Promise<SeerrTvDetail> {
   return proxyFetch(`/api/v1/tv/${id}?language=fr`);
 }
 
-/* ---- Requests (direct to Seerr API) ---- */
+/* ── Requests (Tentacle backend — queue system) ──────────────────── */
 
 export async function createRequest(body: {
   mediaType: MediaType;
   tmdbId: number;
+  title: string;
+  posterPath?: string | null;
+  backdropPath?: string | null;
+  overview?: string | null;
+  year?: string | null;
   seasons?: number[];
-}): Promise<SeerrMediaRequest> {
-  return proxyFetch(`/api/v1/request`, {
+}): Promise<LocalRequest> {
+  return backendFetch("/requests", {
     method: "POST",
-    body: {
-      mediaType: body.mediaType,
-      mediaId: body.tmdbId,
-      seasons: body.seasons,
-    },
+    body: JSON.stringify(body),
   });
 }
 
 export async function getMyRequests(
   page = 1,
   limit = 20,
-): Promise<SeerrRequestsResponse> {
-  const skip = (page - 1) * limit;
-  return proxyFetch(`/api/v1/request?take=${limit}&skip=${skip}&sort=added&requestedBy=1`);
+  status?: string,
+  mediaType?: string,
+): Promise<LocalRequestsResponse> {
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (status) params.set("status", status);
+  if (mediaType) params.set("type", mediaType);
+  return backendFetch(`/requests?${params}`);
 }
 
-export async function deleteRequest(id: number): Promise<void> {
-  await proxyFetch(`/api/v1/request/${id}`, { method: "DELETE" });
+export async function deleteRequest(id: string): Promise<void> {
+  await backendFetch(`/requests/${id}`, { method: "DELETE" });
 }
 
-/* ---- Config check ---- */
+export async function retryRequest(id: string): Promise<LocalRequest> {
+  return backendFetch(`/requests/${id}/retry`, { method: "POST" });
+}
+
+/* ── Queue ────────────────────────────────────────────────────────── */
+
+export async function getQueueStatus(): Promise<QueueStatus> {
+  return backendFetch("/queue/status");
+}
+
+/* ── Notifications ───────────────────────────────────────────────── */
+
+export async function getNotifications(
+  opts?: { unread?: boolean; limit?: number; page?: number },
+): Promise<NotificationsResponse> {
+  const params = new URLSearchParams();
+  if (opts?.unread) params.set("unread", "true");
+  if (opts?.limit) params.set("limit", String(opts.limit));
+  if (opts?.page) params.set("page", String(opts.page));
+  return backendFetch(`/notifications?${params}`);
+}
+
+export async function getUnreadCount(): Promise<number> {
+  const data = await backendFetch<{ count: number }>("/notifications/unread-count");
+  return data.count;
+}
+
+export async function markNotificationRead(id: string): Promise<void> {
+  await backendFetch(`/notifications/${id}/read`, { method: "PUT" });
+}
+
+export async function markAllNotificationsRead(): Promise<void> {
+  await backendFetch("/notifications/read-all", { method: "POST" });
+}
+
+/* ── Stats ────────────────────────────────────────────────────────── */
+
+export async function getStats(): Promise<StatsResponse> {
+  return backendFetch("/stats");
+}
+
+/* ── Config check ────────────────────────────────────────────────── */
 
 export async function isSeerConfigured(): Promise<boolean> {
   try {

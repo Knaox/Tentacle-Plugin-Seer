@@ -1,18 +1,21 @@
 {
   "name": "tentacle-plugin-seer",
-  "version": "0.10.0-beta",
+  "version": "1.0.0-beta",
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && npm run build:server",
+    "build:server": "node build-server.mjs",
     "typecheck": "tsc --noEmit",
-    "package": "vite build && tar -czf dist/plugin-seer-v$npm_package_version.tar.gz -C . dist/ plugin.json"
+    "package": "npm run build && tar -czf plugin-seer-v$npm_package_version.tar.gz dist/ server/index.js plugin.json"
   },
   "devDependencies": {
-    "@tentacle-tv/plugins-api": "file:./types/plugins-api",
     "@tanstack/react-query": "^5.62.0",
+    "@tentacle-tv/plugins-api": "file:./types/plugins-api",
+    "@types/node": "^25.3.3",
     "@types/react": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.0",
+    "esbuild": "^0.27.3",
     "react": "^19.0.0",
     "react-i18next": "^16.5.4",
     "typescript": "^5.7.0",
