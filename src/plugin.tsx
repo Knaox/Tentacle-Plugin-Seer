@@ -2,14 +2,19 @@ import { lazy } from "react";
 import type { TentaclePlugin } from "@tentacle-tv/plugins-api";
 import { isSeerConfigured } from "./api/seer-client";
 import { setSeerBackendUrl } from "./api/endpoints";
+import { ToastProvider } from "./components/ToastProvider";
 import enTranslations from "./i18n/en";
 import frTranslations from "./i18n/fr";
 
 const DiscoverPage = lazy(() =>
-  import("./components/DiscoverPage").then((m) => ({ default: m.DiscoverPage }))
+  import("./components/DiscoverPage").then((m) => ({
+    default: () => <ToastProvider><m.DiscoverPage /></ToastProvider>,
+  }))
 );
 const RequestsPage = lazy(() =>
-  import("./components/RequestsPage").then((m) => ({ default: m.RequestsPage }))
+  import("./components/RequestsPage").then((m) => ({
+    default: () => <ToastProvider><m.RequestsPage /></ToastProvider>,
+  }))
 );
 const StatsPage = lazy(() =>
   import("./components/StatsPage").then((m) => ({ default: m.StatsPage }))
@@ -58,7 +63,7 @@ function ConfigIcon({ className }: { className?: string }) {
 export const seerPlugin: TentaclePlugin = {
   id: "seer",
   name: "seer:pluginName",
-  version: "1.0.0-beta",
+  version: "1.1.0-beta",
   description: "seer:pluginDescription",
 
   routes: [

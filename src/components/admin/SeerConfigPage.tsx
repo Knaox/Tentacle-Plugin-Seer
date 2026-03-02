@@ -20,6 +20,7 @@ export function SeerConfigPage() {
     userLimit: 0,
   });
   const [status, setStatus] = useState<"idle" | "testing" | "connected" | "error">("idle");
+  const [seerrVersion, setSeerrVersion] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -61,6 +62,8 @@ export function SeerConfigPage() {
       const data = await res.json();
       if (res.ok && data.ok) {
         setStatus("connected");
+        const ver = data.data?.version;
+        if (ver) setSeerrVersion(ver);
         setMessage(t("seer:connectionSuccess"));
       } else {
         setStatus("error");
@@ -106,6 +109,9 @@ export function SeerConfigPage() {
           <div className={`h-2.5 w-2.5 rounded-full ${statusColor}`} />
           <span className="text-xs text-white/50">
             {status === "connected" ? t("seer:statusConnected") : status === "error" ? t("seer:statusError") : status === "testing" ? t("seer:statusTesting") : t("seer:statusNotConfigured")}
+            {seerrVersion && status === "connected" && (
+              <span className="ml-2 text-white/30">v{seerrVersion}</span>
+            )}
           </span>
         </div>
       </div>

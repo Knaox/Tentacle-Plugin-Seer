@@ -18,6 +18,9 @@ export default {
   nextPage: "Next",
   noResults: "No results",
   noContent: "No content available",
+  noContentHint: "Try changing your filters or search terms",
+  moreInfo: "More info",
+  resetFilters: "Reset",
 
   // Media types
   typeMovie: "Movie",
@@ -34,6 +37,11 @@ export default {
   requestingMovie: "Sending request...",
   requestMovie: "Request this movie",
   requestAdded: "Added to queue",
+  requestError: "Failed to submit request",
+  requestDeleted: "Request deleted",
+  requestDeleteError: "Failed to delete request",
+  requestRetried: "Request resubmitted",
+  requestRetryError: "Failed to retry request",
 
   // Filters
   filterAll: "All",
@@ -114,9 +122,21 @@ export default {
   seasonDownloading: "Downloading",
   seasonPartial: "Partial",
   allSeasonsRequested: "All seasons already requested",
+  selectSeasonsPrompt: "Select seasons",
+  seasonsCount_one: "{{count}} season",
+  seasonsCount_other: "{{count}} seasons",
 
   // Detail modal
   castTitle: "Cast",
+  showMore: "Show more",
+  showLess: "Show less",
+  watchTrailer: "Watch trailer",
+  availableOn: "Available on",
+  similarMedia: "Similar",
+
+  // Status badges (for media cards)
+  statusPending: "Pending",
+  statusPartiallyAvailable: "Partial",
 
   // Config
   configTitle: "Seer Configuration",

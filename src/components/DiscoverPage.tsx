@@ -1,25 +1,34 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useDiscoverMedia } from "../hooks/useDiscoverMedia";
+import { useInfiniteDiscover } from "../hooks/useInfiniteDiscover";
 import { useSeerSearch } from "../hooks/useSearch";
 import { useRequestMedia } from "../hooks/useRequestMedia";
 import type { RequestMediaPayload } from "../hooks/useRequestMedia";
 import { MediaCard } from "./MediaCard";
 import { MediaTypeFilter } from "./MediaTypeFilter";
 import { SortSelector } from "./SortSelector";
+import { PlatformFilter } from "./PlatformFilter";
+import { HeroCarousel } from "./HeroCarousel";
 import { MediaDetailModal } from "./MediaDetailModal";
+import { SkeletonList } from "./SkeletonList";
+import { EmptyState } from "./EmptyState";
 import { mediaTitle, mediaYear } from "../utils/media-helpers";
+import { useToast } from "../hooks/useToast";
 import type { SeerrSearchResult, DiscoverCategory, MediaFilter, SortOption } from "../api/types";
 
 export function DiscoverPage() {
   const { t } = useTranslation("seer");
+  const toast = useToast();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [mediaFilter, setMediaFilter] = useState<MediaFilter>("all");
   const [sort, setSort] = useState<SortOption>("popularity");
-  const [page, setPage] = useState(1);
+  const [platforms, setPlatforms] = useState<number[]>([]);
   const [selectedItem, setSelectedItem] = useState<SeerrSearchResult | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const category: DiscoverCategory = mediaFilter === "movie"
     ? "movies"
@@ -31,34 +40,64 @@ export function DiscoverPage() {
           ? "trending"
           : "movies";
 
-  const { data: discoverData, isLoading: discoverLoading } = useDiscoverMedia(category, page);
-  const { data: searchData, isLoading: searchLoading } = useSeerSearch(debouncedQuery, page);
+  // Hero uses trending
+  const { data: trendingData } = useDiscoverMedia("trending", 1);
+
+  // Infinite scroll for discover
+  const infinite = useInfiniteDiscover(category);
+  const { data: searchData, isLoading: searchLoading } = useSeerSearch(debouncedQuery, 1);
   const requestMedia = useRequestMedia();
 
   const isSearching = debouncedQuery.length >= 2;
-  const results = isSearching ? searchData?.results : discoverData?.results;
-  const totalPages = isSearching ? searchData?.totalPages : discoverData?.totalPages;
-  const isLoading = isSearching ? searchLoading : discoverLoading;
+  const isLoading = isSearching ? searchLoading : infinite.isLoading;
 
-  // Filter results by media type
-  const filtered = results?.filter((item) => {
+  // Flatten infinite pages
+  const allDiscoverResults = infinite.data?.pages.flatMap((p) => p.results) ?? [];
+
+  const rawResults = isSearching ? (searchData?.results ?? []) : allDiscoverResults;
+
+  // Filter
+  const filtered = rawResults.filter((item) => {
     if (item.mediaType === "person") return false;
     if (mediaFilter === "movie") return item.mediaType === "movie";
     if (mediaFilter === "tv") return item.mediaType === "tv";
-    if (mediaFilter === "anime") {
-      return item.genreIds?.includes(16) && item.originCountry?.includes("JP");
-    }
+    if (mediaFilter === "anime") return item.genreIds?.includes(16) ?? false;
     return true;
   });
 
+  // Debounce search
   useEffect(() => {
     clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      setDebouncedQuery(query);
-      setPage(1);
-    }, 300);
+    debounceRef.current = setTimeout(() => setDebouncedQuery(query), 300);
     return () => clearTimeout(debounceRef.current);
   }, [query]);
+
+  // Keyboard shortcut Ctrl+K
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Infinite scroll observer
+  useEffect(() => {
+    if (isSearching || !sentinelRef.current) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && infinite.hasNextPage && !infinite.isFetchingNextPage) {
+          infinite.fetchNextPage();
+        }
+      },
+      { rootMargin: "400px" },
+    );
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [isSearching, infinite.hasNextPage, infinite.isFetchingNextPage, infinite.fetchNextPage]);
 
   const handleRequest = useCallback((item: SeerrSearchResult) => {
     if (item.mediaType === "movie" || item.mediaType === "tv") {
@@ -71,87 +110,116 @@ export function DiscoverPage() {
         overview: item.overview,
         year: mediaYear(item),
       };
-      requestMedia.mutate(payload);
+      requestMedia.mutate(payload, {
+        onSuccess: () => toast.show("success", t("requestAdded")),
+        onError: () => toast.show("error", t("requestError")),
+      });
     }
-  }, [requestMedia]);
+  }, [requestMedia, toast, t]);
+
+  const hasActiveFilters = mediaFilter !== "all" || platforms.length > 0;
+
+  const resetFilters = () => {
+    setMediaFilter("all");
+    setSort("popularity");
+    setPlatforms([]);
+  };
 
   return (
-    <div className="px-4 pt-4 md:px-12">
-      <h1 className="mb-6 text-2xl font-bold text-white">{t("seer:discoverTitle")}</h1>
+    <div className="px-4 pt-4 md:px-8">
+      {/* Hero Carousel */}
+      {!isSearching && mediaFilter === "all" && trendingData?.results && (
+        <HeroCarousel
+          items={trendingData.results}
+          onSelect={setSelectedItem}
+          onRequest={handleRequest}
+        />
+      )}
 
       {/* Search bar */}
-      <div className="mb-4">
+      <div className="relative mb-4">
+        <svg className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+        </svg>
         <input
+          ref={searchInputRef}
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t("seer:searchPlaceholder")}
-          className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder-white/30 outline-none transition-colors focus:border-purple-500 focus:bg-white/8"
+          className="w-full rounded-xl border border-white/10 bg-white/5 py-3 pl-10 pr-20 text-sm text-white placeholder-white/30 outline-none backdrop-blur transition-all focus:border-purple-500/50 focus:bg-white/[0.07] focus:shadow-lg focus:shadow-purple-500/5"
         />
+        {query && (
+          <button
+            onClick={() => setQuery("")}
+            className="absolute right-14 top-1/2 -translate-y-1/2 text-white/30 transition-colors hover:text-white/60"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
+        <kbd className="absolute right-3.5 top-1/2 -translate-y-1/2 rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] text-white/30">
+          Ctrl+K
+        </kbd>
       </div>
 
-      {/* Filters */}
-      <div className="mb-6 flex flex-wrap items-center gap-3">
-        <MediaTypeFilter value={mediaFilter} onChange={(v) => { setMediaFilter(v); setPage(1); }} />
+      {/* Filters row 1: type */}
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <MediaTypeFilter value={mediaFilter} onChange={(v) => setMediaFilter(v)} />
         {!isSearching && (
-          <SortSelector value={sort} onChange={(v) => { setSort(v); setPage(1); }} />
+          <SortSelector value={sort} onChange={(v) => setSort(v)} />
+        )}
+        {hasActiveFilters && (
+          <button
+            onClick={resetFilters}
+            className="rounded-lg px-3 py-1.5 text-xs font-medium text-white/30 transition-colors hover:text-white/60"
+          >
+            {t("resetFilters")}
+          </button>
         )}
       </div>
 
-      {/* Results grid */}
-      {isLoading ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-          {[...Array(12)].map((_, i) => (
-            <div key={i} className="animate-pulse overflow-hidden rounded-xl bg-white/5">
-              <div className="aspect-[2/3] w-full bg-white/10" />
-              <div className="space-y-2 p-2.5">
-                <div className="h-4 w-3/4 rounded bg-white/10" />
-                <div className="h-3 w-1/3 rounded bg-white/5" />
-              </div>
-            </div>
-          ))}
+      {/* Filters row 2: platforms */}
+      {!isSearching && (
+        <div className="mb-6">
+          <PlatformFilter selected={platforms} onChange={setPlatforms} />
         </div>
-      ) : filtered && filtered.length > 0 ? (
+      )}
+
+      {/* Results */}
+      {isLoading ? (
+        <SkeletonList count={12} />
+      ) : filtered.length > 0 ? (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-            {filtered.map((item) => (
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+            {filtered.map((item, i) => (
               <MediaCard
                 key={`${item.mediaType}-${item.id}`}
                 item={item}
                 onRequest={handleRequest}
                 onClick={setSelectedItem}
                 requesting={requestMedia.isPending}
+                style={{
+                  opacity: 0,
+                  animation: `fade-slide-up 400ms cubic-bezier(0.25,0.46,0.45,0.94) ${i * 50}ms forwards`,
+                }}
               />
             ))}
           </div>
 
-          {/* Pagination */}
-          {totalPages && totalPages > 1 && (
-            <div className="mt-8 flex items-center justify-center gap-3 pb-8">
-              <button
-                disabled={page <= 1}
-                onClick={() => setPage((p) => p - 1)}
-                className="rounded-lg bg-white/5 px-4 py-2 text-sm text-white/60 transition-colors hover:bg-white/10 disabled:opacity-30"
-              >
-                {t("seer:previousPage")}
-              </button>
-              <span className="text-sm text-white/40">
-                {page} / {totalPages}
-              </span>
-              <button
-                disabled={page >= totalPages}
-                onClick={() => setPage((p) => p + 1)}
-                className="rounded-lg bg-white/5 px-4 py-2 text-sm text-white/60 transition-colors hover:bg-white/10 disabled:opacity-30"
-              >
-                {t("seer:nextPage")}
-              </button>
+          {/* Infinite scroll sentinel */}
+          {!isSearching && (
+            <div ref={sentinelRef} className="pt-4">
+              {infinite.isFetchingNextPage && <SkeletonList count={6} />}
             </div>
           )}
         </>
       ) : (
-        <div className="py-12 text-center text-sm text-white/30">
-          {isSearching ? t("seer:noResults") : t("seer:noContent")}
-        </div>
+        <EmptyState
+          title={isSearching ? t("seer:noResults") : t("seer:noContent")}
+          subtitle={isSearching ? undefined : t("noContentHint")}
+        />
       )}
 
       {/* Detail modal */}

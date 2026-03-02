@@ -18,6 +18,9 @@ export default {
   nextPage: "Suivant",
   noResults: "Aucun résultat",
   noContent: "Aucun contenu disponible",
+  noContentHint: "Essayez de modifier vos filtres ou termes de recherche",
+  moreInfo: "Plus d'infos",
+  resetFilters: "Réinitialiser",
 
   // Media types
   typeMovie: "Film",
@@ -34,6 +37,11 @@ export default {
   requestingMovie: "Envoi de la demande...",
   requestMovie: "Demander ce film",
   requestAdded: "Ajouté à la file d'attente",
+  requestError: "Échec de la demande",
+  requestDeleted: "Demande supprimée",
+  requestDeleteError: "Échec de la suppression",
+  requestRetried: "Demande relancée",
+  requestRetryError: "Échec de la relance",
 
   // Filters
   filterAll: "Toutes",
@@ -114,9 +122,21 @@ export default {
   seasonDownloading: "Téléchargement",
   seasonPartial: "Partiel",
   allSeasonsRequested: "Toutes les saisons sont déjà demandées",
+  selectSeasonsPrompt: "Sélectionnez des saisons",
+  seasonsCount_one: "{{count}} saison",
+  seasonsCount_other: "{{count}} saisons",
 
   // Detail modal
   castTitle: "Distribution",
+  showMore: "Voir plus",
+  showLess: "Voir moins",
+  watchTrailer: "Bande-annonce",
+  availableOn: "Disponible sur",
+  similarMedia: "Similaires",
+
+  // Status badges (for media cards)
+  statusPending: "En attente",
+  statusPartiallyAvailable: "Partiel",
 
   // Config
   configTitle: "Configuration Seer",

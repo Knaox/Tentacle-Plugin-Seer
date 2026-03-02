@@ -1,4 +1,5 @@
 import { proxyFetch, configUrl, setSeerrConfig, getSeerBackendUrl } from "./endpoints";
+import { langParam } from "../utils/media-helpers";
 import type {
   SeerrPagedResponse,
   SeerrMovieDetail,
@@ -38,7 +39,7 @@ async function backendFetch<T>(path: string, opts?: RequestInit): Promise<T> {
 /* ── Search (Seerr proxy) ────────────────────────────────────────── */
 
 export async function searchMedia(query: string, page = 1): Promise<SeerrPagedResponse> {
-  return proxyFetch(`/api/v1/search?query=${encodeURIComponent(query)}&page=${page}&language=fr`);
+  return proxyFetch(`/api/v1/search?query=${encodeURIComponent(query)}&page=${page}&${langParam()}`);
 }
 
 /* ── Discover (Seerr proxy) ──────────────────────────────────────── */
@@ -47,11 +48,12 @@ export async function discoverMedia(
   category: DiscoverCategory,
   page = 1,
 ): Promise<SeerrPagedResponse> {
+  const lang = langParam();
   const paths: Record<DiscoverCategory, string> = {
-    movies: `/api/v1/discover/movies?page=${page}&language=fr`,
-    tv: `/api/v1/discover/tv?page=${page}&language=fr`,
-    anime: `/api/v1/discover/tv?page=${page}&language=fr&genre=16`,
-    trending: `/api/v1/discover/trending?page=${page}&language=fr`,
+    movies: `/api/v1/discover/movies?page=${page}&${lang}`,
+    tv: `/api/v1/discover/tv?page=${page}&${lang}`,
+    anime: `/api/v1/discover/tv?page=${page}&${lang}&genre=16`,
+    trending: `/api/v1/discover/trending?page=${page}&${lang}`,
   };
   return proxyFetch(paths[category]);
 }
@@ -59,11 +61,11 @@ export async function discoverMedia(
 /* ── Media details (Seerr proxy) ─────────────────────────────────── */
 
 export async function getMovieDetail(id: number): Promise<SeerrMovieDetail> {
-  return proxyFetch(`/api/v1/movie/${id}?language=fr`);
+  return proxyFetch(`/api/v1/movie/${id}?${langParam()}`);
 }
 
 export async function getTvDetail(id: number): Promise<SeerrTvDetail> {
-  return proxyFetch(`/api/v1/tv/${id}?language=fr`);
+  return proxyFetch(`/api/v1/tv/${id}?${langParam()}`);
 }
 
 /* ── Requests (Tentacle backend — queue system) ──────────────────── */

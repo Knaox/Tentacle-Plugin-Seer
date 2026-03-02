@@ -116,6 +116,9 @@ export function SeriesSeasonPicker({ seasons, requestedSeasons, onRequest, reque
                   {requested
                     ? seasonStatusLabel(status!, t)
                     : t("seer:episodeCount", { count: season.episodeCount })}
+                  {!requested && season.airDate && (
+                    <span className="ml-1">{season.airDate.slice(0, 4)}</span>
+                  )}
                 </p>
               </div>
             </button>
@@ -131,7 +134,9 @@ export function SeriesSeasonPicker({ seasons, requestedSeasons, onRequest, reque
         >
           {requesting
             ? t("seer:sending")
-            : t("seer:requestSeasons", { count: selected.size })}
+            : selected.size === 0
+              ? t("seer:selectSeasonsPrompt")
+              : t("seer:requestSeasons", { count: selected.size })}
         </button>
       ) : (
         <div className="w-full rounded-lg bg-emerald-600/20 py-2.5 text-center text-sm font-semibold text-emerald-400">
