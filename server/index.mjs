@@ -1,10 +1,9 @@
 // Seer Plugin — Server module (auto-generated, do not edit)
-var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
-  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
-}) : x)(function(x) {
-  if (typeof require !== "undefined") return require.apply(this, arguments);
-  throw Error('Dynamic require of "' + x + '" is not supported');
-});
+
+// server/index.ts
+import { resolve, dirname } from "path";
+import { existsSync, readFileSync } from "fs";
+import { fileURLToPath } from "url";
 
 // server/db.ts
 async function ensureTables(prisma) {
@@ -511,14 +510,13 @@ function statusNotification(request, newStatus) {
 }
 
 // server/index.ts
+var __pluginDir = dirname(dirname(fileURLToPath(import.meta.url)));
 function getUser(request) {
   return request.user;
 }
 function getPluginConfig(ctx) {
   try {
-    const { resolve } = __require("path");
-    const { existsSync, readFileSync } = __require("fs");
-    const installedPath = resolve(__dirname, "../installed.json");
+    const installedPath = resolve(__pluginDir, "installed.json");
     if (!existsSync(installedPath)) return {};
     const installed = JSON.parse(readFileSync(installedPath, "utf-8"));
     const plugin = installed.find(

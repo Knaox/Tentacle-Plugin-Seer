@@ -4,6 +4,9 @@
 /* ------------------------------------------------------------------ */
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
+import { resolve, dirname } from "path";
+import { existsSync, readFileSync } from "fs";
+import { fileURLToPath } from "url";
 import {
   ensureTables,
   createRequest,
@@ -18,6 +21,8 @@ import {
 } from "./db";
 import { startWorker, stopWorker, isWorkerRunning } from "./worker";
 import type { CreateRequestBody } from "./types";
+
+const __pluginDir = dirname(dirname(fileURLToPath(import.meta.url)));
 
 interface JellyfinUser {
   userId: string;
@@ -39,9 +44,7 @@ function getUser(request: FastifyRequest): JellyfinUser {
 /** Helper to read plugin config from installed.json */
 function getPluginConfig(ctx: PluginBackendContext): Record<string, unknown> {
   try {
-    const { resolve } = require("path");
-    const { existsSync, readFileSync } = require("fs");
-    const installedPath = resolve(__dirname, "../installed.json");
+    const installedPath = resolve(__pluginDir, "installed.json");
     if (!existsSync(installedPath)) return {};
     const installed = JSON.parse(readFileSync(installedPath, "utf-8"));
     const plugin = installed.find(
