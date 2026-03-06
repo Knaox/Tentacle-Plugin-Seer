@@ -6,6 +6,26 @@
   "author": "Knaox",
   "entry": "dist/plugin-seer.iife.js",
   "server": "server/index.mjs",
-  "platforms": ["web", "desktop"],
-  "minTentacleVersion": "0.9.0"
+  "platforms": ["web", "desktop", "mobile"],
+  "minTentacleVersion": "0.9.0",
+  "navItems": [
+    {
+      "path": "/discover",
+      "icon": "compass",
+      "platforms": ["web", "desktop", "mobile"],
+      "labels": { "en": "Discover", "fr": "Découvrir" }
+    },
+    {
+      "path": "/requests",
+      "icon": "list",
+      "platforms": ["web", "desktop", "mobile"],
+      "labels": { "en": "Requests", "fr": "Demandes" }
+    },
+    {
+      "path": "/stats",
+      "icon": "bar-chart-2",
+      "platforms": ["web", "desktop"],
+      "labels": { "en": "Statistics", "fr": "Statistiques" }
+    }
+  ]
 }
