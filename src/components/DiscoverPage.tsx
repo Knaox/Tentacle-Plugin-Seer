@@ -15,7 +15,7 @@ import { SkeletonList } from "./SkeletonList";
 import { EmptyState } from "./EmptyState";
 import { mediaTitle, mediaYear } from "../utils/media-helpers";
 import { useToast } from "../hooks/useToast";
-import type { SeerrSearchResult, DiscoverCategory, MediaFilter, SortOption } from "../api/types";
+import type { SeerrSearchResult, DiscoverCategory, MediaFilter, SortOption, SortOrder } from "../api/types";
 
 export function DiscoverPage() {
   const { t } = useTranslation("seer");
@@ -24,6 +24,7 @@ export function DiscoverPage() {
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [mediaFilter, setMediaFilter] = useState<MediaFilter>("all");
   const [sort, setSort] = useState<SortOption>("popularity");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
   const [platforms, setPlatforms] = useState<number[]>([]);
   const [selectedItem, setSelectedItem] = useState<SeerrSearchResult | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -41,12 +42,13 @@ export function DiscoverPage() {
           : "movies";
 
   const sortByParam = (() => {
-    if (sort === "trending" || sort === "popularity") return undefined;
-    if (sort === "vote_average") return "vote_average.desc";
+    if (sort === "trending") return undefined;
+    if (sort === "popularity") return `popularity.${sortOrder}`;
+    if (sort === "vote_average") return `vote_average.${sortOrder}`;
     if (sort === "release_date") {
       return (category === "tv" || category === "anime")
-        ? "first_air_date.desc"
-        : "primary_release_date.desc";
+        ? `first_air_date.${sortOrder}`
+        : `primary_release_date.${sortOrder}`;
     }
     return undefined;
   })();
@@ -139,6 +141,7 @@ export function DiscoverPage() {
   const resetFilters = () => {
     setMediaFilter("all");
     setSort("popularity");
+    setSortOrder("desc");
     setPlatforms([]);
   };
 
@@ -187,7 +190,7 @@ export function DiscoverPage() {
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <MediaTypeFilter value={mediaFilter} onChange={(v) => setMediaFilter(v)} />
         {!isSearching && (
-          <SortSelector value={sort} onChange={(v) => setSort(v)} />
+          <SortSelector value={sort} order={sortOrder} onChange={(v) => setSort(v)} onOrderChange={setSortOrder} />
         )}
         {hasActiveFilters && (
           <button

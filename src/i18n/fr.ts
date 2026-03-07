@@ -63,6 +63,8 @@ export default {
   sortTrending: "Tendances",
   sortRating: "Note",
   sortRecent: "Récent",
+  sortOrderDesc: "Décroissant",
+  sortOrderAsc: "Croissant",
 
   // Requests page
   myRequestsTitle: "Mes demandes",

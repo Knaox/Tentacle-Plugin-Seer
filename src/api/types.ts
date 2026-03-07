@@ -111,6 +111,7 @@ export type SeerrRequestStatus = 1 | 2 | 3;
 
 export type DiscoverCategory = "movies" | "tv" | "anime" | "trending";
 export type SortOption = "popularity" | "vote_average" | "release_date" | "trending";
+export type SortOrder = "asc" | "desc";
 export type MediaFilter = "all" | "movie" | "tv" | "anime";
 
 /* ── Local request types (from Tentacle backend) ─────────────────── */
