@@ -38,7 +38,7 @@ export function Toast({ toast, onDismiss }: ToastProps) {
 
   return (
     <div
-      className={`flex items-center gap-3 rounded-xl border px-4 py-3 shadow-lg transition-all ${TYPE_COLORS[toast.type]}`}
+      className={`relative flex items-center gap-3 overflow-hidden rounded-xl border px-4 py-3 shadow-lg transition-all ${TYPE_COLORS[toast.type]}`}
       style={{
         background: "rgba(15,15,25,0.92)",
         backdropFilter: "blur(20px)",
@@ -74,6 +74,13 @@ export function Toast({ toast, onDismiss }: ToastProps) {
           <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
         </svg>
       </button>
+      <div
+        className="absolute bottom-0 left-0 right-0 h-0.5 origin-left"
+        style={{
+          background: "rgba(139,92,246,0.5)",
+          animation: "toastTimer 5s linear forwards",
+        }}
+      />
     </div>
   );
 }

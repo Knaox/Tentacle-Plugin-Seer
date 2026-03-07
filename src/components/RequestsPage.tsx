@@ -121,15 +121,22 @@ export function RequestsPage() {
         </div>
       ) : requests.length > 0 ? (
         <div className="space-y-3">
-          {requests.map((request) => (
-            <RequestCard
+          {requests.map((request, i) => (
+            <div
               key={request.id}
-              request={request}
-              onDelete={handleDelete}
-              onRetry={handleRetry}
-              deleting={deleteMutation.isPending}
-              retrying={retryMutation.isPending}
-            />
+              style={{
+                opacity: 0,
+                animation: `fadeSlideUp 400ms cubic-bezier(0.25,0.46,0.45,0.94) ${Math.min(i, 9) * 50}ms forwards`,
+              }}
+            >
+              <RequestCard
+                request={request}
+                onDelete={handleDelete}
+                onRetry={handleRetry}
+                deleting={deleteMutation.isPending}
+                retrying={retryMutation.isPending}
+              />
+            </div>
           ))}
         </div>
       ) : (

@@ -97,7 +97,7 @@ async function processNextRequest(prisma: PrismaClient, config: WorkerConfig): P
       mediaId: request.tmdbId,
     };
     if (request.mediaType === "tv" && request.seasons) {
-      seerrBody.seasons = request.seasons.map((n) => ({ seasonNumber: n }));
+      seerrBody.seasons = request.seasons.map(Number);
     }
 
     // Send to Seerr

@@ -22,7 +22,7 @@ export function HeroCarousel({ items, onSelect, onRequest }: HeroCarouselProps) 
 
   useEffect(() => {
     if (paused || slides.length <= 1) return;
-    timerRef.current = setTimeout(advance, 8000);
+    timerRef.current = setTimeout(advance, 6000);
     return () => clearTimeout(timerRef.current);
   }, [index, paused, advance, slides.length]);
 
@@ -44,8 +44,8 @@ export function HeroCarousel({ items, onSelect, onRequest }: HeroCarouselProps) 
     >
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-cover bg-center transition-opacity duration-1000"
-        style={{ backgroundImage: backdrop ? `url(${backdrop})` : undefined }}
+        className="absolute inset-0 bg-cover bg-center transition-opacity"
+        style={{ backgroundImage: backdrop ? `url(${backdrop})` : undefined, transitionDuration: "600ms" }}
       >
         <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0f] via-[#0a0a0f]/70 to-[#0a0a0f]/10" />
         <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0f]/80 via-[#0a0a0f]/30 to-transparent" />
@@ -108,7 +108,7 @@ export function HeroCarousel({ items, onSelect, onRequest }: HeroCarouselProps) 
             {!isAvailable && !isRequested && (
               <button
                 onClick={(e) => { e.stopPropagation(); onRequest(item); }}
-                className="rounded-lg px-5 py-2 text-sm font-semibold text-white transition-all hover:brightness-110"
+                className="rounded-lg px-5 py-2 text-sm font-semibold text-white transition-all hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
                 style={{
                   background: "linear-gradient(135deg, #8B5CF6, #7C3AED)",
                   boxShadow: "0 8px 30px rgba(139,92,246,0.4)",
@@ -119,7 +119,7 @@ export function HeroCarousel({ items, onSelect, onRequest }: HeroCarouselProps) 
             )}
             <button
               onClick={() => onSelect(item)}
-              className="rounded-lg border border-white/10 bg-white/5 px-5 py-2 text-sm font-medium text-white/80 backdrop-blur transition-colors hover:bg-white/10"
+              className="rounded-lg border border-white/10 bg-white/5 px-5 py-2 text-sm font-medium text-white/80 backdrop-blur transition-colors hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
             >
               {t("moreInfo")}
             </button>
@@ -134,7 +134,7 @@ export function HeroCarousel({ items, onSelect, onRequest }: HeroCarouselProps) 
             <button
               key={i}
               onClick={() => setIndex(i)}
-              className={`h-1.5 rounded-full transition-all duration-300 ${
+              className={`h-1.5 rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-purple-500/50 ${
                 i === index ? "w-6 bg-purple-500" : "w-1.5 bg-white/20 hover:bg-white/40"
               }`}
             />

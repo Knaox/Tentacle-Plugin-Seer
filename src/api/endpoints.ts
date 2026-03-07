@@ -2,9 +2,10 @@
 /*  Seer API — proxy helper + config management                       */
 /* ------------------------------------------------------------------ */
 
+import { getCurrentLanguage } from "../utils/media-helpers";
+
 let _backendBase = "";
-let _seerrUrl = "";
-let _seerrApiKey = "";
+let _isConfigured = false;
 
 export function setSeerBackendUrl(url: string) {
   _backendBase = url.replace(/\/$/, "");
@@ -14,13 +15,12 @@ export function getSeerBackendUrl(): string {
   return _backendBase;
 }
 
-export function setSeerrConfig(url: string, apiKey: string) {
-  _seerrUrl = url.replace(/\/$/, "");
-  _seerrApiKey = apiKey;
+export function setConfigured(value: boolean) {
+  _isConfigured = value;
 }
 
-export function getSeerrUrl(): string {
-  return _seerrUrl;
+export function isConfigured(): boolean {
+  return _isConfigured;
 }
 
 function getToken(): string {
@@ -28,37 +28,38 @@ function getToken(): string {
 }
 
 /**
- * Route all Seerr API calls through the generic Tentacle plugin proxy.
- * POST /api/plugins/seer/proxy → backend fetches Seerr on our behalf (no CORS).
+ * Transparent streaming proxy to Seerr.
+ * GET /api/plugins/seer/seerr/api/v1/... → backend streams Seerr response directly.
+ * API key is injected server-side (never exposed to frontend).
+ * Accept-Language is passed via _lang query param.
  */
 export async function proxyFetch<T>(
   seerrPath: string,
   options?: { method?: string; body?: unknown },
 ): Promise<T> {
-  if (!_seerrUrl) {
-    throw new Error("Seer not configured: missing Seerr URL");
+  if (!_isConfigured) {
+    throw new Error("Seer not configured");
   }
-  const res = await fetch(`${_backendBase}/api/plugins/seer/proxy`, {
-    method: "POST",
+  const lang = getCurrentLanguage();
+  const sep = seerrPath.includes("?") ? "&" : "?";
+  const url = `${_backendBase}/api/plugins/seer/seerr${seerrPath}${sep}_lang=${lang}`;
+
+  const init: RequestInit = {
+    method: options?.method ?? "GET",
     headers: {
-      "Content-Type": "application/json",
       Authorization: `Bearer ${getToken()}`,
+      ...(options?.body ? { "Content-Type": "application/json" } : {}),
     },
-    body: JSON.stringify({
-      url: `${_seerrUrl}${seerrPath}`,
-      method: options?.method ?? "GET",
-      headers: {
-        "X-Api-Key": _seerrApiKey,
-        ...(options?.body ? { "Content-Type": "application/json" } : {}),
-      },
-      body: options?.body,
-    }),
-  });
-  const proxy = await res.json();
-  if (!res.ok || !proxy.ok) {
-    throw new Error(`Seerr API error: ${proxy.status || res.status}`);
+  };
+  if (options?.body) {
+    init.body = JSON.stringify(options.body);
   }
-  return proxy.data as T;
+
+  const res = await fetch(url, init);
+  if (!res.ok) {
+    throw new Error(`Seerr API error: ${res.status}`);
+  }
+  return res.json() as Promise<T>;
 }
 
 /** Direct call to the Tentacle plugin config endpoint (not proxied to Seerr) */

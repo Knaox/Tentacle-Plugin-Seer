@@ -8,7 +8,7 @@ interface EmptyStateProps {
 function DefaultIcon() {
   return (
     <svg
-      className="h-16 w-16 text-white/10"
+      className="h-16 w-16 text-white/20"
       fill="none"
       viewBox="0 0 24 24"
       stroke="currentColor"

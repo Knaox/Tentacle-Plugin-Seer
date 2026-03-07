@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useMediaDetail } from "../hooks/useMediaDetail";
 import { useMediaVideos } from "../hooks/useMediaVideos";
@@ -6,16 +6,14 @@ import { useMediaSimilar } from "../hooks/useMediaSimilar";
 import { useWatchProviders } from "../hooks/useWatchProviders";
 import { useRequestMedia } from "../hooks/useRequestMedia";
 import { useToast } from "../hooks/useToast";
+import { ModalDetailHeader } from "./ModalDetailHeader";
 import { SeriesSeasonPicker } from "./SeriesSeasonPicker";
 import { CastRow } from "./CastRow";
 import { TrailerPlayer } from "./TrailerPlayer";
 import { WatchProviders } from "./WatchProviders";
 import { SimilarMedia } from "./SimilarMedia";
-import {
-  posterUrl, backdropUrl, mediaTitle, mediaYear,
-  formatRuntime, ratingColor,
-} from "../utils/media-helpers";
-import type { SeerrSearchResult, SeerrTvDetail } from "../api/types";
+import { mediaTitle, mediaYear } from "../utils/media-helpers";
+import type { SeerrSearchResult, SeerrTvDetail, SeerrMovieDetail } from "../api/types";
 
 interface MediaDetailModalProps {
   item: SeerrSearchResult;
@@ -24,13 +22,22 @@ interface MediaDetailModalProps {
   requesting: boolean;
 }
 
+function formatCurrency(amount: number): string {
+  if (amount >= 1_000_000) return `$${(amount / 1_000_000).toFixed(1)}M`;
+  if (amount >= 1_000) return `$${(amount / 1_000).toFixed(0)}K`;
+  return `$${amount}`;
+}
+
 export function MediaDetailModal({ item, onClose, onRequest, requesting }: MediaDetailModalProps) {
   const { t } = useTranslation("seer");
   const toast = useToast();
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Internal navigation: allow switching item within the modal (for similar media)
   const [currentItem, setCurrentItem] = useState(item);
+  const [navStack, setNavStack] = useState<SeerrSearchResult[]>([]);
+  const [isClosing, setIsClosing] = useState(false);
+  const [requestSuccess, setRequestSuccess] = useState(false);
+  const [synopsisExpanded, setSynopsisExpanded] = useState(false);
 
   const mediaType = currentItem.mediaType === "movie" ? "movie" as const : "tv" as const;
   const { data: detail, isLoading } = useMediaDetail(mediaType, currentItem.id);
@@ -38,26 +45,45 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
   const { data: similar } = useMediaSimilar(mediaType, currentItem.id);
   const { data: providers } = useWatchProviders(mediaType, currentItem.id);
   const requestMedia = useRequestMedia();
-  const [synopsisExpanded, setSynopsisExpanded] = useState(false);
 
   const title = mediaTitle(currentItem) || t("seer:untitled");
   const year = mediaYear(currentItem);
-  const backdrop = backdropUrl(currentItem.backdropPath);
-  const poster = posterUrl(currentItem.posterPath);
   const tvDetail = detail as SeerrTvDetail | undefined;
-  const rating = detail?.voteAverage ?? currentItem.voteAverage;
+  const movieDetail = detail as SeerrMovieDetail | undefined;
 
-  // Lock body scroll while modal is open
+  // Enriched fields from detail
+  const productionStatus = detail?.status;
+  const originalLanguage = detail?.originalLanguage;
+  const productionCompanies = (detail as Record<string, unknown>)?.productionCompanies as
+    { id: number; name: string; logoPath?: string }[] | undefined;
+  const director = mediaType === "movie"
+    ? movieDetail?.credits?.crew?.find((c) => c.job === "Director") : null;
+  const creators = mediaType === "tv" ? tvDetail?.createdBy : null;
+  const networks = mediaType === "tv" ? tvDetail?.networks : null;
+  const budget = mediaType === "movie" ? movieDetail?.budget : undefined;
+  const revenue = mediaType === "movie" ? movieDetail?.revenue : undefined;
+
+  const handleClose = useCallback(() => {
+    setIsClosing(true);
+    setTimeout(onClose, 200);
+  }, [onClose]);
+
   useEffect(() => {
     document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = ""; };
+    const bridge = (window as unknown as Record<string, unknown>).__tentacle_bridge as
+      { setOverlay?: (open: boolean) => void } | undefined;
+    bridge?.setOverlay?.(true);
+    return () => {
+      document.body.style.overflow = "";
+      bridge?.setOverlay?.(false);
+    };
   }, []);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") handleClose(); };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [handleClose]);
 
   const requestedSeasonMap = useMemo(() => {
     const map = new Map<number, number>();
@@ -73,18 +99,30 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
       posterPath: currentItem.posterPath, backdropPath: currentItem.backdropPath,
       overview: currentItem.overview, year, seasons,
     }, {
-      onSuccess: () => { toast.show("success", t("requestAdded")); onClose(); },
+      onSuccess: () => { toast.show("success", t("requestAdded")); handleClose(); },
       onError: () => toast.show("error", t("requestError")),
     });
   };
 
   const handleMovieRequest = () => {
+    setRequestSuccess(false);
     onRequest(currentItem);
-    setTimeout(() => onClose(), 300);
+    setRequestSuccess(true);
+    setTimeout(() => handleClose(), 600);
   };
 
   const handleSelectSimilar = (newItem: SeerrSearchResult) => {
+    setNavStack((prev) => [...prev, currentItem]);
     setCurrentItem(newItem);
+    setSynopsisExpanded(false);
+    scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleBack = () => {
+    if (navStack.length === 0) { handleClose(); return; }
+    const prev = navStack[navStack.length - 1];
+    setNavStack((s) => s.slice(0, -1));
+    setCurrentItem(prev);
     setSynopsisExpanded(false);
     scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -95,86 +133,77 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
-      onClick={onClose}
-      style={{ animation: "fadeIn 200ms ease forwards" }}
+      onClick={handleClose}
+      style={{ animation: isClosing ? "fadeOut 200ms ease forwards" : "fadeIn 200ms ease forwards" }}
     >
       <div className="absolute inset-0 bg-black/90 backdrop-blur-sm" />
       <div
         ref={scrollRef}
         className="relative max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl bg-[#12121a] sm:max-h-[90vh] sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
-        style={{ animation: "fadeSlideUp 300ms ease forwards" }}
+        style={{
+          animation: isClosing ? "fadeOut 200ms ease forwards" : "fadeSlideUp 300ms ease forwards",
+          scrollbarWidth: "thin",
+          scrollbarColor: "#8b5cf6 transparent",
+        }}
       >
-        {/* Backdrop */}
-        <div className="relative h-64 w-full overflow-hidden rounded-t-2xl sm:h-80">
-          {backdrop ? (
-            <img src={backdrop} alt="" className="h-full w-full object-cover" />
-          ) : (
-            <div className="h-full w-full" style={{ background: "linear-gradient(135deg, #1a1a2e 0%, #12121a 100%)" }} />
-          )}
-          <div className="absolute inset-0" style={{ background: "linear-gradient(to top, #12121a 0%, rgba(18,18,26,0.85) 30%, rgba(18,18,26,0.4) 60%, transparent 100%)" }} />
-        </div>
-
-        {/* Close button */}
-        <button
-          onClick={onClose}
-          className="absolute right-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white/60 transition-colors hover:text-white"
-        >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-          </svg>
-        </button>
-
-        {/* Header: poster + info */}
-        <div className="flex gap-4 px-5 pb-4" style={{ marginTop: -80 }}>
-          {poster ? (
-            <img src={poster} alt={title} className="relative h-[225px] w-[150px] flex-shrink-0 rounded-xl object-cover shadow-xl" />
-          ) : (
-            <div className="relative flex h-[225px] w-[150px] flex-shrink-0 items-center justify-center rounded-xl bg-[#1a1a2e] shadow-xl">
-              <svg className="h-12 w-12 text-white/10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={0.8}>
-                {mediaType === "tv" ? (
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 20.25h12m-7.5-3v3m3-3v3m-10.125-3h17.25c.621 0 1.125-.504 1.125-1.125V4.875c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125Z" />
-                ) : (
-                  <path strokeLinecap="round" strokeLinejoin="round" d="m15.75 10.5 4.72-4.72a.75.75 0 0 1 1.28.53v11.38a.75.75 0 0 1-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 0 0 2.25-2.25v-9a2.25 2.25 0 0 0-2.25-2.25h-9A2.25 2.25 0 0 0 2.25 7.5v9a2.25 2.25 0 0 0 2.25 2.25Z" />
-                )}
-              </svg>
-            </div>
-          )}
-          <div className="min-w-0 flex-1 pt-2">
-            <h2 className="text-2xl font-bold text-white">{title}</h2>
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-white/40">
-              {year && <span>{year}</span>}
-              {detail && "runtime" in detail && detail.runtime ? (
-                <span>{formatRuntime(detail.runtime)}</span>
-              ) : tvDetail?.numberOfSeasons ? (
-                <span>{t("seasonsCount", { count: tvDetail.numberOfSeasons })}</span>
-              ) : null}
-              {rating != null && rating > 0 && (
-                <span className={`flex items-center gap-1 font-semibold ${ratingColor(rating)}`}>
-                  <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                  </svg>
-                  {rating.toFixed(1)}
-                </span>
-              )}
-            </div>
-            {detail?.genres && detail.genres.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1">
-                {detail.genres.map((g) => (
-                  <span key={g.id} className="rounded-full bg-white/10 px-3 py-1 text-[10px] text-white/60">{g.name}</span>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+        <ModalDetailHeader
+          item={currentItem}
+          detail={detail as SeerrMovieDetail | SeerrTvDetail | undefined}
+          mediaType={mediaType}
+          navStack={navStack}
+          onBack={handleBack}
+          onClose={handleClose}
+        />
 
         <div className="space-y-7 px-5 pb-6">
-          {/* Synopsis expandable */}
+          {/* Meta info grid */}
+          <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm text-white/50">
+            {director && (
+              <span><span className="text-white/30">{t("detailDirector")}:</span> {director.name}</span>
+            )}
+            {creators && creators.length > 0 && (
+              <span><span className="text-white/30">{t("detailCreator")}:</span> {creators.map((c) => c.name).join(", ")}</span>
+            )}
+            {productionStatus && (
+              <span><span className="text-white/30">{t("detailStatus")}:</span> {productionStatus}</span>
+            )}
+            {originalLanguage && (
+              <span><span className="text-white/30">{t("detailLanguage")}:</span> {originalLanguage.toUpperCase()}</span>
+            )}
+            {networks && networks.length > 0 && (
+              <span><span className="text-white/30">{t("detailNetwork")}:</span> {networks.map((n) => n.name).join(", ")}</span>
+            )}
+            {budget != null && budget > 0 && (
+              <span><span className="text-white/30">{t("detailBudget")}:</span> {formatCurrency(budget)}</span>
+            )}
+            {revenue != null && revenue > 0 && (
+              <span><span className="text-white/30">{t("detailRevenue")}:</span> {formatCurrency(revenue)}</span>
+            )}
+          </div>
+
+          {/* Production companies */}
+          {productionCompanies && productionCompanies.length > 0 && (
+            <div>
+              <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-white/40">{t("detailStudios")}</h4>
+              <div className="flex flex-wrap gap-2">
+                {productionCompanies.map((co) => (
+                  <span key={co.id} className="rounded-lg bg-white/5 px-2.5 py-1 text-xs text-white/50">{co.name}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Synopsis */}
           {overview && (
             <div>
-              <p className={`text-sm leading-relaxed text-white/50 ${synopsisExpanded ? "" : "line-clamp-3"}`}>{overview}</p>
+              <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-white/40">{t("synopsisTitle")}</h4>
+              <p className={`text-base leading-relaxed text-white/60 ${synopsisExpanded ? "" : "line-clamp-3"}`}>{overview}</p>
               {overview.length > 200 && (
-                <button onClick={() => setSynopsisExpanded((v) => !v)} className="mt-1 text-xs text-purple-400 hover:text-purple-300">
+                <button
+                  onClick={() => setSynopsisExpanded((v) => !v)}
+                  className="mt-1 rounded text-xs text-purple-400 hover:text-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                >
                   {synopsisExpanded ? t("showLess") : t("showMore")}
                 </button>
               )}
@@ -185,7 +214,7 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
           {trailer && <TrailerPlayer videoKey={trailer.key} />}
           {cast && cast.length > 0 && <CastRow cast={cast} />}
 
-          {/* Action */}
+          {/* Movie request action */}
           {currentItem.mediaType === "movie" && (
             detail?.mediaInfo?.status === 5 ? (
               <div className="w-full rounded-lg bg-emerald-500/20 py-3 text-center text-sm font-semibold text-emerald-400">
@@ -198,14 +227,30 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
             ) : (
               <button
                 onClick={handleMovieRequest}
-                disabled={requesting}
-                className="w-full rounded-lg bg-purple-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-purple-500 disabled:opacity-50"
+                disabled={requesting || requestSuccess}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-purple-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-purple-500/50"
               >
-                {requesting ? t("seer:requestingMovie") : t("seer:requestMovie")}
+                {requesting ? (
+                  <>
+                    <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    {t("seer:requestingMovie")}
+                  </>
+                ) : requestSuccess ? (
+                  <>
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                    </svg>
+                    {t("requestAdded")}
+                  </>
+                ) : t("seer:requestMovie")}
               </button>
             )
           )}
 
+          {/* TV season picker */}
           {currentItem.mediaType === "tv" && !isLoading && detail && (detail as SeerrTvDetail).seasons && (
             <SeriesSeasonPicker
               seasons={(detail as SeerrTvDetail).seasons ?? []}

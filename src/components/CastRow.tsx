@@ -72,7 +72,14 @@ export function CastRow({ cast }: CastRowProps) {
           </div>
         )}
       </div>
-      <div ref={scrollRef} className="flex gap-3 overflow-x-auto pb-2">
+      <div
+        ref={scrollRef}
+        className="flex gap-3 overflow-x-auto pb-2"
+        style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(139,92,246,0.3) transparent", cursor: "grab" }}
+        onMouseDown={(e) => { (e.currentTarget as HTMLElement).style.cursor = "grabbing"; }}
+        onMouseUp={(e) => { (e.currentTarget as HTMLElement).style.cursor = "grab"; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.cursor = "grab"; }}
+      >
         {members.map((person) => (
           <div key={person.id} className="flex w-[60px] flex-shrink-0 flex-col items-center">
             {person.profilePath ? (

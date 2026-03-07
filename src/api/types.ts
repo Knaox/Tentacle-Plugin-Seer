@@ -3,6 +3,22 @@
 /* ------------------------------------------------------------------ */
 
 export type MediaType = "movie" | "tv";
+export type DiscoverMediaType = "movies" | "tv";
+export type SortOption = "popularity" | "vote_average" | "release_date" | "title";
+export type SortOrder = "asc" | "desc";
+export type TvStatus = 0 | 1 | 2 | 3 | 4 | 5;
+
+export interface DiscoverFilters {
+  genres: number[];
+  watchProviders: number[];
+  yearFrom: number | null;
+  yearTo: number | null;
+  ratingMin: number | null;
+  originalLanguage: string | null;
+  tvStatus: TvStatus[];
+  sortBy: SortOption;
+  sortOrder: SortOrder;
+}
 
 export interface SeerrSearchResult {
   id: number;
@@ -57,36 +73,76 @@ export interface SeerrRequestsResponse {
   results: SeerrMediaRequest[];
 }
 
+export interface SeerrCrewMember {
+  id: number;
+  name: string;
+  job: string;
+  department: string;
+  profilePath?: string;
+}
+
+export interface SeerrProductionCompany {
+  id: number;
+  name: string;
+  logoPath?: string;
+}
+
 export interface SeerrMovieDetail {
   id: number;
   title: string;
+  originalTitle?: string;
+  tagline?: string;
   overview: string;
   posterPath?: string;
   backdropPath?: string;
   releaseDate?: string;
   voteAverage?: number;
+  voteCount?: number;
   runtime?: number;
+  budget?: number;
+  revenue?: number;
+  status?: string;
+  originalLanguage?: string;
+  certification?: string;
   genres?: { id: number; name: string }[];
+  productionCompanies?: SeerrProductionCompany[];
+  productionCountries?: { iso_3166_1: string; name: string }[];
   mediaInfo?: { status: number };
-  credits?: { cast?: SeerrCastMember[] };
+  credits?: {
+    cast?: SeerrCastMember[];
+    crew?: SeerrCrewMember[];
+  };
 }
 
 export interface SeerrTvDetail {
   id: number;
   name: string;
+  originalName?: string;
+  tagline?: string;
   overview: string;
   posterPath?: string;
   backdropPath?: string;
   firstAirDate?: string;
   voteAverage?: number;
+  voteCount?: number;
   numberOfSeasons?: number;
+  status?: string;
+  originalLanguage?: string;
+  certification?: string;
   seasons?: SeerrSeason[];
   genres?: { id: number; name: string }[];
+  productionCompanies?: SeerrProductionCompany[];
+  productionCountries?: { iso_3166_1: string; name: string }[];
+  networks?: { id: number; name: string; logoPath?: string }[];
+  createdBy?: { id: number; name: string; profilePath?: string }[];
   mediaInfo?: {
     status: number;
     seasons?: { id: number; seasonNumber: number; status: number }[];
   };
-  credits?: { cast?: SeerrCastMember[] };
+  credits?: {
+    cast?: SeerrCastMember[];
+    crew?: SeerrCrewMember[];
+  };
 }
 
 export interface SeerrSeason {
@@ -108,11 +164,6 @@ export interface SeerrCastMember {
 
 /** Seerr request status: 1=pending, 2=approved, 3=declined */
 export type SeerrRequestStatus = 1 | 2 | 3;
-
-export type DiscoverCategory = "movies" | "tv" | "anime" | "trending";
-export type SortOption = "popularity" | "vote_average" | "release_date" | "trending";
-export type SortOrder = "asc" | "desc";
-export type MediaFilter = "all" | "movie" | "tv" | "anime";
 
 /* ── Local request types (from Tentacle backend) ─────────────────── */
 

@@ -1,10 +1,11 @@
-import { proxyFetch, configUrl, setSeerrConfig, getSeerBackendUrl } from "./endpoints";
+import { proxyFetch, configUrl, setConfigured, getSeerBackendUrl } from "./endpoints";
 import { langParam, getCurrentLanguage } from "../utils/media-helpers";
 import type {
   SeerrPagedResponse,
   SeerrMovieDetail,
   SeerrTvDetail,
-  DiscoverCategory,
+  DiscoverMediaType,
+  DiscoverFilters,
   MediaType,
   LocalRequest,
   LocalRequestsResponse,
@@ -50,24 +51,88 @@ export async function searchMedia(query: string, page = 1): Promise<SeerrPagedRe
 
 /* ── Discover (Seerr proxy) ──────────────────────────────────────── */
 
+/**
+ * Build discover URL params matching Seerr's exact API contract.
+ *
+ * IMPORTANT: We do NOT send `language` as a query param because Seerr's
+ * backend maps it to BOTH display language AND `originalLanguage` filter
+ * on TMDB. Sending language=fr would filter for French-original content
+ * only, hiding all Japanese anime, English movies, etc.
+ *
+ * Display language is handled via the Accept-Language header in proxyFetch.
+ * Original language filter is only sent when the user explicitly sets it.
+ */
 export async function discoverMedia(
-  category: DiscoverCategory,
-  page = 1,
-  watchProviders?: number[],
-  sortBy?: string,
+  mediaType: DiscoverMediaType,
+  page: number,
+  filters: DiscoverFilters,
 ): Promise<SeerrPagedResponse> {
-  const lang = langParam();
-  const wp = watchProviders && watchProviders.length > 0
-    ? `&watchProviders=${watchProviders.join("|")}&watchRegion=${getWatchRegion()}`
-    : "";
-  const sortParam = sortBy ? `&sortBy=${sortBy}` : "";
-  const paths: Record<DiscoverCategory, string> = {
-    movies: `/api/v1/discover/movies?page=${page}&${lang}${wp}${sortParam}`,
-    tv: `/api/v1/discover/tv?page=${page}&${lang}${wp}${sortParam}`,
-    anime: `/api/v1/discover/tv?page=${page}&${lang}&genre=16${wp}${sortParam}`,
-    trending: `/api/v1/discover/trending?page=${page}&${lang}${wp}`,
-  };
-  return proxyFetch(paths[category]);
+  // Build params exactly like Seerr frontend does (key=value pairs)
+  const params: Record<string, string> = {};
+  params.page = String(page);
+
+  // Sort — Seerr sends the full "field.order" string as sortBy
+  const sortField = (() => {
+    if (filters.sortBy === "release_date") {
+      return mediaType === "movies" ? "primary_release_date" : "first_air_date";
+    }
+    if (filters.sortBy === "title") {
+      return "original_title";
+    }
+    return filters.sortBy;
+  })();
+  params.sortBy = `${sortField}.${filters.sortOrder}`;
+
+  // Genres — comma separated
+  if (filters.genres.length > 0) {
+    params.genre = filters.genres.join(",");
+  }
+
+  // Watch providers — pipe separated, with region
+  if (filters.watchProviders.length > 0) {
+    params.watchProviders = filters.watchProviders.join("|");
+    params.watchRegion = getWatchRegion();
+  }
+
+  // Year range — date strings
+  if (filters.yearFrom != null) {
+    const key = mediaType === "movies" ? "primaryReleaseDateGte" : "firstAirDateGte";
+    params[key] = `${filters.yearFrom}-01-01`;
+  }
+  if (filters.yearTo != null) {
+    const key = mediaType === "movies" ? "primaryReleaseDateLte" : "firstAirDateLte";
+    params[key] = `${filters.yearTo}-12-31`;
+  }
+
+  // Rating minimum
+  if (filters.ratingMin != null) {
+    params.voteAverageGte = String(filters.ratingMin);
+    params.voteCountGte = "50";
+  }
+
+  // Original language — uses the `language` param (Seerr maps it to originalLanguage)
+  // Only sent when user explicitly picks a language filter
+  if (filters.originalLanguage) {
+    params.language = filters.originalLanguage;
+  }
+
+  // TV status
+  if (mediaType === "tv" && filters.tvStatus.length > 0) {
+    params.status = String(filters.tvStatus[0]);
+  }
+
+  // Build query string like Seerr does: key=encodeURIComponent(value)
+  const qs = Object.entries(params)
+    .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+    .join("&");
+
+  const endpoint = mediaType === "movies" ? "movies" : "tv";
+  return proxyFetch(`/api/v1/discover/${endpoint}?${qs}`);
+}
+
+/** Fetch trending for HeroCarousel */
+export async function discoverTrending(page = 1): Promise<SeerrPagedResponse> {
+  return proxyFetch(`/api/v1/discover/trending?page=${page}`);
 }
 
 /* ── Media details (Seerr proxy) ─────────────────────────────────── */
@@ -139,8 +204,8 @@ export async function isSeerConfigured(): Promise<boolean> {
     });
     if (!res.ok) return false;
     const data = await res.json();
-    if (data.enabled && data.url) {
-      setSeerrConfig(data.url, data.apiKey);
+    if (data.enabled && data.url && data.hasApiKey) {
+      setConfigured(true);
       return true;
     }
     return false;

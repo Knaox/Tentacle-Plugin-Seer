@@ -115,10 +115,12 @@ export function SeriesSeasonPicker({ seasons, requestedSeasons, onRequest, reque
                 <p className={`text-[10px] ${requested ? (available ? "text-emerald-400/60" : "text-amber-400/60") : "text-white/30"}`}>
                   {requested
                     ? seasonStatusLabel(status!, t)
-                    : t("seer:episodeCount", { count: season.episodeCount })}
-                  {!requested && season.airDate && (
-                    <span className="ml-1">{season.airDate.slice(0, 4)}</span>
-                  )}
+                    : (
+                      <>
+                        {t("seer:episodeCount", { count: season.episodeCount })}
+                        {season.airDate && <span className="ml-1">· {season.airDate.slice(0, 4)}</span>}
+                      </>
+                    )}
                 </p>
               </div>
             </button>

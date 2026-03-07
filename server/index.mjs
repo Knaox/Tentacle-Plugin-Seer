@@ -1,6 +1,7 @@
 // Seer Plugin — Server module (auto-generated, do not edit)
 
 // server/index.ts
+import { Readable } from "stream";
 import { resolve, dirname } from "path";
 import { existsSync, readFileSync } from "fs";
 import { fileURLToPath } from "url";
@@ -361,7 +362,7 @@ async function processNextRequest(prisma, config) {
       mediaId: request.tmdbId
     };
     if (request.mediaType === "tv" && request.seasons) {
-      seerrBody.seasons = request.seasons.map((n) => ({ seasonNumber: n }));
+      seerrBody.seasons = request.seasons.map(Number);
     }
     const res = await fetch(`${config.seerrUrl}/api/v1/request`, {
       method: "POST",
@@ -548,6 +549,96 @@ async function seerBackend(app, ctx) {
     stopWorker();
   });
   app.addHook("preHandler", ctx.requireAuth);
+  app.get("/config", async () => {
+    const config = getPluginConfig(ctx);
+    return { url: config.url || "", enabled: !!config.enabled, hasApiKey: !!config.apiKey };
+  });
+  app.post("/proxy", async (request, reply) => {
+    const body = request.body;
+    if (!body.url) return reply.status(400).send({ message: "url is required" });
+    const config = getPluginConfig(ctx);
+    const seerrUrl = config.url?.replace(/\/$/, "");
+    if (!seerrUrl) return reply.status(503).send({ message: "Seerr not configured" });
+    let parsed;
+    try {
+      parsed = new URL(body.url);
+    } catch {
+      return reply.status(400).send({ message: "Invalid URL" });
+    }
+    if (parsed.origin !== new URL(seerrUrl).origin) {
+      return reply.status(403).send({ message: "Proxy restricted to configured Seerr instance" });
+    }
+    try {
+      const res = await fetch(body.url, {
+        method: body.method || "GET",
+        headers: body.headers,
+        body: body.body ? JSON.stringify(body.body) : void 0,
+        signal: AbortSignal.timeout(1e4)
+      });
+      const text = await res.text();
+      let json;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = null;
+      }
+      return { status: res.status, ok: res.ok, data: json ?? text };
+    } catch (err) {
+      return reply.status(502).send({ message: err instanceof Error ? err.message : "Proxy failed" });
+    }
+  });
+  app.all("/seerr/*", async (request, reply) => {
+    const wildcard = request.params["*"];
+    if (!wildcard || !wildcard.startsWith("api/v1/")) {
+      return reply.status(400).send({ message: "Only api/v1/* paths are allowed" });
+    }
+    const config = getPluginConfig(ctx);
+    const seerrUrl = config.url?.replace(/\/$/, "");
+    const apiKey = config.apiKey;
+    if (!seerrUrl || !apiKey) {
+      return reply.status(503).send({ message: "Seerr not configured" });
+    }
+    const query = request.query;
+    const targetParams = new URLSearchParams();
+    for (const [k, v] of Object.entries(query)) {
+      if (k === "_lang") continue;
+      targetParams.set(k, v);
+    }
+    const qs = targetParams.toString();
+    const targetUrl = `${seerrUrl}/${wildcard}${qs ? `?${qs}` : ""}`;
+    const headers = {
+      "X-Api-Key": apiKey
+    };
+    if (query._lang) {
+      headers["Accept-Language"] = query._lang;
+    }
+    let body;
+    if (request.body && ["POST", "PUT", "PATCH"].includes(request.method)) {
+      headers["Content-Type"] = "application/json";
+      body = JSON.stringify(request.body);
+    }
+    try {
+      const response = await fetch(targetUrl, {
+        method: request.method,
+        headers,
+        body,
+        signal: AbortSignal.timeout(15e3)
+      });
+      reply.status(response.status);
+      const ct = response.headers.get("content-type");
+      if (ct) reply.header("content-type", ct);
+      if (!response.body) {
+        return reply.send();
+      }
+      const nodeStream = Readable.fromWeb(response.body);
+      return reply.send(nodeStream);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "TimeoutError") {
+        return reply.status(504).send({ message: "Seerr timeout" });
+      }
+      return reply.status(502).send({ message: err instanceof Error ? err.message : "Proxy failed" });
+    }
+  });
   app.get("/requests", async (request) => {
     const user = getUser(request);
     const query = request.query;

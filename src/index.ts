@@ -11,10 +11,13 @@ export type {
   SeerrTvDetail,
   SeerrSeason,
   SeerrCastMember,
+  SeerrCrewMember,
   SeerrRequestStatus,
-  DiscoverCategory,
+  DiscoverMediaType,
+  DiscoverFilters,
   SortOption,
-  MediaFilter,
+  SortOrder,
+  TvStatus,
   MediaType,
   LocalRequest,
   LocalRequestsResponse,
@@ -24,7 +27,7 @@ export type {
 
 // Re-export hooks
 export { useSeerSearch } from "./hooks/useSearch";
-export { useDiscoverMedia } from "./hooks/useDiscoverMedia";
+export { useTrending } from "./hooks/useDiscoverMedia";
 export { useInfiniteDiscover } from "./hooks/useInfiniteDiscover";
 export { useMyRequests, useDeleteRequest } from "./hooks/useRequests";
 export { useRequestMedia } from "./hooks/useRequestMedia";

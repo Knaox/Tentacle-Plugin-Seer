@@ -4,6 +4,7 @@
 /* ------------------------------------------------------------------ */
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
+import { Readable } from "stream";
 import { resolve, dirname } from "path";
 import { existsSync, readFileSync } from "fs";
 import { fileURLToPath } from "url";
@@ -94,6 +95,113 @@ export default async function seerBackend(
 
   // All routes require auth
   app.addHook("preHandler", ctx.requireAuth);
+
+  /* ── Config (read-only, for all authenticated users) ──────────── */
+
+  app.get("/config", async () => {
+    const config = getPluginConfig(ctx);
+    return { url: config.url || "", enabled: !!config.enabled, hasApiKey: !!config.apiKey };
+  });
+
+  /* ── Proxy (scoped to configured Seerr instance) ────────────────── */
+
+  app.post("/proxy", async (request, reply) => {
+    const body = request.body as { url: string; method?: string; headers?: Record<string, string>; body?: unknown };
+    if (!body.url) return reply.status(400).send({ message: "url is required" });
+
+    const config = getPluginConfig(ctx);
+    const seerrUrl = (config.url as string)?.replace(/\/$/, "");
+    if (!seerrUrl) return reply.status(503).send({ message: "Seerr not configured" });
+
+    // Verify the target URL belongs to the configured Seerr instance
+    let parsed: URL;
+    try { parsed = new URL(body.url); } catch { return reply.status(400).send({ message: "Invalid URL" }); }
+    if (parsed.origin !== new URL(seerrUrl).origin) {
+      return reply.status(403).send({ message: "Proxy restricted to configured Seerr instance" });
+    }
+
+    try {
+      const res = await fetch(body.url, {
+        method: body.method || "GET",
+        headers: body.headers,
+        body: body.body ? JSON.stringify(body.body) : undefined,
+        signal: AbortSignal.timeout(10_000),
+      });
+      const text = await res.text();
+      let json: unknown;
+      try { json = JSON.parse(text); } catch { json = null; }
+      return { status: res.status, ok: res.ok, data: json ?? text };
+    } catch (err) {
+      return reply.status(502).send({ message: err instanceof Error ? err.message : "Proxy failed" });
+    }
+  });
+
+  /* ── Streaming proxy (transparent, no buffering) ────────────────── */
+
+  app.all("/seerr/*", async (request, reply) => {
+    const wildcard = (request.params as Record<string, string>)["*"];
+    if (!wildcard || !wildcard.startsWith("api/v1/")) {
+      return reply.status(400).send({ message: "Only api/v1/* paths are allowed" });
+    }
+
+    const config = getPluginConfig(ctx);
+    const seerrUrl = (config.url as string)?.replace(/\/$/, "");
+    const apiKey = config.apiKey as string;
+    if (!seerrUrl || !apiKey) {
+      return reply.status(503).send({ message: "Seerr not configured" });
+    }
+
+    // Build target URL, forward query params
+    const query = request.query as Record<string, string>;
+    const targetParams = new URLSearchParams();
+    for (const [k, v] of Object.entries(query)) {
+      if (k === "_lang") continue; // handled below
+      targetParams.set(k, v);
+    }
+    const qs = targetParams.toString();
+    const targetUrl = `${seerrUrl}/${wildcard}${qs ? `?${qs}` : ""}`;
+
+    // Build headers
+    const headers: Record<string, string> = {
+      "X-Api-Key": apiKey,
+    };
+    if (query._lang) {
+      headers["Accept-Language"] = query._lang;
+    }
+
+    // Forward body for POST/PUT/PATCH
+    let body: string | undefined;
+    if (request.body && ["POST", "PUT", "PATCH"].includes(request.method)) {
+      headers["Content-Type"] = "application/json";
+      body = JSON.stringify(request.body);
+    }
+
+    try {
+      const response = await fetch(targetUrl, {
+        method: request.method,
+        headers,
+        body,
+        signal: AbortSignal.timeout(15_000),
+      });
+
+      reply.status(response.status);
+      // Forward content-type from Seerr
+      const ct = response.headers.get("content-type");
+      if (ct) reply.header("content-type", ct);
+
+      if (!response.body) {
+        return reply.send();
+      }
+
+      const nodeStream = Readable.fromWeb(response.body as any);
+      return reply.send(nodeStream);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "TimeoutError") {
+        return reply.status(504).send({ message: "Seerr timeout" });
+      }
+      return reply.status(502).send({ message: err instanceof Error ? err.message : "Proxy failed" });
+    }
+  });
 
   /* ── Requests ────────────────────────────────────────────────────── */
 

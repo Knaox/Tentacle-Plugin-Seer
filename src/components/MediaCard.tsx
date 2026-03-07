@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SeerrSearchResult } from "../api/types";
 import { posterUrl, mediaTitle, mediaYear, mediaTypeKey } from "../utils/media-helpers";
@@ -45,6 +46,7 @@ function PosterFallback({ label, mediaType }: { label: string; mediaType?: strin
 
 export function MediaCard({ item, onRequest, onClick, requesting, style }: MediaCardProps) {
   const { t } = useTranslation("seer");
+  const [imgLoaded, setImgLoaded] = useState(false);
   const title = mediaTitle(item) || t("seer:untitled");
   const year = mediaYear(item);
   const type = t(mediaTypeKey(item));
@@ -54,7 +56,7 @@ export function MediaCard({ item, onRequest, onClick, requesting, style }: Media
 
   return (
     <div
-      className="group relative cursor-pointer overflow-hidden rounded-xl transition-all duration-300"
+      className="group relative cursor-pointer overflow-hidden rounded-xl transition-all duration-300 focus-within:ring-2 focus-within:ring-purple-500/50"
       style={{
         ...style,
         willChange: "transform",
@@ -76,8 +78,10 @@ export function MediaCard({ item, onRequest, onClick, requesting, style }: Media
           <img
             src={poster}
             alt={title}
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+            className="h-full w-full object-cover transition-all duration-300 group-hover:scale-105"
             loading="lazy"
+            style={{ opacity: imgLoaded ? 1 : 0, transition: "opacity 300ms ease, transform 300ms ease" }}
+            onLoad={() => setImgLoaded(true)}
           />
         ) : (
           <PosterFallback label={t("seer:noImage")} mediaType={item.mediaType} />
@@ -113,7 +117,7 @@ export function MediaCard({ item, onRequest, onClick, requesting, style }: Media
               <button
                 onClick={(e) => { e.stopPropagation(); onRequest(item); }}
                 disabled={requesting}
-                className="w-full rounded-lg bg-purple-600 py-2 text-xs font-semibold text-white transition-colors hover:bg-purple-500 disabled:opacity-50"
+                className="w-full rounded-lg bg-purple-600 py-2 text-xs font-semibold text-white transition-colors hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {requesting ? t("seer:sending") : t("seer:request")}
               </button>
