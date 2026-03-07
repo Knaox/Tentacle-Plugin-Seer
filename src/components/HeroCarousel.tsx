@@ -33,10 +33,12 @@ export function HeroCarousel({ items, onSelect, onRequest }: HeroCarouselProps) 
   const backdrop = backdropUrl(item.backdropPath, "w1280");
   const poster = posterUrl(item.posterPath, "w342");
   const hasMediaInfo = item.mediaInfo && item.mediaInfo.status > 1;
+  const isAvailable = item.mediaInfo?.status === 5;
+  const isRequested = !isAvailable && (item.mediaInfo?.status ?? 0) >= 2;
 
   return (
     <div
-      className="relative h-[320px] overflow-hidden sm:h-[380px] lg:h-[420px]"
+      className="relative h-[380px] overflow-hidden sm:h-[440px] lg:h-[500px]"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
     >
@@ -45,8 +47,8 @@ export function HeroCarousel({ items, onSelect, onRequest }: HeroCarouselProps) 
         className="absolute inset-0 bg-cover bg-center transition-opacity duration-1000"
         style={{ backgroundImage: backdrop ? `url(${backdrop})` : undefined }}
       >
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/70 to-black/10" />
-        <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/30 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0f] via-[#0a0a0f]/70 to-[#0a0a0f]/10" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0f]/80 via-[#0a0a0f]/30 to-transparent" />
       </div>
 
       {/* Content */}
@@ -92,8 +94,18 @@ export function HeroCarousel({ items, onSelect, onRequest }: HeroCarouselProps) 
               {item.overview}
             </p>
           )}
-          <div className="mt-1 flex gap-3">
-            {!hasMediaInfo && (
+          <div className="mt-1 flex items-center gap-3">
+            {isAvailable && (
+              <span className="rounded-lg bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-emerald-400">
+                {t("heroAvailable")}
+              </span>
+            )}
+            {isRequested && (
+              <span className="rounded-lg bg-amber-500/20 px-4 py-2 text-sm font-semibold text-amber-400">
+                {t("heroRequested")}
+              </span>
+            )}
+            {!isAvailable && !isRequested && (
               <button
                 onClick={(e) => { e.stopPropagation(); onRequest(item); }}
                 className="rounded-lg px-5 py-2 text-sm font-semibold text-white transition-all hover:brightness-110"

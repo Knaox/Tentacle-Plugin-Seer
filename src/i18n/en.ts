@@ -139,6 +139,13 @@ export default {
   statusPending: "Pending",
   statusPartiallyAvailable: "Partial",
 
+  // Hero & extra actions
+  heroAvailable: "Available",
+  heroRequested: "Requested",
+  discoverButton: "Discover content",
+  requestSeries: "Request this show",
+  requestingSeries: "Sending request...",
+
   // Config
   configTitle: "Seer Configuration",
   statusConnected: "Connected",

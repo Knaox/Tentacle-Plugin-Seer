@@ -18,7 +18,7 @@ export function PlatformFilter({ selected, onChange }: PlatformFilterProps) {
   };
 
   return (
-    <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+    <div className="flex gap-2 overflow-x-auto pb-1">
       {PLATFORMS.map((p) => {
         const active = selected.includes(p.id);
         return (
@@ -27,8 +27,8 @@ export function PlatformFilter({ selected, onChange }: PlatformFilterProps) {
             onClick={() => toggle(p.id)}
             className={`flex-shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
               active
-                ? "border border-purple-500/50 bg-purple-500/10 text-purple-300"
-                : "border border-white/5 bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/70"
+                ? "border border-[#8b5cf6]/50 bg-[#8b5cf6]/10 text-[#8b5cf6]"
+                : "border border-white/5 bg-[#1a1a2e] text-white/50 hover:bg-[#1a1a2e]/80 hover:text-white/70"
             }`}
           >
             {p.name}

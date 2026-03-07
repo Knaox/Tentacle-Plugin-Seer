@@ -80,11 +80,11 @@ export function RequestCard({ request, onDelete, onRetry, deleting, retrying }: 
           <img
             src={poster}
             alt={request.title}
-            className="h-24 w-16 rounded-lg object-cover"
+            className="h-[120px] w-[80px] rounded-lg object-cover"
             loading="lazy"
           />
         ) : (
-          <div className="flex h-24 w-16 items-center justify-center rounded-lg bg-white/5 text-white/20 text-[10px]">
+          <div className="flex h-[120px] w-[80px] items-center justify-center rounded-lg bg-white/5 text-white/20 text-[10px]">
             {typeLabel}
           </div>
         )}
@@ -117,8 +117,8 @@ export function RequestCard({ request, onDelete, onRetry, deleting, retrying }: 
               <div key={step} className="flex flex-1 items-center">
                 <div
                   className={`h-1 w-full rounded-full transition-colors ${
-                    i <= progressIdx ? "bg-purple-500" : "bg-white/10"
-                  } ${i === progressIdx ? "animate-pulse" : ""}`}
+                    i <= progressIdx && progressIdx === 4 ? "bg-emerald-500" : i <= progressIdx ? "bg-[#8b5cf6]" : "bg-white/10"
+                  } ${i === progressIdx && progressIdx < 4 ? "animate-pulse" : ""}`}
                 />
               </div>
             ))}

@@ -101,17 +101,19 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
       <div className="absolute inset-0 bg-black/90 backdrop-blur-sm" />
       <div
         ref={scrollRef}
-        className="relative max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl bg-[#12121a] scrollbar-hide sm:max-h-[90vh] sm:rounded-2xl"
+        className="relative max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl bg-[#12121a] sm:max-h-[90vh] sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
         style={{ animation: "fadeSlideUp 300ms ease forwards" }}
       >
         {/* Backdrop */}
-        {backdrop && (
-          <div className="relative h-48 w-full overflow-hidden rounded-t-2xl sm:h-56">
+        <div className="relative h-64 w-full overflow-hidden rounded-t-2xl sm:h-80">
+          {backdrop ? (
             <img src={backdrop} alt="" className="h-full w-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#12121a] via-[#12121a]/40 to-transparent" />
-          </div>
-        )}
+          ) : (
+            <div className="h-full w-full" style={{ background: "linear-gradient(135deg, #1a1a2e 0%, #12121a 100%)" }} />
+          )}
+          <div className="absolute inset-0" style={{ background: "linear-gradient(to top, #12121a 0%, rgba(18,18,26,0.85) 30%, rgba(18,18,26,0.4) 60%, transparent 100%)" }} />
+        </div>
 
         {/* Close button */}
         <button
@@ -124,12 +126,22 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
         </button>
 
         {/* Header: poster + info */}
-        <div className="flex gap-4 px-5 pb-4" style={{ marginTop: backdrop ? -40 : 20 }}>
-          {poster && (
-            <img src={poster} alt={title} className="relative h-36 w-24 flex-shrink-0 rounded-xl object-cover shadow-xl" />
+        <div className="flex gap-4 px-5 pb-4" style={{ marginTop: -80 }}>
+          {poster ? (
+            <img src={poster} alt={title} className="relative h-[225px] w-[150px] flex-shrink-0 rounded-xl object-cover shadow-xl" />
+          ) : (
+            <div className="relative flex h-[225px] w-[150px] flex-shrink-0 items-center justify-center rounded-xl bg-[#1a1a2e] shadow-xl">
+              <svg className="h-12 w-12 text-white/10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={0.8}>
+                {mediaType === "tv" ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 20.25h12m-7.5-3v3m3-3v3m-10.125-3h17.25c.621 0 1.125-.504 1.125-1.125V4.875c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125Z" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m15.75 10.5 4.72-4.72a.75.75 0 0 1 1.28.53v11.38a.75.75 0 0 1-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 0 0 2.25-2.25v-9a2.25 2.25 0 0 0-2.25-2.25h-9A2.25 2.25 0 0 0 2.25 7.5v9a2.25 2.25 0 0 0 2.25 2.25Z" />
+                )}
+              </svg>
+            </div>
           )}
           <div className="min-w-0 flex-1 pt-2">
-            <h2 className="text-xl font-bold text-white">{title}</h2>
+            <h2 className="text-2xl font-bold text-white">{title}</h2>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-white/40">
               {year && <span>{year}</span>}
               {detail && "runtime" in detail && detail.runtime ? (
@@ -149,14 +161,14 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
             {detail?.genres && detail.genres.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1">
                 {detail.genres.map((g) => (
-                  <span key={g.id} className="rounded-md bg-white/10 px-2 py-0.5 text-[10px] text-white/60">{g.name}</span>
+                  <span key={g.id} className="rounded-full bg-white/10 px-3 py-1 text-[10px] text-white/60">{g.name}</span>
                 ))}
               </div>
             )}
           </div>
         </div>
 
-        <div className="space-y-5 px-5 pb-6">
+        <div className="space-y-7 px-5 pb-6">
           {/* Synopsis expandable */}
           {overview && (
             <div>
@@ -175,13 +187,23 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
 
           {/* Action */}
           {currentItem.mediaType === "movie" && (
-            <button
-              onClick={handleMovieRequest}
-              disabled={requesting}
-              className="w-full rounded-lg bg-purple-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-purple-500 disabled:opacity-50"
-            >
-              {requesting ? t("seer:requestingMovie") : t("seer:requestMovie")}
-            </button>
+            detail?.mediaInfo?.status === 5 ? (
+              <div className="w-full rounded-lg bg-emerald-500/20 py-3 text-center text-sm font-semibold text-emerald-400">
+                {t("heroAvailable")}
+              </div>
+            ) : (detail?.mediaInfo?.status ?? 0) >= 2 ? (
+              <div className="w-full rounded-lg bg-amber-500/20 py-3 text-center text-sm font-semibold text-amber-400">
+                {t("alreadyRequested")}
+              </div>
+            ) : (
+              <button
+                onClick={handleMovieRequest}
+                disabled={requesting}
+                className="w-full rounded-lg bg-purple-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-purple-500 disabled:opacity-50"
+              >
+                {requesting ? t("seer:requestingMovie") : t("seer:requestMovie")}
+              </button>
+            )
           )}
 
           {currentItem.mediaType === "tv" && !isLoading && detail && (detail as SeerrTvDetail).seasons && (

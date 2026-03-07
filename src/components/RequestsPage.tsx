@@ -81,8 +81,8 @@ export function RequestsPage() {
             onClick={() => { setStatusFilter(tab.value); setPage(1); }}
             className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
               statusFilter === tab.value
-                ? "bg-purple-600 text-white"
-                : "bg-white/5 text-white/50 hover:bg-white/10"
+                ? "bg-[#8b5cf6] text-white"
+                : "bg-[#1a1a2e] text-white/50 hover:bg-[#1a1a2e]/80"
             }`}
           >
             {t(tab.key)}
@@ -96,8 +96,8 @@ export function RequestsPage() {
             onClick={() => { setTypeFilter(v); setPage(1); }}
             className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
               typeFilter === v
-                ? "bg-purple-600 text-white"
-                : "bg-white/5 text-white/50 hover:bg-white/10"
+                ? "bg-[#8b5cf6] text-white"
+                : "bg-[#1a1a2e] text-white/50 hover:bg-[#1a1a2e]/80"
             }`}
           >
             {v === "all" ? t("filterAllType") : v === "movie" ? t("filterMovies") : t("filterSeries")}
@@ -136,6 +136,17 @@ export function RequestsPage() {
         <EmptyState
           title={statusFilter === "all" ? t("seer:noRequestsAll") : t("seer:noRequestsFiltered")}
           subtitle={statusFilter === "all" ? t("seer:noRequestsHint") : undefined}
+          action={statusFilter === "all" ? (
+            <button
+              onClick={() => {
+                const tentacle = (window as any).__tentacle;
+                tentacle?.navigate?.("/plugins/seer/discover");
+              }}
+              className="rounded-lg bg-[#8b5cf6] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#7c3aed]"
+            >
+              {t("discoverButton")}
+            </button>
+          ) : undefined}
         />
       )}
 

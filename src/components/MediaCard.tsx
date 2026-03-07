@@ -14,8 +14,8 @@ function StatusBadge({ status }: { status: number }) {
   const { t } = useTranslation("seer");
   const config: Record<number, { cls: string; key: string }> = {
     2: { cls: "bg-amber-500/80", key: "statusPending" },
-    3: { cls: "bg-purple-500/80", key: "statusApproved" },
-    4: { cls: "bg-orange-500/80", key: "statusProcessing" },
+    3: { cls: "bg-blue-500/80", key: "statusProcessing" },
+    4: { cls: "bg-orange-500/80", key: "statusPartiallyAvailable" },
     5: { cls: "bg-emerald-500/80", key: "statusAvailable" },
   };
   const c = config[status];
@@ -27,12 +27,18 @@ function StatusBadge({ status }: { status: number }) {
   );
 }
 
-function PosterFallback({ label }: { label: string }) {
+function PosterFallback({ label, mediaType }: { label: string; mediaType?: string }) {
   return (
-    <div className="flex h-full w-full items-center justify-center bg-white/5">
-      <svg className="h-10 w-10 text-white/10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={0.8}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" />
-      </svg>
+    <div className="flex h-full w-full items-center justify-center bg-[#1a1a2e]">
+      {mediaType === "tv" ? (
+        <svg className="h-10 w-10 text-white/10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={0.8}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 20.25h12m-7.5-3v3m3-3v3m-10.125-3h17.25c.621 0 1.125-.504 1.125-1.125V4.875c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125Z" />
+        </svg>
+      ) : (
+        <svg className="h-10 w-10 text-white/10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={0.8}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 0 1-1.125-1.125M3.375 19.5h1.5C5.496 19.5 6 18.996 6 18.375m-3.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-1.5A1.125 1.125 0 0 1 18 18.375M20.625 4.5H3.375m17.25 0c.621 0 1.125.504 1.125 1.125M20.625 4.5h-1.5C18.504 4.5 18 5.004 18 5.625m3.75 0v1.5c0 .621-.504 1.125-1.125 1.125M3.375 4.5c-.621 0-1.125.504-1.125 1.125M3.375 4.5h1.5C5.496 4.5 6 5.004 6 5.625m-3.75 0v1.5c0 .621.504 1.125 1.125 1.125m0 0h1.5m-1.5 0c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125m1.5-3.75C5.496 8.25 6 7.746 6 7.125v-1.5M4.875 8.25C5.496 8.25 6 8.754 6 9.375v1.5c0 .621-.504 1.125-1.125 1.125m0 0h1.5m-1.5 0c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125M19.125 12h1.5m0 0c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m0-3.75h-1.5m0 0c-.621 0-1.125-.504-1.125-1.125v-1.5c0-.621.504-1.125 1.125-1.125m0 3.75c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125" />
+        </svg>
+      )}
     </div>
   );
 }
@@ -56,7 +62,7 @@ export function MediaCard({ item, onRequest, onClick, requesting, style }: Media
       onClick={() => onClick?.(item)}
       onMouseEnter={(e) => {
         const el = e.currentTarget;
-        el.style.transform = "scale(1.04) translateY(-6px)";
+        el.style.transform = "scale(1.05) translateY(-6px)";
         el.style.boxShadow = "0 12px 40px rgba(139, 92, 246, 0.15)";
       }}
       onMouseLeave={(e) => {
@@ -74,7 +80,7 @@ export function MediaCard({ item, onRequest, onClick, requesting, style }: Media
             loading="lazy"
           />
         ) : (
-          <PosterFallback label={t("seer:noImage")} />
+          <PosterFallback label={t("seer:noImage")} mediaType={item.mediaType} />
         )}
 
         {/* Type badge */}
