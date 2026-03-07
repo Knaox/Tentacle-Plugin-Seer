@@ -134,8 +134,8 @@ async function processNextRequest(prisma: PrismaClient, config: WorkerConfig): P
       data: {
         jellyfinUserId: request.jellyfinUserId,
         type: "request_status",
-        title: `"${request.title}" — Sent to Seerr`,
-        body: `Your request for "${request.title}" has been sent`,
+        title: request.title,
+        body: `Votre demande pour « ${request.title} » a été envoyée à Seerr`,
         refId: request.id,
       },
     });
@@ -155,8 +155,8 @@ async function processNextRequest(prisma: PrismaClient, config: WorkerConfig): P
         data: {
           jellyfinUserId: request.jellyfinUserId,
           type: "request_status",
-          title: `"${request.title}" — Failed`,
-          body: `Your request for "${request.title}" failed after ${newRetryCount} attempts`,
+          title: request.title,
+          body: `Votre demande pour « ${request.title} » a échoué après ${newRetryCount} tentatives`,
           refId: request.id,
         },
       });
@@ -246,10 +246,11 @@ function mapSeerrStatus(requestStatus: number, mediaStatus?: number): SeerReques
   // Seerr request status: 1=pending, 2=approved, 3=declined
   // Seerr media status: 1=unknown, 2=pending, 3=processing, 4=partially available, 5=available
   if (requestStatus === 3) return "failed"; // declined
+  if (requestStatus === 1) return "sent_to_seer"; // pending — not yet approved
+  // From here: requestStatus === 2 (approved)
   if (mediaStatus === 5) return "available";
   if (mediaStatus === 3 || mediaStatus === 4) return "downloading";
-  if (requestStatus === 2) return "approved";
-  return "sent_to_seer"; // pending
+  return "approved";
 }
 
 function statusNotification(
@@ -261,25 +262,25 @@ function statusNotification(
       return {
         type: "request_approved",
         title: request.title,
-        message: `Your request for "${request.title}" has been approved`,
+        message: `Votre demande pour « ${request.title} » a été approuvée`,
       };
     case "downloading":
       return {
         type: "request_downloading",
         title: request.title,
-        message: `"${request.title}" is now being downloaded`,
+        message: `« ${request.title} » est en cours de téléchargement`,
       };
     case "available":
       return {
         type: "request_available",
         title: request.title,
-        message: `"${request.title}" is now available!`,
+        message: `« ${request.title} » est maintenant disponible !`,
       };
     case "failed":
       return {
         type: "request_declined",
         title: request.title,
-        message: `Your request for "${request.title}" was declined`,
+        message: `Votre demande pour « ${request.title} » a été refusée`,
       };
     default:
       return null;

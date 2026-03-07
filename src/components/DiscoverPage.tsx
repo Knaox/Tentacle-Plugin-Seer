@@ -40,11 +40,26 @@ export function DiscoverPage() {
           ? "trending"
           : "movies";
 
+  const sortByParam = (() => {
+    if (sort === "trending" || sort === "popularity") return undefined;
+    if (sort === "vote_average") return "vote_average.desc";
+    if (sort === "release_date") {
+      return (category === "tv" || category === "anime")
+        ? "first_air_date.desc"
+        : "primary_release_date.desc";
+    }
+    return undefined;
+  })();
+
   // Hero uses trending
   const { data: trendingData, isError: trendingError } = useDiscoverMedia("trending", 1);
 
   // Infinite scroll for discover
-  const infinite = useInfiniteDiscover(category);
+  const infinite = useInfiniteDiscover(
+    category,
+    platforms.length > 0 ? platforms : undefined,
+    sortByParam,
+  );
   const { data: searchData, isLoading: searchLoading } = useSeerSearch(debouncedQuery, 1);
   const requestMedia = useRequestMedia();
 
@@ -106,7 +121,7 @@ export function DiscoverPage() {
       const payload: RequestMediaPayload = {
         mediaType: item.mediaType,
         tmdbId: item.id,
-        title: mediaTitle(item) || "Unknown",
+        title: mediaTitle(item) || t("seer:untitled"),
         posterPath: item.posterPath,
         backdropPath: item.backdropPath,
         overview: item.overview,
@@ -141,7 +156,7 @@ export function DiscoverPage() {
       )}
 
       {/* Search bar */}
-      <div className="relative mb-4">
+      <div className="relative mb-4 rounded-xl bg-white/5 backdrop-blur-xl">
         <svg className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
         </svg>
@@ -151,7 +166,7 @@ export function DiscoverPage() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t("seer:searchPlaceholder")}
-          className="w-full rounded-xl border border-white/10 bg-white/5 py-3 pl-12 pr-24 text-sm text-white placeholder-white/30 outline-none backdrop-blur transition-all focus:border-purple-500/50 focus:bg-white/[0.07] focus:shadow-lg focus:shadow-purple-500/5"
+          className="w-full rounded-xl border border-white/5 bg-transparent py-3 pl-12 pr-24 text-sm text-white placeholder-white/30 outline-none transition-all focus:border-purple-500/30 focus:shadow-lg focus:shadow-purple-500/5"
         />
         {query && (
           <button

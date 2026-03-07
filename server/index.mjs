@@ -387,8 +387,8 @@ async function processNextRequest(prisma, config) {
       data: {
         jellyfinUserId: request.jellyfinUserId,
         type: "request_status",
-        title: `"${request.title}" \u2014 Sent to Seerr`,
-        body: `Your request for "${request.title}" has been sent`,
+        title: request.title,
+        body: `Votre demande pour \xAB ${request.title} \xBB a \xE9t\xE9 envoy\xE9e \xE0 Seerr`,
         refId: request.id
       }
     });
@@ -405,8 +405,8 @@ async function processNextRequest(prisma, config) {
         data: {
           jellyfinUserId: request.jellyfinUserId,
           type: "request_status",
-          title: `"${request.title}" \u2014 Failed`,
-          body: `Your request for "${request.title}" failed after ${newRetryCount} attempts`,
+          title: request.title,
+          body: `Votre demande pour \xAB ${request.title} \xBB a \xE9chou\xE9 apr\xE8s ${newRetryCount} tentatives`,
           refId: request.id
         }
       });
@@ -473,10 +473,10 @@ async function syncStatuses(prisma, config) {
 }
 function mapSeerrStatus(requestStatus, mediaStatus) {
   if (requestStatus === 3) return "failed";
+  if (requestStatus === 1) return "sent_to_seer";
   if (mediaStatus === 5) return "available";
   if (mediaStatus === 3 || mediaStatus === 4) return "downloading";
-  if (requestStatus === 2) return "approved";
-  return "sent_to_seer";
+  return "approved";
 }
 function statusNotification(request, newStatus) {
   switch (newStatus) {
@@ -484,25 +484,25 @@ function statusNotification(request, newStatus) {
       return {
         type: "request_approved",
         title: request.title,
-        message: `Your request for "${request.title}" has been approved`
+        message: `Votre demande pour \xAB ${request.title} \xBB a \xE9t\xE9 approuv\xE9e`
       };
     case "downloading":
       return {
         type: "request_downloading",
         title: request.title,
-        message: `"${request.title}" is now being downloaded`
+        message: `\xAB ${request.title} \xBB est en cours de t\xE9l\xE9chargement`
       };
     case "available":
       return {
         type: "request_available",
         title: request.title,
-        message: `"${request.title}" is now available!`
+        message: `\xAB ${request.title} \xBB est maintenant disponible !`
       };
     case "failed":
       return {
         type: "request_declined",
         title: request.title,
-        message: `Your request for "${request.title}" was declined`
+        message: `Votre demande pour \xAB ${request.title} \xBB a \xE9t\xE9 refus\xE9e`
       };
     default:
       return null;

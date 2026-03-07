@@ -1,5 +1,5 @@
 import { proxyFetch, configUrl, setSeerrConfig, getSeerBackendUrl } from "./endpoints";
-import { langParam } from "../utils/media-helpers";
+import { langParam, getCurrentLanguage } from "../utils/media-helpers";
 import type {
   SeerrPagedResponse,
   SeerrMovieDetail,
@@ -36,6 +36,12 @@ async function backendFetch<T>(path: string, opts?: RequestInit): Promise<T> {
   return res.json();
 }
 
+function getWatchRegion(): string {
+  const lang = getCurrentLanguage();
+  const map: Record<string, string> = { fr: "FR", en: "US", de: "DE", es: "ES", it: "IT", pt: "BR", ja: "JP" };
+  return map[lang] ?? "US";
+}
+
 /* ── Search (Seerr proxy) ────────────────────────────────────────── */
 
 export async function searchMedia(query: string, page = 1): Promise<SeerrPagedResponse> {
@@ -47,13 +53,19 @@ export async function searchMedia(query: string, page = 1): Promise<SeerrPagedRe
 export async function discoverMedia(
   category: DiscoverCategory,
   page = 1,
+  watchProviders?: number[],
+  sortBy?: string,
 ): Promise<SeerrPagedResponse> {
   const lang = langParam();
+  const wp = watchProviders && watchProviders.length > 0
+    ? `&watchProviders=${watchProviders.join("|")}&watchRegion=${getWatchRegion()}`
+    : "";
+  const sortParam = sortBy ? `&sortBy=${sortBy}` : "";
   const paths: Record<DiscoverCategory, string> = {
-    movies: `/api/v1/discover/movies?page=${page}&${lang}`,
-    tv: `/api/v1/discover/tv?page=${page}&${lang}`,
-    anime: `/api/v1/discover/tv?page=${page}&${lang}&genre=16`,
-    trending: `/api/v1/discover/trending?page=${page}&${lang}`,
+    movies: `/api/v1/discover/movies?page=${page}&${lang}${wp}${sortParam}`,
+    tv: `/api/v1/discover/tv?page=${page}&${lang}${wp}${sortParam}`,
+    anime: `/api/v1/discover/tv?page=${page}&${lang}&genre=16${wp}${sortParam}`,
+    trending: `/api/v1/discover/trending?page=${page}&${lang}${wp}`,
   };
   return proxyFetch(paths[category]);
 }
