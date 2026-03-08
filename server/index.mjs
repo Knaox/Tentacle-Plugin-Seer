@@ -720,12 +720,12 @@ async function seerBackend(app, ctx) {
       return reply.status(503).send({ message: "Seerr not configured" });
     }
     const query = request.query;
-    const targetParams = new URLSearchParams();
+    const qsParts = [];
     for (const [k, v] of Object.entries(query)) {
       if (k === "_lang") continue;
-      targetParams.set(k, v);
+      qsParts.push(`${encodeURIComponent(k)}=${encodeURIComponent(v)}`);
     }
-    const qs = targetParams.toString();
+    const qs = qsParts.join("&");
     const targetUrl = `${seerrUrl}/${wildcard}${qs ? `?${qs}` : ""}`;
     const headers = {
       "X-Api-Key": apiKey

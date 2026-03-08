@@ -152,13 +152,15 @@ export default async function seerBackend(
     }
 
     // Build target URL, forward query params
+    // Note: we use manual encoding instead of URLSearchParams because
+    // URLSearchParams encodes spaces as '+' which Seerr/TMDB rejects (expects %20).
     const query = request.query as Record<string, string>;
-    const targetParams = new URLSearchParams();
+    const qsParts: string[] = [];
     for (const [k, v] of Object.entries(query)) {
       if (k === "_lang") continue; // handled below
-      targetParams.set(k, v);
+      qsParts.push(`${encodeURIComponent(k)}=${encodeURIComponent(v)}`);
     }
-    const qs = targetParams.toString();
+    const qs = qsParts.join("&");
     const targetUrl = `${seerrUrl}/${wildcard}${qs ? `?${qs}` : ""}`;
 
     // Build headers

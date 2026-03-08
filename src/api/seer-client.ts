@@ -46,7 +46,7 @@ function getWatchRegion(): string {
 /* ── Search (Seerr proxy) ────────────────────────────────────────── */
 
 export async function searchMedia(query: string, page = 1): Promise<SeerrPagedResponse> {
-  return proxyFetch(`/api/v1/search?query=${encodeURIComponent(query)}&page=${page}&${langParam()}`);
+  return proxyFetch(`/api/v1/search?query=${encodeURIComponent(query)}&page=${page}`);
 }
 
 /* ── Discover (Seerr proxy) ──────────────────────────────────────── */
