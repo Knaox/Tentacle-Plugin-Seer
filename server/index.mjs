@@ -311,6 +311,57 @@ async function getGlobalStats(prisma) {
   };
 }
 
+// server/anime.ts
+var overridesCache = null;
+async function fetchMediaDetail(seerrUrl, apiKey, mediaType, tmdbId) {
+  try {
+    const res = await fetch(`${seerrUrl}/api/v1/${mediaType}/${tmdbId}`, {
+      headers: { "X-Api-Key": apiKey },
+      signal: AbortSignal.timeout(1e4)
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+function isAnimeFromKeywords(detail) {
+  if (!detail.keywords || !Array.isArray(detail.keywords)) return false;
+  return detail.keywords.some((k) => k.name?.toLowerCase().includes("anime"));
+}
+async function fetchAnimeOverrides(seerrUrl, apiKey) {
+  if (overridesCache && Date.now() < overridesCache.expires) {
+    return overridesCache.data;
+  }
+  try {
+    const res = await fetch(`${seerrUrl}/api/v1/settings/sonarr`, {
+      headers: { "X-Api-Key": apiKey },
+      signal: AbortSignal.timeout(1e4)
+    });
+    if (!res.ok) {
+      overridesCache = { data: null, expires: Date.now() + 6e5 };
+      return null;
+    }
+    const servers = await res.json();
+    const defaultServer = servers.find((s) => s.isDefault);
+    if (!defaultServer?.activeAnimeProfileId) {
+      overridesCache = { data: null, expires: Date.now() + 6e5 };
+      return null;
+    }
+    const data = {
+      profileId: defaultServer.activeAnimeProfileId,
+      rootFolder: defaultServer.activeAnimeDirectory,
+      tags: defaultServer.animeTags || [],
+      languageProfileId: defaultServer.activeAnimeLanguageProfileId
+    };
+    overridesCache = { data, expires: Date.now() + 6e5 };
+    return data;
+  } catch {
+    overridesCache = { data: null, expires: Date.now() + 6e5 };
+    return null;
+  }
+}
+
 // server/worker.ts
 var timer = null;
 var cycleCount = 0;
@@ -363,6 +414,34 @@ async function processNextRequest(prisma, config) {
     };
     if (request.mediaType === "tv" && request.seasons) {
       seerrBody.seasons = request.seasons.map(Number);
+    }
+    const detail = await fetchMediaDetail(config.seerrUrl, config.seerrApiKey, request.mediaType, request.tmdbId);
+    if (detail?.mediaInfo?.requests) {
+      for (const r of detail.mediaInfo.requests) {
+        if (r.status === 3) {
+          await fetch(`${config.seerrUrl}/api/v1/request/${r.id}`, {
+            method: "DELETE",
+            headers: { "X-Api-Key": config.seerrApiKey },
+            signal: AbortSignal.timeout(1e4)
+          }).catch(() => {
+          });
+          console.log(`[SeerWorker] Deleted failed Seerr request #${r.id} for "${request.title}" before retry`);
+        }
+      }
+    }
+    if (request.mediaType === "tv" && detail && isAnimeFromKeywords(detail)) {
+      const overrides = await fetchAnimeOverrides(config.seerrUrl, config.seerrApiKey);
+      if (overrides) {
+        Object.assign(seerrBody, {
+          profileId: overrides.profileId,
+          rootFolder: overrides.rootFolder,
+          tags: overrides.tags
+        });
+        if (overrides.languageProfileId) {
+          seerrBody.languageProfileId = overrides.languageProfileId;
+        }
+        console.log(`[SeerWorker] Anime detected for "${request.title}", applying overrides`);
+      }
     }
     const res = await fetch(`${config.seerrUrl}/api/v1/request`, {
       method: "POST",
@@ -446,6 +525,48 @@ async function syncStatuses(prisma, config) {
       const newStatus = mapSeerrStatus(data.status, data.media?.status);
       const oldStatus = request.status;
       if (newStatus !== oldStatus) {
+        if (newStatus === "failed" && request.seerrRequestId) {
+          const retryN = request.retryCount + 1;
+          if (retryN < request.maxRetries) {
+            await fetch(`${config.seerrUrl}/api/v1/request/${request.seerrRequestId}`, {
+              method: "DELETE",
+              headers: { "X-Api-Key": config.seerrApiKey },
+              signal: AbortSignal.timeout(1e4)
+            }).catch(() => {
+            });
+            await prisma.$executeRawUnsafe(
+              `UPDATE seer_requests SET status = 'retry_pending', seerr_request_id = NULL, seerr_media_id = NULL, seerr_media_status = NULL, retry_count = ? WHERE id = ?`,
+              retryN,
+              request.id
+            );
+            await prisma.notification.create({
+              data: {
+                jellyfinUserId: request.jellyfinUserId,
+                type: "request_status",
+                title: request.title,
+                body: `Nouvelle tentative automatique pour \xAB ${request.title} \xBB (${retryN}/${request.maxRetries})`,
+                refId: request.id
+              }
+            });
+            console.log(`[SeerWorker] Auto-retry "${request.title}" (attempt ${retryN}/${request.maxRetries})`);
+            continue;
+          }
+          await updateRequestStatus(prisma, request.id, "failed", {
+            seerrMediaStatus: data.media?.status,
+            retryCount: retryN
+          });
+          await prisma.notification.create({
+            data: {
+              jellyfinUserId: request.jellyfinUserId,
+              type: "request_status",
+              title: request.title,
+              body: `\xC9chec d\xE9finitif pour \xAB ${request.title} \xBB apr\xE8s ${request.maxRetries} tentatives`,
+              refId: request.id
+            }
+          });
+          console.log(`[SeerWorker] "${request.title}" PERMANENTLY FAILED after ${request.maxRetries} retries`);
+          continue;
+        }
         const extra = {
           seerrMediaStatus: data.media?.status
         };

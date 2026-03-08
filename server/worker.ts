@@ -10,6 +10,7 @@ import {
   getRequestById,
 } from "./db";
 import type { SeerRequest } from "./types";
+import { fetchMediaDetail, isAnimeFromKeywords, fetchAnimeOverrides } from "./anime";
 
 interface WorkerConfig {
   /** Seerr base URL */
@@ -98,6 +99,39 @@ async function processNextRequest(prisma: PrismaClient, config: WorkerConfig): P
     };
     if (request.mediaType === "tv" && request.seasons) {
       seerrBody.seasons = request.seasons.map(Number);
+    }
+
+    // Fetch media detail for anime detection + declined request cleanup
+    const detail = await fetchMediaDetail(config.seerrUrl, config.seerrApiKey, request.mediaType, request.tmdbId);
+
+    // Clean up declined requests on Seerr before sending a new one
+    if (detail?.mediaInfo?.requests) {
+      for (const r of detail.mediaInfo.requests) {
+        if (r.status === 3) {
+          await fetch(`${config.seerrUrl}/api/v1/request/${r.id}`, {
+            method: "DELETE",
+            headers: { "X-Api-Key": config.seerrApiKey },
+            signal: AbortSignal.timeout(10_000),
+          }).catch(() => {});
+          console.log(`[SeerWorker] Deleted failed Seerr request #${r.id} for "${request.title}" before retry`);
+        }
+      }
+    }
+
+    // Anime detection — apply Sonarr anime overrides for TV anime
+    if (request.mediaType === "tv" && detail && isAnimeFromKeywords(detail)) {
+      const overrides = await fetchAnimeOverrides(config.seerrUrl, config.seerrApiKey);
+      if (overrides) {
+        Object.assign(seerrBody, {
+          profileId: overrides.profileId,
+          rootFolder: overrides.rootFolder,
+          tags: overrides.tags,
+        });
+        if (overrides.languageProfileId) {
+          seerrBody.languageProfileId = overrides.languageProfileId;
+        }
+        console.log(`[SeerWorker] Anime detected for "${request.title}", applying overrides`);
+      }
     }
 
     // Send to Seerr
@@ -210,6 +244,56 @@ async function syncStatuses(prisma: PrismaClient, config: WorkerConfig): Promise
       const oldStatus = request.status;
 
       if (newStatus !== oldStatus) {
+        // Auto-retry declined requests instead of marking as permanently failed
+        if (newStatus === "failed" && request.seerrRequestId) {
+          const retryN = request.retryCount + 1;
+
+          if (retryN < request.maxRetries) {
+            // Delete declined request on Seerr
+            await fetch(`${config.seerrUrl}/api/v1/request/${request.seerrRequestId}`, {
+              method: "DELETE",
+              headers: { "X-Api-Key": config.seerrApiKey },
+              signal: AbortSignal.timeout(10_000),
+            }).catch(() => {});
+
+            // Reset for retry (clear seerr fields so it re-enters the queue)
+            await prisma.$executeRawUnsafe(
+              `UPDATE seer_requests SET status = 'retry_pending', seerr_request_id = NULL, seerr_media_id = NULL, seerr_media_status = NULL, retry_count = ? WHERE id = ?`,
+              retryN,
+              request.id,
+            );
+
+            await prisma.notification.create({
+              data: {
+                jellyfinUserId: request.jellyfinUserId,
+                type: "request_status",
+                title: request.title,
+                body: `Nouvelle tentative automatique pour « ${request.title} » (${retryN}/${request.maxRetries})`,
+                refId: request.id,
+              },
+            });
+            console.log(`[SeerWorker] Auto-retry "${request.title}" (attempt ${retryN}/${request.maxRetries})`);
+            continue;
+          }
+
+          // Max retries exceeded — permanent failure
+          await updateRequestStatus(prisma, request.id, "failed", {
+            seerrMediaStatus: data.media?.status,
+            retryCount: retryN,
+          } as any);
+          await prisma.notification.create({
+            data: {
+              jellyfinUserId: request.jellyfinUserId,
+              type: "request_status",
+              title: request.title,
+              body: `Échec définitif pour « ${request.title} » après ${request.maxRetries} tentatives`,
+              refId: request.id,
+            },
+          });
+          console.log(`[SeerWorker] "${request.title}" PERMANENTLY FAILED after ${request.maxRetries} retries`);
+          continue;
+        }
+
         const extra: Record<string, unknown> = {
           seerrMediaStatus: data.media?.status,
         };
