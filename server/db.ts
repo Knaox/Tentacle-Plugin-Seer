@@ -10,6 +10,20 @@ type Prisma = PrismaClient;
 /* ── Schema initialisation ─────────────────────────────────────────── */
 
 export async function ensureTables(prisma: Prisma): Promise<void> {
+  // Vérifier si la table existe déjà avec des données
+  let existingCount = 0;
+  try {
+    const rows = await prisma.$queryRawUnsafe<[{ cnt: bigint }]>(
+      `SELECT COUNT(*) as cnt FROM seer_requests`,
+    );
+    existingCount = Number(rows[0].cnt);
+    console.log(`[SeerDB] Table seer_requests exists with ${existingCount} rows — preserving data`);
+  } catch {
+    // Table n'existe pas encore, on la crée
+    console.log("[SeerDB] Creating seer_requests table (first install)");
+  }
+
+  // CREATE TABLE IF NOT EXISTS — ne touche JAMAIS aux données existantes
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS seer_requests (
       id               VARCHAR(36) NOT NULL PRIMARY KEY,
@@ -41,6 +55,35 @@ export async function ensureTables(prisma: Prisma): Promise<void> {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
 
+  // Table de file d'attente pour les opérations Sonarr/Radarr
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS seer_cleanup_queue (
+      id               VARCHAR(36) NOT NULL PRIMARY KEY,
+      action           VARCHAR(20) NOT NULL,
+      media_type       VARCHAR(10) NOT NULL,
+      tmdb_id          INT NOT NULL,
+      title            VARCHAR(500) NOT NULL,
+      seerr_request_id INT,
+      seerr_media_id   INT,
+      delete_files     TINYINT(1) NOT NULL DEFAULT 1,
+      retry_count      INT NOT NULL DEFAULT 0,
+      max_retries      INT NOT NULL DEFAULT 20,
+      last_error       TEXT,
+      status           VARCHAR(20) NOT NULL DEFAULT 'pending',
+      created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      next_retry_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_cleanup_status (status, next_retry_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  // Vérification post-création
+  const rows = await prisma.$queryRawUnsafe<[{ cnt: bigint }]>(
+    `SELECT COUNT(*) as cnt FROM seer_requests`,
+  );
+  const finalCount = Number(rows[0].cnt);
+  if (existingCount > 0 && finalCount === 0) {
+    console.error(`[SeerDB] CRITICAL: ${existingCount} rows were lost! This should never happen.`);
+  }
 }
 
 /* ── Helpers ────────────────────────────────────────────────────────── */
@@ -375,4 +418,82 @@ export async function getGlobalStats(prisma: Prisma) {
     topUsers: topUsers.map((r) => ({ username: r.username, count: Number(r.cnt) })),
     successRate: total > 0 ? Math.round((available / total) * 100) : 0,
   };
+}
+
+/* ── Cleanup Queue ─────────────────────────────────────────────────── */
+
+export interface CleanupJob {
+  id: string;
+  action: "delete" | "retry";
+  mediaType: "movie" | "tv";
+  tmdbId: number;
+  title: string;
+  seerrRequestId: number | null;
+  seerrMediaId: number | null;
+  deleteFiles: boolean;
+  retryCount: number;
+  maxRetries: number;
+  lastError: string | null;
+  status: string;
+  nextRetryAt: string;
+}
+
+export async function enqueueCleanup(
+  prisma: Prisma,
+  job: {
+    action: string;
+    mediaType: string;
+    tmdbId: number;
+    title: string;
+    seerrRequestId?: number | null;
+    seerrMediaId?: number | null;
+    deleteFiles?: boolean;
+  },
+): Promise<string> {
+  const id = uuid();
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO seer_cleanup_queue (id, action, media_type, tmdb_id, title, seerr_request_id, seerr_media_id, delete_files)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    id, job.action, job.mediaType, job.tmdbId, job.title,
+    job.seerrRequestId ?? null, job.seerrMediaId ?? null, job.deleteFiles ? 1 : 0,
+  );
+  return id;
+}
+
+export async function getPendingCleanups(prisma: Prisma): Promise<CleanupJob[]> {
+  const rows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
+    `SELECT * FROM seer_cleanup_queue
+     WHERE status = 'pending' AND next_retry_at <= NOW()
+     ORDER BY created_at ASC LIMIT 5`,
+  );
+  return rows.map((r) => ({
+    id: r.id as string,
+    action: r.action as "delete" | "retry",
+    mediaType: r.media_type as "movie" | "tv",
+    tmdbId: r.tmdb_id as number,
+    title: r.title as string,
+    seerrRequestId: (r.seerr_request_id as number) || null,
+    seerrMediaId: (r.seerr_media_id as number) || null,
+    deleteFiles: Boolean(r.delete_files),
+    retryCount: (r.retry_count as number) || 0,
+    maxRetries: (r.max_retries as number) || 20,
+    lastError: (r.last_error as string) || null,
+    status: r.status as string,
+    nextRetryAt: toIso(r.next_retry_at),
+  }));
+}
+
+export async function updateCleanupJob(
+  prisma: Prisma,
+  id: string,
+  status: string,
+  extra?: { lastError?: string; retryCount?: number; nextRetryAt?: Date },
+): Promise<void> {
+  const sets: string[] = ["status = ?"];
+  const params: unknown[] = [status];
+  if (extra?.lastError !== undefined) { sets.push("last_error = ?"); params.push(extra.lastError); }
+  if (extra?.retryCount !== undefined) { sets.push("retry_count = ?"); params.push(extra.retryCount); }
+  if (extra?.nextRetryAt !== undefined) { sets.push("next_retry_at = ?"); params.push(extra.nextRetryAt); }
+  params.push(id);
+  await prisma.$executeRawUnsafe(`UPDATE seer_cleanup_queue SET ${sets.join(", ")} WHERE id = ?`, ...params);
 }

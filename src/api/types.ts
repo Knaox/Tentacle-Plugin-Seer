@@ -3,7 +3,7 @@
 /* ------------------------------------------------------------------ */
 
 export type MediaType = "movie" | "tv";
-export type DiscoverMediaType = "movies" | "tv";
+export type DiscoverMediaType = "movies" | "tv" | "anime";
 export type SortOption = "popularity" | "vote_average" | "release_date" | "title";
 export type SortOrder = "asc" | "desc";
 export type TvStatus = 0 | 1 | 2 | 3 | 4 | 5;

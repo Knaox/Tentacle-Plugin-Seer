@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import type { SeerrSearchResult } from "../api/types";
 import { backdropUrl, posterUrl, mediaTitle, mediaYear } from "../utils/media-helpers";
+import { navigateToMedia } from "../utils/navigate-media";
 
 interface HeroCarouselProps {
   items: SeerrSearchResult[];
@@ -53,9 +54,16 @@ export function HeroCarousel({ items, onSelect, onRequest }: HeroCarouselProps) 
 
       {/* Content */}
       <div
-        className="relative flex h-full items-end gap-5 px-6 pb-8 sm:px-10"
+        className="relative flex h-full cursor-pointer items-end gap-5 px-6 pb-8 sm:px-10"
         style={{ animation: "fadeSlideUp 600ms ease forwards" }}
         key={index}
+        onClick={() => {
+          if (isAvailable) {
+            navigateToMedia(item.id, item.mediaType);
+          } else {
+            onSelect(item);
+          }
+        }}
       >
         {/* Poster */}
         {poster && (
@@ -96,9 +104,12 @@ export function HeroCarousel({ items, onSelect, onRequest }: HeroCarouselProps) 
           )}
           <div className="mt-1 flex items-center gap-3">
             {isAvailable && (
-              <span className="rounded-lg bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-emerald-400">
-                {t("heroAvailable")}
-              </span>
+              <button
+                onClick={(e) => { e.stopPropagation(); navigateToMedia(item.id, item.mediaType); }}
+                className="rounded-lg bg-emerald-500/20 px-5 py-2 text-sm font-semibold text-emerald-400 transition-colors hover:bg-emerald-500/30"
+              >
+                ▶ {t("heroAvailable")}
+              </button>
             )}
             {isRequested && (
               <span className="rounded-lg bg-amber-500/20 px-4 py-2 text-sm font-semibold text-amber-400">
@@ -107,14 +118,22 @@ export function HeroCarousel({ items, onSelect, onRequest }: HeroCarouselProps) 
             )}
             {!isAvailable && !isRequested && (
               <button
-                onClick={(e) => { e.stopPropagation(); onRequest(item); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  // Séries/Anime → ouvrir le modal pour choisir les saisons
+                  if (item.mediaType === "tv") {
+                    onSelect(item);
+                  } else {
+                    onRequest(item);
+                  }
+                }}
                 className="rounded-lg px-5 py-2 text-sm font-semibold text-white transition-all hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
                 style={{
                   background: "linear-gradient(135deg, #8B5CF6, #7C3AED)",
                   boxShadow: "0 8px 30px rgba(139,92,246,0.4)",
                 }}
               >
-                {t("request")}
+                {item.mediaType === "tv" ? t("viewSeasons") : t("request")}
               </button>
             )}
             <button

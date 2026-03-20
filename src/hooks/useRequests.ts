@@ -18,7 +18,7 @@ export function useMyRequests(
 export function useDeleteRequest() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => deleteRequest(id),
+    mutationFn: (args: { id: string; seasons?: number[] }) => deleteRequest(args.id, { seasons: args.seasons }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["seer-my-requests"] });
       qc.invalidateQueries({ queryKey: ["seer-queue-status"] });
@@ -29,7 +29,7 @@ export function useDeleteRequest() {
 export function useRetryRequest() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => retryRequest(id),
+    mutationFn: (args: { id: string; seasons?: number[] }) => retryRequest(args.id, { seasons: args.seasons }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["seer-my-requests"] });
       qc.invalidateQueries({ queryKey: ["seer-queue-status"] });

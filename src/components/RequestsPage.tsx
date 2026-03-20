@@ -34,15 +34,15 @@ export function RequestsPage() {
   const requests = data?.results ?? [];
   const totalPages = data?.pages ?? 1;
 
-  const handleDelete = (id: string) => {
-    deleteMutation.mutate(id, {
+  const handleDelete = (id: string, seasons?: number[]) => {
+    deleteMutation.mutate({ id, seasons }, {
       onSuccess: () => toast.show("success", t("requestDeleted")),
       onError: () => toast.show("error", t("requestDeleteError")),
     });
   };
 
-  const handleRetry = (id: string) => {
-    retryMutation.mutate(id, {
+  const handleRetry = (id: string, seasons?: number[]) => {
+    retryMutation.mutate({ id, seasons }, {
       onSuccess: () => toast.show("success", t("requestRetried")),
       onError: () => toast.show("error", t("requestRetryError")),
     });
@@ -146,8 +146,13 @@ export function RequestsPage() {
           action={statusFilter === "all" ? (
             <button
               onClick={() => {
-                const tentacle = (window as any).__tentacle;
-                tentacle?.navigate?.("/plugins/seer/discover");
+                // Mobile (React Native WebView) → naviguer vers le tab Discover
+                if ((window as any).ReactNativeWebView?.postMessage) {
+                  (window as any).ReactNativeWebView.postMessage(JSON.stringify({ type: "NAVIGATE", route: "/(tabs)/plugins" }));
+                } else {
+                  // Web (iframe) → naviguer vers la page plugin discover
+                  window.parent.postMessage({ type: "NAVIGATE", path: "/plugins/seer/discover" }, "*");
+                }
               }}
               className="rounded-lg bg-[#8b5cf6] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#7c3aed]"
             >

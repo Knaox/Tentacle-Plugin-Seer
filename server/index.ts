@@ -19,6 +19,7 @@ import {
   getQueueStatus,
   getUserStats,
   getGlobalStats,
+  enqueueCleanup,
 } from "./db";
 import { startWorker, stopWorker, isWorkerRunning } from "./worker";
 import type { CreateRequestBody } from "./types";
@@ -67,7 +68,7 @@ async function getWorkerConfig(ctx: PluginBackendContext) {
     seerrUrl: url.replace(/\/$/, ""),
     seerrApiKey: apiKey,
     interval: 60_000,
-    syncEvery: 5,
+    syncEvery: 2,
   };
 }
 
@@ -268,6 +269,7 @@ export default async function seerBackend(
   app.delete("/requests/:id", async (request, reply) => {
     const { id } = request.params as { id: string };
     const user = getUser(request);
+    const body = (request.body as { seasons?: number[] } | null) ?? {};
     const req = await getRequestById(prisma, id);
 
     if (!req) return reply.status(404).send({ message: "Request not found" });
@@ -275,20 +277,32 @@ export default async function seerBackend(
       return reply.status(403).send({ message: "Not your request" });
     }
 
-    // Try to delete on Seerr side if it was sent
-    if (req.seerrRequestId) {
-      try {
-        const config = await getWorkerConfig(ctx);
-        if (config) {
-          await fetch(`${config.seerrUrl}/api/v1/request/${req.seerrRequestId}`, {
-            method: "DELETE",
-            headers: { "X-Api-Key": config.seerrApiKey },
-            signal: AbortSignal.timeout(10_000),
-          });
-        }
-      } catch (err) {
-        console.warn(`[SeerBackend] Failed to delete Seerr request #${req.seerrRequestId}:`, err);
-      }
+    const config = await getWorkerConfig(ctx);
+
+    // Supprimer la request Seerr si elle a été envoyée
+    if (req.seerrRequestId && config) {
+      await fetch(`${config.seerrUrl}/api/v1/request/${req.seerrRequestId}`, {
+        method: "DELETE",
+        headers: { "X-Api-Key": config.seerrApiKey },
+        signal: AbortSignal.timeout(10_000),
+      }).catch((err: unknown) => console.warn(`[SeerBackend] Failed to delete Seerr request #${req.seerrRequestId}:`, err));
+    }
+
+    // Enqueue nettoyage Sonarr/Radarr (file d'attente avec retry)
+    const isSeasonSpecific = req.mediaType === "tv" && body.seasons && body.seasons.length > 0;
+    const isFullSeries = req.mediaType === "tv" && !isSeasonSpecific;
+
+    if (req.mediaType === "movie" || isFullSeries) {
+      await enqueueCleanup(prisma, {
+        action: "delete",
+        mediaType: req.mediaType,
+        tmdbId: req.tmdbId,
+        title: req.title,
+        seerrRequestId: req.seerrRequestId,
+        seerrMediaId: req.seerrMediaId,
+        deleteFiles: true,
+      });
+      console.log(`[SeerBackend] Enqueued cleanup for "${req.title}"`);
     }
 
     await deleteRequestById(prisma, id);
@@ -298,6 +312,7 @@ export default async function seerBackend(
   app.post("/requests/:id/retry", async (request, reply) => {
     const { id } = request.params as { id: string };
     const user = getUser(request);
+    const body = (request.body as { seasons?: number[] } | null) ?? {};
     const req = await getRequestById(prisma, id);
 
     if (!req) return reply.status(404).send({ message: "Request not found" });
@@ -305,26 +320,37 @@ export default async function seerBackend(
       return reply.status(403).send({ message: "Not your request" });
     }
 
-    // Delete from Seerr if it was sent
-    if (req.seerrRequestId) {
-      try {
-        const config = await getWorkerConfig(ctx);
-        if (config) {
-          await fetch(`${config.seerrUrl}/api/v1/request/${req.seerrRequestId}`, {
-            method: "DELETE",
-            headers: { "X-Api-Key": config.seerrApiKey },
-            signal: AbortSignal.timeout(10_000),
-          });
-        }
-      } catch {
-        // Best effort
-      }
+    const config = await getWorkerConfig(ctx);
+
+    // Supprimer la request Seerr
+    if (req.seerrRequestId && config) {
+      await fetch(`${config.seerrUrl}/api/v1/request/${req.seerrRequestId}`, {
+        method: "DELETE",
+        headers: { "X-Api-Key": config.seerrApiKey },
+        signal: AbortSignal.timeout(10_000),
+      }).catch(() => {});
     }
 
-    // Delete old request
+    // Enqueue nettoyage Sonarr/Radarr avant re-demande
+    const isFullSeries = req.mediaType === "tv" && (!body.seasons || body.seasons.length === 0);
+    if (req.mediaType === "movie" || isFullSeries) {
+      await enqueueCleanup(prisma, {
+        action: "retry",
+        mediaType: req.mediaType,
+        tmdbId: req.tmdbId,
+        title: req.title,
+        seerrRequestId: req.seerrRequestId,
+        seerrMediaId: req.seerrMediaId,
+        deleteFiles: true,
+      });
+      console.log(`[SeerBackend] Enqueued retry cleanup for "${req.title}"`);
+    }
+
+    // Supprimer l'ancienne request locale
     await deleteRequestById(prisma, id);
 
-    // Create new request with high priority
+    // Recréer avec priorité haute et les saisons demandées
+    const retrySeasons = body.seasons && body.seasons.length > 0 ? body.seasons : req.seasons;
     const newReq = await createRequest(prisma, {
       jellyfinUserId: req.jellyfinUserId,
       username: req.username,
@@ -335,11 +361,75 @@ export default async function seerBackend(
       backdropPath: req.backdropPath,
       overview: req.overview,
       year: req.year,
-      seasons: req.seasons,
+      seasons: retrySeasons,
       priority: 1,
     });
 
     return reply.status(201).send(newReq);
+  });
+
+  /* ── Watch Providers batch check (for library platform filter) ──── */
+
+  const providerCache = new Map<string, { providers: number[]; expires: number }>();
+
+  app.post("/check-providers", async (request, reply) => {
+    const body = request.body as { items: Array<{ tmdbId: number; mediaType: "movie" | "tv" }> };
+    if (!body.items || !Array.isArray(body.items)) {
+      return reply.status(400).send({ message: "items array required" });
+    }
+
+    const config = getPluginConfig(ctx);
+    const seerrUrl = (config.url as string)?.replace(/\/$/, "");
+    const apiKey = config.apiKey as string;
+    if (!seerrUrl || !apiKey) return reply.status(503).send({ message: "Seerr not configured" });
+
+    const result: Record<number, number[]> = {};
+    const toFetch: Array<{ tmdbId: number; mediaType: string }> = [];
+
+    // Check cache first
+    for (const item of body.items.slice(0, 200)) {
+      const key = `${item.mediaType}-${item.tmdbId}`;
+      const cached = providerCache.get(key);
+      if (cached && Date.now() < cached.expires) {
+        result[item.tmdbId] = cached.providers;
+      } else {
+        toFetch.push(item);
+      }
+    }
+
+    // Batch fetch from Seerr (5 concurrent)
+    const BATCH = 5;
+    for (let i = 0; i < toFetch.length; i += BATCH) {
+      const batch = toFetch.slice(i, i + BATCH);
+      const responses = await Promise.allSettled(
+        batch.map(async (item) => {
+          const res = await fetch(`${seerrUrl}/api/v1/${item.mediaType}/${item.tmdbId}`, {
+            headers: { "X-Api-Key": apiKey },
+            signal: AbortSignal.timeout(8_000),
+          });
+          if (!res.ok) return { tmdbId: item.tmdbId, mediaType: item.mediaType, providers: [] as number[] };
+          const data = (await res.json()) as {
+            watchProviders?: Array<{ iso_3166_1: string; flatrate?: Array<{ id: number; providerId?: number }> }>;
+          };
+          // Extract provider IDs for FR region (fallback US)
+          // Jellyseerr utilise "id", pas "providerId"
+          const region = data.watchProviders?.find((w) => w.iso_3166_1 === "FR")
+            ?? data.watchProviders?.find((w) => w.iso_3166_1 === "US");
+          const ids = region?.flatrate?.map((p) => p.id ?? p.providerId ?? 0).filter(Boolean) ?? [];
+          return { tmdbId: item.tmdbId, mediaType: item.mediaType, providers: ids };
+        }),
+      );
+
+      for (const r of responses) {
+        if (r.status === "fulfilled" && r.value) {
+          const { tmdbId, mediaType, providers } = r.value;
+          result[tmdbId] = providers;
+          providerCache.set(`${mediaType}-${tmdbId}`, { providers, expires: Date.now() + 7 * 86400_000 });
+        }
+      }
+    }
+
+    return result;
   });
 
   /* ── Queue status ────────────────────────────────────────────────── */

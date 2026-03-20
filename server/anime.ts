@@ -5,6 +5,7 @@
 export interface MediaDetail {
   keywords: { id: number; name: string }[];
   mediaInfo?: {
+    id?: number;
     requests?: { id: number; status: number }[];
   };
 }

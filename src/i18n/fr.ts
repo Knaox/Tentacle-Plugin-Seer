@@ -255,6 +255,15 @@ export default {
   markAllRead: "Tout marquer comme lu",
   noNotifications: "Aucune notification",
 
+  // Season action modal
+  seasonActionDeleteTitle: "Supprimer quelles saisons ?",
+  seasonActionRetryTitle: "Redemander quelles saisons ?",
+  seasonActionAll: "Toute la série",
+  seasonActionSelected: "Saisons sélectionnées",
+  seasonActionConfirm: "Confirmer",
+  seasonActionDeleteWarn: "La série sera supprimée de Sonarr",
+  seasonActionRetryWarn: "Les données Sonarr/Radarr seront supprimées",
+
   // Stats
   statsTitle: "Statistiques",
   statsTotalRequests: "Total demandes",

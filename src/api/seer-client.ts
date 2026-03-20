@@ -67,6 +67,9 @@ export async function discoverMedia(
   page: number,
   filters: DiscoverFilters,
 ): Promise<SeerrPagedResponse> {
+  // Anime utilise l'endpoint TV avec le keyword TMDB "anime" (210024)
+  const seerrType = mediaType === "anime" ? "tv" : mediaType;
+
   // Build params exactly like Seerr frontend does (key=value pairs)
   const params: Record<string, string> = {};
   params.page = String(page);
@@ -74,11 +77,9 @@ export async function discoverMedia(
   // Sort — Seerr sends the full "field.order" string as sortBy
   const sortField = (() => {
     if (filters.sortBy === "release_date") {
-      return mediaType === "movies" ? "primary_release_date" : "first_air_date";
+      return seerrType === "movies" ? "primary_release_date" : "first_air_date";
     }
-    if (filters.sortBy === "title") {
-      return "original_title";
-    }
+    if (filters.sortBy === "title") return "original_title";
     return filters.sortBy;
   })();
   params.sortBy = `${sortField}.${filters.sortOrder}`;
@@ -96,11 +97,11 @@ export async function discoverMedia(
 
   // Year range — date strings
   if (filters.yearFrom != null) {
-    const key = mediaType === "movies" ? "primaryReleaseDateGte" : "firstAirDateGte";
+    const key = seerrType === "movies" ? "primaryReleaseDateGte" : "firstAirDateGte";
     params[key] = `${filters.yearFrom}-01-01`;
   }
   if (filters.yearTo != null) {
-    const key = mediaType === "movies" ? "primaryReleaseDateLte" : "firstAirDateLte";
+    const key = seerrType === "movies" ? "primaryReleaseDateLte" : "firstAirDateLte";
     params[key] = `${filters.yearTo}-12-31`;
   }
 
@@ -110,23 +111,26 @@ export async function discoverMedia(
     params.voteCountGte = "50";
   }
 
-  // Original language — uses the `language` param (Seerr maps it to originalLanguage)
-  // Only sent when user explicitly picks a language filter
+  // Original language
   if (filters.originalLanguage) {
     params.language = filters.originalLanguage;
   }
 
   // TV status
-  if (mediaType === "tv" && filters.tvStatus.length > 0) {
+  if (seerrType === "tv" && filters.tvStatus.length > 0) {
     params.status = String(filters.tvStatus[0]);
   }
 
-  // Build query string like Seerr does: key=encodeURIComponent(value)
+  // Keyword anime
+  if (mediaType === "anime") {
+    params.keywords = "210024";
+  }
+
   const qs = Object.entries(params)
     .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
     .join("&");
 
-  const endpoint = mediaType === "movies" ? "movies" : "tv";
+  const endpoint = seerrType === "movies" ? "movies" : "tv";
   return proxyFetch(`/api/v1/discover/${endpoint}?${qs}`);
 }
 
@@ -175,12 +179,18 @@ export async function getMyRequests(
   return backendFetch(`/requests?${params}`);
 }
 
-export async function deleteRequest(id: string): Promise<void> {
-  await backendFetch(`/requests/${id}`, { method: "DELETE" });
+export async function deleteRequest(id: string, opts?: { seasons?: number[] }): Promise<void> {
+  await backendFetch(`/requests/${id}`, {
+    method: "DELETE",
+    body: opts?.seasons ? JSON.stringify({ seasons: opts.seasons }) : undefined,
+  });
 }
 
-export async function retryRequest(id: string): Promise<LocalRequest> {
-  return backendFetch(`/requests/${id}/retry`, { method: "POST" });
+export async function retryRequest(id: string, opts?: { seasons?: number[] }): Promise<LocalRequest> {
+  return backendFetch(`/requests/${id}/retry`, {
+    method: "POST",
+    body: opts?.seasons ? JSON.stringify({ seasons: opts.seasons }) : undefined,
+  });
 }
 
 /* ── Queue ────────────────────────────────────────────────────────── */

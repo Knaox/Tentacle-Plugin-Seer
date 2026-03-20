@@ -2,11 +2,12 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { LocalRequest, RequestStatus } from "../api/types";
 import { posterUrl } from "../utils/media-helpers";
+import { SeasonActionModal } from "./SeasonActionModal";
 
 interface RequestCardProps {
   request: LocalRequest;
-  onDelete?: (id: string) => void;
-  onRetry?: (id: string) => void;
+  onDelete?: (id: string, seasons?: number[]) => void;
+  onRetry?: (id: string, seasons?: number[]) => void;
   deleting?: boolean;
   retrying?: boolean;
 }
@@ -51,6 +52,9 @@ function getProgressIndex(status: RequestStatus): number {
 export function RequestCard({ request, onDelete, onRetry, deleting, retrying }: RequestCardProps) {
   const { t } = useTranslation("seer");
   const [confirmAction, setConfirmAction] = useState<"delete" | "retry" | null>(null);
+  const [seasonModal, setSeasonModal] = useState<"delete" | "retry" | null>(null);
+
+  const hasManySeasons = request.mediaType === "tv" && request.seasons && request.seasons.length > 1;
 
   const poster = posterUrl(request.posterPath);
   const typeLabel = request.mediaType === "movie" ? t("seer:typeMovie") : t("seer:typeSeries");
@@ -165,7 +169,7 @@ export function RequestCard({ request, onDelete, onRetry, deleting, retrying }: 
             <div className="flex items-center gap-1.5">
               {canRetry && onRetry && (
                 <button
-                  onClick={() => setConfirmAction("retry")}
+                  onClick={() => hasManySeasons ? setSeasonModal("retry") : setConfirmAction("retry")}
                   disabled={retrying}
                   className="rounded-md bg-purple-600/20 px-2.5 py-1 text-[10px] font-medium text-purple-400 transition-colors hover:bg-purple-600/30 disabled:opacity-50"
                 >
@@ -174,7 +178,7 @@ export function RequestCard({ request, onDelete, onRetry, deleting, retrying }: 
               )}
               {canDelete && onDelete && (
                 <button
-                  onClick={() => setConfirmAction("delete")}
+                  onClick={() => hasManySeasons ? setSeasonModal("delete") : setConfirmAction("delete")}
                   disabled={deleting}
                   className="rounded-md bg-red-600/20 px-2.5 py-1 text-[10px] font-medium text-red-400 transition-colors hover:bg-red-600/30 disabled:opacity-50"
                 >
@@ -185,6 +189,19 @@ export function RequestCard({ request, onDelete, onRetry, deleting, retrying }: 
           )}
         </div>
       </div>
+      {/* Modal sélection de saison pour séries multi-saisons */}
+      {seasonModal && (
+        <SeasonActionModal
+          request={request}
+          action={seasonModal}
+          onConfirm={(seasons) => {
+            if (seasonModal === "delete") onDelete?.(request.id, seasons);
+            else onRetry?.(request.id, seasons);
+            setSeasonModal(null);
+          }}
+          onClose={() => setSeasonModal(null)}
+        />
+      )}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SeerrSearchResult } from "../api/types";
 import { posterUrl, mediaTitle, mediaYear, mediaTypeKey } from "../utils/media-helpers";
+import { navigateToMedia } from "../utils/navigate-media";
 
 interface MediaCardProps {
   item: SeerrSearchResult;
@@ -61,7 +62,13 @@ export function MediaCard({ item, onRequest, onClick, requesting, style }: Media
         ...style,
         willChange: "transform",
       }}
-      onClick={() => onClick?.(item)}
+      onClick={() => {
+        if (mediaStatus === 5) {
+          navigateToMedia(item.id, item.mediaType);
+          return;
+        }
+        onClick?.(item);
+      }}
       onMouseEnter={(e) => {
         const el = e.currentTarget;
         el.style.transform = "scale(1.05) translateY(-6px)";

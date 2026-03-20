@@ -14,6 +14,7 @@ import { WatchProviders } from "./WatchProviders";
 import { SimilarMedia } from "./SimilarMedia";
 import { mediaTitle, mediaYear } from "../utils/media-helpers";
 import type { SeerrSearchResult, SeerrTvDetail, SeerrMovieDetail } from "../api/types";
+import { navigateToMedia } from "../utils/navigate-media";
 
 interface MediaDetailModalProps {
   item: SeerrSearchResult;
@@ -217,9 +218,12 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
           {/* Movie request action */}
           {currentItem.mediaType === "movie" && (
             detail?.mediaInfo?.status === 5 ? (
-              <div className="w-full rounded-lg bg-emerald-500/20 py-3 text-center text-sm font-semibold text-emerald-400">
-                {t("heroAvailable")}
-              </div>
+              <button
+                onClick={() => navigateToMedia(currentItem.id, "movie")}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500/20 py-3 text-sm font-semibold text-emerald-400 transition-colors hover:bg-emerald-500/30"
+              >
+                ▶ {t("heroAvailable")}
+              </button>
             ) : (detail?.mediaInfo?.status ?? 0) >= 2 ? (
               <div className="w-full rounded-lg bg-amber-500/20 py-3 text-center text-sm font-semibold text-amber-400">
                 {t("alreadyRequested")}
@@ -250,8 +254,18 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
             )
           )}
 
-          {/* TV season picker */}
-          {currentItem.mediaType === "tv" && !isLoading && detail && (detail as SeerrTvDetail).seasons && (
+          {/* TV — 100% disponible → bouton pour regarder dans Tentacle */}
+          {currentItem.mediaType === "tv" && detail?.mediaInfo?.status === 5 && (
+            <button
+              onClick={() => navigateToMedia(currentItem.id, "tv")}
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500/20 py-3 text-sm font-semibold text-emerald-400 transition-colors hover:bg-emerald-500/30"
+            >
+              ▶ {t("heroAvailable")}
+            </button>
+          )}
+
+          {/* TV season picker (pas affiché si 100% dispo) */}
+          {currentItem.mediaType === "tv" && detail?.mediaInfo?.status !== 5 && !isLoading && detail && (detail as SeerrTvDetail).seasons && (
             <SeriesSeasonPicker
               seasons={(detail as SeerrTvDetail).seasons ?? []}
               requestedSeasons={requestedSeasonMap}

@@ -177,9 +177,11 @@ export function DiscoverPage() {
             </svg>
           </button>
         )}
-        <kbd className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] text-white/30">
-          Ctrl+K
-        </kbd>
+        {typeof navigator !== "undefined" && navigator.maxTouchPoints === 0 && !/Mobi|Android/i.test(navigator.userAgent) && (
+          <kbd className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] text-white/30">
+            Ctrl+K
+          </kbd>
+        )}
       </div>
 
       {/* Tabs + Filter button row */}

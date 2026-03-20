@@ -12,6 +12,7 @@ export function MediaTabBar({ value, onChange }: MediaTabBarProps) {
   const TABS: { value: DiscoverMediaType; key: string }[] = [
     { value: "movies", key: "seer:filterMovies" },
     { value: "tv", key: "seer:filterSeries" },
+    { value: "anime", key: "seer:filterAnimes" },
   ];
 
   return (

@@ -8,6 +8,16 @@ import { fileURLToPath } from "url";
 
 // server/db.ts
 async function ensureTables(prisma) {
+  let existingCount = 0;
+  try {
+    const rows2 = await prisma.$queryRawUnsafe(
+      `SELECT COUNT(*) as cnt FROM seer_requests`
+    );
+    existingCount = Number(rows2[0].cnt);
+    console.log(`[SeerDB] Table seer_requests exists with ${existingCount} rows \u2014 preserving data`);
+  } catch {
+    console.log("[SeerDB] Creating seer_requests table (first install)");
+  }
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS seer_requests (
       id               VARCHAR(36) NOT NULL PRIMARY KEY,
@@ -38,6 +48,32 @@ async function ensureTables(prisma) {
       INDEX idx_seer_req_queue (status, priority DESC, created_at ASC)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS seer_cleanup_queue (
+      id               VARCHAR(36) NOT NULL PRIMARY KEY,
+      action           VARCHAR(20) NOT NULL,
+      media_type       VARCHAR(10) NOT NULL,
+      tmdb_id          INT NOT NULL,
+      title            VARCHAR(500) NOT NULL,
+      seerr_request_id INT,
+      seerr_media_id   INT,
+      delete_files     TINYINT(1) NOT NULL DEFAULT 1,
+      retry_count      INT NOT NULL DEFAULT 0,
+      max_retries      INT NOT NULL DEFAULT 20,
+      last_error       TEXT,
+      status           VARCHAR(20) NOT NULL DEFAULT 'pending',
+      created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      next_retry_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_cleanup_status (status, next_retry_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT COUNT(*) as cnt FROM seer_requests`
+  );
+  const finalCount = Number(rows[0].cnt);
+  if (existingCount > 0 && finalCount === 0) {
+    console.error(`[SeerDB] CRITICAL: ${existingCount} rows were lost! This should never happen.`);
+  }
 }
 function uuid() {
   return crypto.randomUUID();
@@ -310,6 +346,166 @@ async function getGlobalStats(prisma) {
     successRate: total > 0 ? Math.round(available / total * 100) : 0
   };
 }
+async function enqueueCleanup(prisma, job) {
+  const id = uuid();
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO seer_cleanup_queue (id, action, media_type, tmdb_id, title, seerr_request_id, seerr_media_id, delete_files)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    id,
+    job.action,
+    job.mediaType,
+    job.tmdbId,
+    job.title,
+    job.seerrRequestId ?? null,
+    job.seerrMediaId ?? null,
+    job.deleteFiles ? 1 : 0
+  );
+  return id;
+}
+async function getPendingCleanups(prisma) {
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT * FROM seer_cleanup_queue
+     WHERE status = 'pending' AND next_retry_at <= NOW()
+     ORDER BY created_at ASC LIMIT 5`
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    action: r.action,
+    mediaType: r.media_type,
+    tmdbId: r.tmdb_id,
+    title: r.title,
+    seerrRequestId: r.seerr_request_id || null,
+    seerrMediaId: r.seerr_media_id || null,
+    deleteFiles: Boolean(r.delete_files),
+    retryCount: r.retry_count || 0,
+    maxRetries: r.max_retries || 20,
+    lastError: r.last_error || null,
+    status: r.status,
+    nextRetryAt: toIso(r.next_retry_at)
+  }));
+}
+async function updateCleanupJob(prisma, id, status, extra) {
+  const sets = ["status = ?"];
+  const params = [status];
+  if (extra?.lastError !== void 0) {
+    sets.push("last_error = ?");
+    params.push(extra.lastError);
+  }
+  if (extra?.retryCount !== void 0) {
+    sets.push("retry_count = ?");
+    params.push(extra.retryCount);
+  }
+  if (extra?.nextRetryAt !== void 0) {
+    sets.push("next_retry_at = ?");
+    params.push(extra.nextRetryAt);
+  }
+  params.push(id);
+  await prisma.$executeRawUnsafe(`UPDATE seer_cleanup_queue SET ${sets.join(", ")} WHERE id = ?`, ...params);
+}
+
+// server/arr-service.ts
+var sonarrCache = null;
+var radarrCache = null;
+async function getArrServerConfig(seerrUrl, apiKey, type) {
+  const cache = type === "sonarr" ? sonarrCache : radarrCache;
+  if (cache && Date.now() < cache.expires) return cache.data;
+  try {
+    const res = await fetch(`${seerrUrl}/api/v1/settings/${type}`, {
+      headers: { "X-Api-Key": apiKey },
+      signal: AbortSignal.timeout(1e4)
+    });
+    if (!res.ok) {
+      setCacheForType(type, null);
+      return null;
+    }
+    const servers = await res.json();
+    const defaultServer = servers.find((s) => s.isDefault);
+    if (!defaultServer) {
+      setCacheForType(type, null);
+      return null;
+    }
+    const data = {
+      hostname: defaultServer.hostname,
+      port: defaultServer.port,
+      apiKey: defaultServer.apiKey,
+      useSsl: !!defaultServer.useSsl,
+      baseUrl: defaultServer.baseUrl || ""
+    };
+    setCacheForType(type, data);
+    return data;
+  } catch {
+    setCacheForType(type, null);
+    return null;
+  }
+}
+function setCacheForType(type, data) {
+  const entry = { data, expires: Date.now() + 6e5 };
+  if (type === "sonarr") sonarrCache = entry;
+  else radarrCache = entry;
+}
+function buildArrUrl(server) {
+  const protocol = server.useSsl ? "https" : "http";
+  const base = server.baseUrl ? `/${server.baseUrl.replace(/^\/|\/$/g, "")}` : "";
+  return `${protocol}://${server.hostname}:${server.port}${base}`;
+}
+async function getMediaExternalId(seerrUrl, apiKey, mediaType, tmdbId) {
+  try {
+    const res = await fetch(`${seerrUrl}/api/v1/${mediaType}/${tmdbId}`, {
+      headers: { "X-Api-Key": apiKey },
+      signal: AbortSignal.timeout(1e4)
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data.mediaInfo?.externalServiceId) return null;
+    return {
+      externalServiceId: data.mediaInfo.externalServiceId,
+      serviceId: data.mediaInfo.serviceId ?? 0
+    };
+  } catch {
+    return null;
+  }
+}
+async function deleteSonarrSeries(server, seriesId, deleteFiles = false) {
+  try {
+    const url = `${buildArrUrl(server)}/api/v3/series/${seriesId}?deleteFiles=${deleteFiles}`;
+    const res = await fetch(url, {
+      method: "DELETE",
+      headers: { "X-Api-Key": server.apiKey },
+      signal: AbortSignal.timeout(1e4)
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn(`[ArrService] Failed to delete Sonarr series #${seriesId}:`, err);
+    return false;
+  }
+}
+async function deleteRadarrMovie(server, movieId, deleteFiles = false) {
+  try {
+    const url = `${buildArrUrl(server)}/api/v3/movie/${movieId}?deleteFiles=${deleteFiles}`;
+    const res = await fetch(url, {
+      method: "DELETE",
+      headers: { "X-Api-Key": server.apiKey },
+      signal: AbortSignal.timeout(1e4)
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn(`[ArrService] Failed to delete Radarr movie #${movieId}:`, err);
+    return false;
+  }
+}
+async function deleteSeerrMedia(seerrUrl, apiKey, mediaId) {
+  try {
+    const res = await fetch(`${seerrUrl}/api/v1/media/${mediaId}`, {
+      method: "DELETE",
+      headers: { "X-Api-Key": apiKey },
+      signal: AbortSignal.timeout(1e4)
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn(`[ArrService] Failed to delete Seerr media #${mediaId}:`, err);
+    return false;
+  }
+}
 
 // server/anime.ts
 var overridesCache = null;
@@ -383,6 +579,16 @@ function startWorker(prisma, getConfig) {
         console.error("[SeerWorker] Error syncing statuses:", err);
       }
     }
+    try {
+      await retryFailedRequests(prisma);
+    } catch (err) {
+      console.error("[SeerWorker] Error retrying failed requests:", err);
+    }
+    try {
+      await processCleanupQueue(prisma, config);
+    } catch (err) {
+      console.error("[SeerWorker] Error processing cleanup queue:", err);
+    }
   }
   setTimeout(tick, 5e3);
   timer = setInterval(async () => {
@@ -418,16 +624,24 @@ async function processNextRequest(prisma, config) {
     const detail = await fetchMediaDetail(config.seerrUrl, config.seerrApiKey, request.mediaType, request.tmdbId);
     if (detail?.mediaInfo?.requests) {
       for (const r of detail.mediaInfo.requests) {
-        if (r.status === 3) {
+        if (r.status === 3 || r.status === 4) {
           await fetch(`${config.seerrUrl}/api/v1/request/${r.id}`, {
             method: "DELETE",
             headers: { "X-Api-Key": config.seerrApiKey },
             signal: AbortSignal.timeout(1e4)
           }).catch(() => {
           });
-          console.log(`[SeerWorker] Deleted failed Seerr request #${r.id} for "${request.title}" before retry`);
+          console.log(`[SeerWorker] Deleted failed Seerr request #${r.id} (status=${r.status}) for "${request.title}" before retry`);
         }
       }
+    }
+    if (detail?.mediaInfo?.id) {
+      await fetch(`${config.seerrUrl}/api/v1/media/${detail.mediaInfo.id}`, {
+        method: "DELETE",
+        headers: { "X-Api-Key": config.seerrApiKey },
+        signal: AbortSignal.timeout(1e4)
+      }).catch(() => {
+      });
     }
     if (request.mediaType === "tv" && detail && isAnimeFromKeywords(detail)) {
       const overrides = await fetchAnimeOverrides(config.seerrUrl, config.seerrApiKey);
@@ -522,7 +736,7 @@ async function syncStatuses(prisma, config) {
         continue;
       }
       const data = await res.json();
-      const newStatus = mapSeerrStatus(data.status, data.media?.status);
+      const newStatus = mapSeerrStatus(data.status, data.media?.status, data.media?.downloadStatus);
       const oldStatus = request.status;
       if (newStatus !== oldStatus) {
         if (newStatus === "failed" && request.seerrRequestId) {
@@ -534,6 +748,14 @@ async function syncStatuses(prisma, config) {
               signal: AbortSignal.timeout(1e4)
             }).catch(() => {
             });
+            if (request.seerrMediaId) {
+              await fetch(`${config.seerrUrl}/api/v1/media/${request.seerrMediaId}`, {
+                method: "DELETE",
+                headers: { "X-Api-Key": config.seerrApiKey },
+                signal: AbortSignal.timeout(1e4)
+              }).catch(() => {
+              });
+            }
             await prisma.$executeRawUnsafe(
               `UPDATE seer_requests SET status = 'retry_pending', seerr_request_id = NULL, seerr_media_id = NULL, seerr_media_status = NULL, retry_count = ? WHERE id = ?`,
               retryN,
@@ -593,9 +815,88 @@ async function syncStatuses(prisma, config) {
     }
   }
 }
-function mapSeerrStatus(requestStatus, mediaStatus) {
+async function retryFailedRequests(prisma) {
+  const failed = await prisma.$queryRawUnsafe(
+    `SELECT id, title, retry_count, max_retries FROM seer_requests
+     WHERE status = 'failed' AND retry_count < max_retries
+     LIMIT 3`
+  );
+  for (const req of failed) {
+    const newRetry = req.retry_count + 1;
+    await prisma.$executeRawUnsafe(
+      `UPDATE seer_requests SET status = 'retry_pending', seerr_request_id = NULL, seerr_media_id = NULL, seerr_media_status = NULL, retry_count = ? WHERE id = ?`,
+      newRetry,
+      req.id
+    );
+    console.log(`[SeerWorker] Auto-retry "${req.title}" (attempt ${newRetry}/${req.max_retries})`);
+  }
+}
+async function processCleanupQueue(prisma, config) {
+  const jobs = await getPendingCleanups(prisma);
+  if (jobs.length === 0) return;
+  for (const job of jobs) {
+    try {
+      let arrSuccess = false;
+      let seerrSuccess = false;
+      const ext = await getMediaExternalId(config.seerrUrl, config.seerrApiKey, job.mediaType, job.tmdbId);
+      if (ext) {
+        const arrType = job.mediaType === "movie" ? "radarr" : "sonarr";
+        const server = await getArrServerConfig(config.seerrUrl, config.seerrApiKey, arrType);
+        if (server) {
+          arrSuccess = job.mediaType === "movie" ? await deleteRadarrMovie(server, ext.externalServiceId, job.deleteFiles) : await deleteSonarrSeries(server, ext.externalServiceId, job.deleteFiles);
+        }
+      } else {
+        arrSuccess = true;
+      }
+      if (job.seerrMediaId) {
+        seerrSuccess = await deleteSeerrMedia(config.seerrUrl, config.seerrApiKey, job.seerrMediaId);
+      } else {
+        seerrSuccess = true;
+      }
+      if (job.seerrRequestId) {
+        await fetch(`${config.seerrUrl}/api/v1/request/${job.seerrRequestId}`, {
+          method: "DELETE",
+          headers: { "X-Api-Key": config.seerrApiKey },
+          signal: AbortSignal.timeout(1e4)
+        }).catch(() => {
+        });
+      }
+      if (arrSuccess && seerrSuccess) {
+        await updateCleanupJob(prisma, job.id, "completed");
+        console.log(`[SeerWorker] Cleanup completed for "${job.title}"`);
+      } else {
+        throw new Error(`arr=${arrSuccess} seerr=${seerrSuccess}`);
+      }
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Unknown error";
+      const newRetry = job.retryCount + 1;
+      if (newRetry >= job.maxRetries) {
+        await updateCleanupJob(prisma, job.id, "failed", { lastError: errMsg, retryCount: newRetry });
+        console.warn(`[SeerWorker] Cleanup FAILED permanently for "${job.title}" after ${newRetry} retries`);
+      } else {
+        const delaySec = Math.min(30 * Math.pow(2, newRetry - 1), 1800);
+        const nextRetry = new Date(Date.now() + delaySec * 1e3);
+        await updateCleanupJob(prisma, job.id, "pending", {
+          lastError: errMsg,
+          retryCount: newRetry,
+          nextRetryAt: nextRetry
+        });
+        console.log(`[SeerWorker] Cleanup retry ${newRetry}/${job.maxRetries} for "${job.title}" in ${delaySec}s`);
+      }
+    }
+  }
+}
+function mapSeerrStatus(requestStatus, mediaStatus, downloadStatus) {
   if (requestStatus === 3) return "failed";
-  if (requestStatus === 1) return "sent_to_seer";
+  if (requestStatus === 4) return "failed";
+  if (downloadStatus?.some((d) => d.status === "failed" || d.status === "warning")) {
+    return "failed";
+  }
+  if (requestStatus === 1) {
+    if (mediaStatus === 5) return "available";
+    if (mediaStatus === 3 || mediaStatus === 4) return "downloading";
+    return "sent_to_seer";
+  }
   if (mediaStatus === 5) return "available";
   if (mediaStatus === 3 || mediaStatus === 4) return "downloading";
   return "approved";
@@ -658,7 +959,7 @@ async function getWorkerConfig(ctx) {
     seerrUrl: url.replace(/\/$/, ""),
     seerrApiKey: apiKey,
     interval: 6e4,
-    syncEvery: 5
+    syncEvery: 2
   };
 }
 async function seerBackend(app, ctx) {
@@ -807,24 +1108,33 @@ async function seerBackend(app, ctx) {
   app.delete("/requests/:id", async (request, reply) => {
     const { id } = request.params;
     const user = getUser(request);
+    const body = request.body ?? {};
     const req = await getRequestById(prisma, id);
     if (!req) return reply.status(404).send({ message: "Request not found" });
     if (req.jellyfinUserId !== user.userId && !user.isAdmin) {
       return reply.status(403).send({ message: "Not your request" });
     }
-    if (req.seerrRequestId) {
-      try {
-        const config = await getWorkerConfig(ctx);
-        if (config) {
-          await fetch(`${config.seerrUrl}/api/v1/request/${req.seerrRequestId}`, {
-            method: "DELETE",
-            headers: { "X-Api-Key": config.seerrApiKey },
-            signal: AbortSignal.timeout(1e4)
-          });
-        }
-      } catch (err) {
-        console.warn(`[SeerBackend] Failed to delete Seerr request #${req.seerrRequestId}:`, err);
-      }
+    const config = await getWorkerConfig(ctx);
+    if (req.seerrRequestId && config) {
+      await fetch(`${config.seerrUrl}/api/v1/request/${req.seerrRequestId}`, {
+        method: "DELETE",
+        headers: { "X-Api-Key": config.seerrApiKey },
+        signal: AbortSignal.timeout(1e4)
+      }).catch((err) => console.warn(`[SeerBackend] Failed to delete Seerr request #${req.seerrRequestId}:`, err));
+    }
+    const isSeasonSpecific = req.mediaType === "tv" && body.seasons && body.seasons.length > 0;
+    const isFullSeries = req.mediaType === "tv" && !isSeasonSpecific;
+    if (req.mediaType === "movie" || isFullSeries) {
+      await enqueueCleanup(prisma, {
+        action: "delete",
+        mediaType: req.mediaType,
+        tmdbId: req.tmdbId,
+        title: req.title,
+        seerrRequestId: req.seerrRequestId,
+        seerrMediaId: req.seerrMediaId,
+        deleteFiles: true
+      });
+      console.log(`[SeerBackend] Enqueued cleanup for "${req.title}"`);
     }
     await deleteRequestById(prisma, id);
     return { success: true };
@@ -832,25 +1142,36 @@ async function seerBackend(app, ctx) {
   app.post("/requests/:id/retry", async (request, reply) => {
     const { id } = request.params;
     const user = getUser(request);
+    const body = request.body ?? {};
     const req = await getRequestById(prisma, id);
     if (!req) return reply.status(404).send({ message: "Request not found" });
     if (req.jellyfinUserId !== user.userId && !user.isAdmin) {
       return reply.status(403).send({ message: "Not your request" });
     }
-    if (req.seerrRequestId) {
-      try {
-        const config = await getWorkerConfig(ctx);
-        if (config) {
-          await fetch(`${config.seerrUrl}/api/v1/request/${req.seerrRequestId}`, {
-            method: "DELETE",
-            headers: { "X-Api-Key": config.seerrApiKey },
-            signal: AbortSignal.timeout(1e4)
-          });
-        }
-      } catch {
-      }
+    const config = await getWorkerConfig(ctx);
+    if (req.seerrRequestId && config) {
+      await fetch(`${config.seerrUrl}/api/v1/request/${req.seerrRequestId}`, {
+        method: "DELETE",
+        headers: { "X-Api-Key": config.seerrApiKey },
+        signal: AbortSignal.timeout(1e4)
+      }).catch(() => {
+      });
+    }
+    const isFullSeries = req.mediaType === "tv" && (!body.seasons || body.seasons.length === 0);
+    if (req.mediaType === "movie" || isFullSeries) {
+      await enqueueCleanup(prisma, {
+        action: "retry",
+        mediaType: req.mediaType,
+        tmdbId: req.tmdbId,
+        title: req.title,
+        seerrRequestId: req.seerrRequestId,
+        seerrMediaId: req.seerrMediaId,
+        deleteFiles: true
+      });
+      console.log(`[SeerBackend] Enqueued retry cleanup for "${req.title}"`);
     }
     await deleteRequestById(prisma, id);
+    const retrySeasons = body.seasons && body.seasons.length > 0 ? body.seasons : req.seasons;
     const newReq = await createRequest(prisma, {
       jellyfinUserId: req.jellyfinUserId,
       username: req.username,
@@ -861,10 +1182,57 @@ async function seerBackend(app, ctx) {
       backdropPath: req.backdropPath,
       overview: req.overview,
       year: req.year,
-      seasons: req.seasons,
+      seasons: retrySeasons,
       priority: 1
     });
     return reply.status(201).send(newReq);
+  });
+  const providerCache = /* @__PURE__ */ new Map();
+  app.post("/check-providers", async (request, reply) => {
+    const body = request.body;
+    if (!body.items || !Array.isArray(body.items)) {
+      return reply.status(400).send({ message: "items array required" });
+    }
+    const config = getPluginConfig(ctx);
+    const seerrUrl = config.url?.replace(/\/$/, "");
+    const apiKey = config.apiKey;
+    if (!seerrUrl || !apiKey) return reply.status(503).send({ message: "Seerr not configured" });
+    const result = {};
+    const toFetch = [];
+    for (const item of body.items.slice(0, 200)) {
+      const key = `${item.mediaType}-${item.tmdbId}`;
+      const cached = providerCache.get(key);
+      if (cached && Date.now() < cached.expires) {
+        result[item.tmdbId] = cached.providers;
+      } else {
+        toFetch.push(item);
+      }
+    }
+    const BATCH = 5;
+    for (let i = 0; i < toFetch.length; i += BATCH) {
+      const batch = toFetch.slice(i, i + BATCH);
+      const responses = await Promise.allSettled(
+        batch.map(async (item) => {
+          const res = await fetch(`${seerrUrl}/api/v1/${item.mediaType}/${item.tmdbId}`, {
+            headers: { "X-Api-Key": apiKey },
+            signal: AbortSignal.timeout(8e3)
+          });
+          if (!res.ok) return { tmdbId: item.tmdbId, mediaType: item.mediaType, providers: [] };
+          const data = await res.json();
+          const region = data.watchProviders?.find((w) => w.iso_3166_1 === "FR") ?? data.watchProviders?.find((w) => w.iso_3166_1 === "US");
+          const ids = region?.flatrate?.map((p) => p.id ?? p.providerId ?? 0).filter(Boolean) ?? [];
+          return { tmdbId: item.tmdbId, mediaType: item.mediaType, providers: ids };
+        })
+      );
+      for (const r of responses) {
+        if (r.status === "fulfilled" && r.value) {
+          const { tmdbId, mediaType, providers } = r.value;
+          result[tmdbId] = providers;
+          providerCache.set(`${mediaType}-${tmdbId}`, { providers, expires: Date.now() + 7 * 864e5 });
+        }
+      }
+    }
+    return result;
   });
   app.get("/queue/status", async (request) => {
     const user = getUser(request);

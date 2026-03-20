@@ -8,7 +8,16 @@ import {
   updateRequestStatus,
   getRequestsToSync,
   getRequestById,
+  getPendingCleanups,
+  updateCleanupJob,
 } from "./db";
+import {
+  getArrServerConfig,
+  getMediaExternalId,
+  deleteSonarrSeries,
+  deleteRadarrMovie,
+  deleteSeerrMedia,
+} from "./arr-service";
 import type { SeerRequest } from "./types";
 import { fetchMediaDetail, isAnimeFromKeywords, fetchAnimeOverrides } from "./anime";
 
@@ -52,6 +61,20 @@ export function startWorker(
       } catch (err) {
         console.error("[SeerWorker] Error syncing statuses:", err);
       }
+    }
+
+    // Auto-retry failed requests that haven't reached max retries
+    try {
+      await retryFailedRequests(prisma);
+    } catch (err) {
+      console.error("[SeerWorker] Error retrying failed requests:", err);
+    }
+
+    // Process cleanup queue (Sonarr/Radarr deletions with retry)
+    try {
+      await processCleanupQueue(prisma, config);
+    } catch (err) {
+      console.error("[SeerWorker] Error processing cleanup queue:", err);
     }
   }
 
@@ -104,18 +127,27 @@ async function processNextRequest(prisma: PrismaClient, config: WorkerConfig): P
     // Fetch media detail for anime detection + declined request cleanup
     const detail = await fetchMediaDetail(config.seerrUrl, config.seerrApiKey, request.mediaType, request.tmdbId);
 
-    // Clean up declined requests on Seerr before sending a new one
+    // Clean up declined/failed requests on Seerr before sending a new one
     if (detail?.mediaInfo?.requests) {
       for (const r of detail.mediaInfo.requests) {
-        if (r.status === 3) {
+        if (r.status === 3 || r.status === 4) {
           await fetch(`${config.seerrUrl}/api/v1/request/${r.id}`, {
             method: "DELETE",
             headers: { "X-Api-Key": config.seerrApiKey },
             signal: AbortSignal.timeout(10_000),
           }).catch(() => {});
-          console.log(`[SeerWorker] Deleted failed Seerr request #${r.id} for "${request.title}" before retry`);
+          console.log(`[SeerWorker] Deleted failed Seerr request #${r.id} (status=${r.status}) for "${request.title}" before retry`);
         }
       }
+    }
+
+    // Aussi supprimer le media Seerr si il existe (permet de repartir proprement)
+    if (detail?.mediaInfo?.id) {
+      await fetch(`${config.seerrUrl}/api/v1/media/${detail.mediaInfo.id}`, {
+        method: "DELETE",
+        headers: { "X-Api-Key": config.seerrApiKey },
+        signal: AbortSignal.timeout(10_000),
+      }).catch(() => {});
     }
 
     // Anime detection — apply Sonarr anime overrides for TV anime
@@ -237,10 +269,15 @@ async function syncStatuses(prisma: PrismaClient, config: WorkerConfig): Promise
       const data = (await res.json()) as {
         id: number;
         status: number;
-        media?: { id: number; status: number };
+        media?: {
+          id: number;
+          status: number;
+          downloadStatus?: Array<{ externalId: number; status: string }>;
+          downloadStatus4k?: Array<{ externalId: number; status: string }>;
+        };
       };
 
-      const newStatus = mapSeerrStatus(data.status, data.media?.status);
+      const newStatus = mapSeerrStatus(data.status, data.media?.status, data.media?.downloadStatus);
       const oldStatus = request.status;
 
       if (newStatus !== oldStatus) {
@@ -249,12 +286,21 @@ async function syncStatuses(prisma: PrismaClient, config: WorkerConfig): Promise
           const retryN = request.retryCount + 1;
 
           if (retryN < request.maxRetries) {
-            // Delete declined request on Seerr
+            // Delete declined/failed request on Seerr
             await fetch(`${config.seerrUrl}/api/v1/request/${request.seerrRequestId}`, {
               method: "DELETE",
               headers: { "X-Api-Key": config.seerrApiKey },
               signal: AbortSignal.timeout(10_000),
             }).catch(() => {});
+
+            // Supprimer aussi le media Seerr pour reset complet (permet re-demande)
+            if (request.seerrMediaId) {
+              await fetch(`${config.seerrUrl}/api/v1/media/${request.seerrMediaId}`, {
+                method: "DELETE",
+                headers: { "X-Api-Key": config.seerrApiKey },
+                signal: AbortSignal.timeout(10_000),
+              }).catch(() => {});
+            }
 
             // Reset for retry (clear seerr fields so it re-enters the queue)
             await prisma.$executeRawUnsafe(
@@ -326,12 +372,120 @@ async function syncStatuses(prisma: PrismaClient, config: WorkerConfig): Promise
   }
 }
 
-function mapSeerrStatus(requestStatus: number, mediaStatus?: number): SeerRequest["status"] {
-  // Seerr request status: 1=pending, 2=approved, 3=declined
+/* ── Auto-retry failed requests ─────────────────────────────────────── */
+
+async function retryFailedRequests(prisma: PrismaClient): Promise<void> {
+  // Trouver les demandes "failed" qui n'ont pas atteint le max de retries
+  const failed = await prisma.$queryRawUnsafe<Array<{ id: string; title: string; retry_count: number; max_retries: number }>>(
+    `SELECT id, title, retry_count, max_retries FROM seer_requests
+     WHERE status = 'failed' AND retry_count < max_retries
+     LIMIT 3`,
+  );
+
+  for (const req of failed) {
+    const newRetry = req.retry_count + 1;
+    // Remettre en queue avec seerr fields reset
+    await prisma.$executeRawUnsafe(
+      `UPDATE seer_requests SET status = 'retry_pending', seerr_request_id = NULL, seerr_media_id = NULL, seerr_media_status = NULL, retry_count = ? WHERE id = ?`,
+      newRetry,
+      req.id,
+    );
+    console.log(`[SeerWorker] Auto-retry "${req.title}" (attempt ${newRetry}/${req.max_retries})`);
+  }
+}
+
+/* ── Process cleanup queue (Sonarr/Radarr with retry) ──────────────── */
+
+async function processCleanupQueue(prisma: PrismaClient, config: WorkerConfig): Promise<void> {
+  const jobs = await getPendingCleanups(prisma);
+  if (jobs.length === 0) return;
+
+  for (const job of jobs) {
+    try {
+      let arrSuccess = false;
+      let seerrSuccess = false;
+
+      // 1. Supprimer de Sonarr/Radarr
+      const ext = await getMediaExternalId(config.seerrUrl, config.seerrApiKey, job.mediaType, job.tmdbId);
+      if (ext) {
+        const arrType = job.mediaType === "movie" ? "radarr" : "sonarr";
+        const server = await getArrServerConfig(config.seerrUrl, config.seerrApiKey, arrType);
+        if (server) {
+          arrSuccess = job.mediaType === "movie"
+            ? await deleteRadarrMovie(server, ext.externalServiceId, job.deleteFiles)
+            : await deleteSonarrSeries(server, ext.externalServiceId, job.deleteFiles);
+        }
+      } else {
+        // Pas d'ID externe = pas dans Sonarr/Radarr, considérer comme succès
+        arrSuccess = true;
+      }
+
+      // 2. Supprimer le média Seerr
+      if (job.seerrMediaId) {
+        seerrSuccess = await deleteSeerrMedia(config.seerrUrl, config.seerrApiKey, job.seerrMediaId);
+      } else {
+        seerrSuccess = true;
+      }
+
+      // 3. Supprimer la request Seerr
+      if (job.seerrRequestId) {
+        await fetch(`${config.seerrUrl}/api/v1/request/${job.seerrRequestId}`, {
+          method: "DELETE",
+          headers: { "X-Api-Key": config.seerrApiKey },
+          signal: AbortSignal.timeout(10_000),
+        }).catch(() => {});
+      }
+
+      if (arrSuccess && seerrSuccess) {
+        await updateCleanupJob(prisma, job.id, "completed");
+        console.log(`[SeerWorker] Cleanup completed for "${job.title}"`);
+      } else {
+        throw new Error(`arr=${arrSuccess} seerr=${seerrSuccess}`);
+      }
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Unknown error";
+      const newRetry = job.retryCount + 1;
+
+      if (newRetry >= job.maxRetries) {
+        await updateCleanupJob(prisma, job.id, "failed", { lastError: errMsg, retryCount: newRetry });
+        console.warn(`[SeerWorker] Cleanup FAILED permanently for "${job.title}" after ${newRetry} retries`);
+      } else {
+        // Retry avec backoff exponentiel (30s, 1m, 2m, 4m, 8m, max 30m)
+        const delaySec = Math.min(30 * Math.pow(2, newRetry - 1), 1800);
+        const nextRetry = new Date(Date.now() + delaySec * 1000);
+        await updateCleanupJob(prisma, job.id, "pending", {
+          lastError: errMsg,
+          retryCount: newRetry,
+          nextRetryAt: nextRetry,
+        });
+        console.log(`[SeerWorker] Cleanup retry ${newRetry}/${job.maxRetries} for "${job.title}" in ${delaySec}s`);
+      }
+    }
+  }
+}
+
+function mapSeerrStatus(
+  requestStatus: number,
+  mediaStatus?: number,
+  downloadStatus?: Array<{ status: string }>,
+): SeerRequest["status"] {
+  // Seerr request status: 1=pending, 2=approved, 3=declined, 4=failed
   // Seerr media status: 1=unknown, 2=pending, 3=processing, 4=partially available, 5=available
   if (requestStatus === 3) return "failed"; // declined
-  if (requestStatus === 1) return "sent_to_seer"; // pending — not yet approved
-  // From here: requestStatus === 2 (approved)
+  if (requestStatus === 4) return "failed"; // failed (Jellyseerr internal failure)
+
+  // Vérifier les échecs de téléchargement quel que soit le requestStatus
+  if (downloadStatus?.some((d) => d.status === "failed" || d.status === "warning")) {
+    return "failed";
+  }
+
+  if (requestStatus === 1) {
+    if (mediaStatus === 5) return "available";
+    if (mediaStatus === 3 || mediaStatus === 4) return "downloading";
+    return "sent_to_seer";
+  }
+
+  // requestStatus === 2 (approved)
   if (mediaStatus === 5) return "available";
   if (mediaStatus === 3 || mediaStatus === 4) return "downloading";
   return "approved";
