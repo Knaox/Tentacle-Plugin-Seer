@@ -5,6 +5,8 @@
 import type { FastifyInstance } from "fastify";
 import type { SeerProfile } from "./types";
 
+const TIMEOUT = 30_000;
+
 export function registerProfileRoutes(
   app: FastifyInstance,
   getPluginConfig: () => Record<string, unknown>,
@@ -22,8 +24,11 @@ export function registerProfileRoutes(
     if (!seerr) return reply.status(503).send({ message: "Seerr not configured" });
 
     try {
-      const radarr = await fetchArrOptions(seerr, "radarr");
-      const sonarr = await fetchArrOptions(seerr, "sonarr");
+      // Fetch Radarr + Sonarr en parallèle
+      const [radarr, sonarr] = await Promise.all([
+        fetchArrOptions(seerr, "radarr"),
+        fetchArrOptions(seerr, "sonarr"),
+      ]);
       console.log(`[SeerProfiles] Found ${radarr.length} Radarr, ${sonarr.length} Sonarr`);
       return { radarr, sonarr };
     } catch (err) {
@@ -52,54 +57,55 @@ async function fetchArrOptions(
 
   let servers: Array<{ id: number; name: string; isDefault: boolean; is4k?: boolean }> = [];
 
-  const serviceRes = await fetch(`${seerr.seerrUrl}/api/v1/service/${type}`, {
-    headers, signal: AbortSignal.timeout(10_000),
-  });
-
-  if (serviceRes.ok) {
-    servers = await serviceRes.json() as typeof servers;
-    console.log(`[SeerProfiles] /service/${type} returned ${servers.length} server(s)`);
-  } else {
-    console.log(`[SeerProfiles] /service/${type} failed (${serviceRes.status}), trying /settings/${type}`);
-    const settingsRes = await fetch(`${seerr.seerrUrl}/api/v1/settings/${type}`, {
-      headers, signal: AbortSignal.timeout(10_000),
+  try {
+    const serviceRes = await fetch(`${seerr.seerrUrl}/api/v1/service/${type}`, {
+      headers, signal: AbortSignal.timeout(TIMEOUT),
     });
-    if (settingsRes.ok) {
-      const settings = await settingsRes.json() as Array<Record<string, unknown>>;
-      servers = settings.map((s, i) => ({
-        id: (s.id as number) ?? i,
-        name: (s.name as string) ?? `${type} ${i}`,
-        isDefault: (s.isDefault as boolean) ?? i === 0,
-        is4k: (s.is4k as boolean) ?? false,
-      }));
+
+    if (serviceRes.ok) {
+      servers = await serviceRes.json() as typeof servers;
+    } else {
+      const settingsRes = await fetch(`${seerr.seerrUrl}/api/v1/settings/${type}`, {
+        headers, signal: AbortSignal.timeout(TIMEOUT),
+      });
+      if (settingsRes.ok) {
+        const settings = await settingsRes.json() as Array<Record<string, unknown>>;
+        servers = settings.map((s, i) => ({
+          id: (s.id as number) ?? i,
+          name: (s.name as string) ?? `${type} ${i}`,
+          isDefault: (s.isDefault as boolean) ?? i === 0,
+          is4k: (s.is4k as boolean) ?? false,
+        }));
+      }
     }
+  } catch (err) {
+    console.warn(`[SeerProfiles] Failed to list ${type} servers:`, err instanceof Error ? err.message : err);
+    return [];
   }
 
   const nonFourK = servers.filter((s) => !s.is4k);
-  const result: ArrServer[] = [];
 
-  for (const s of nonFourK) {
-    const detailRes = await fetch(`${seerr.seerrUrl}/api/v1/service/${type}/${s.id}`, {
-      headers, signal: AbortSignal.timeout(10_000),
-    });
+  // Fetch détails de tous les serveurs en parallèle
+  const results = await Promise.allSettled(
+    nonFourK.map(async (s) => {
+      const detailRes = await fetch(`${seerr.seerrUrl}/api/v1/service/${type}/${s.id}`, {
+        headers, signal: AbortSignal.timeout(TIMEOUT),
+      });
+      if (!detailRes.ok) return { ...s, profiles: [], rootFolders: [], tags: [] } as ArrServer;
 
-    if (detailRes.ok) {
       const detail = await detailRes.json() as Record<string, unknown>;
       const profiles = (detail.profiles as Array<{ id: number; name: string }>) ?? [];
       const rootFolders = (detail.rootFolders as Array<{ id: number; path: string }>) ?? [];
       const tags = (detail.tags as Array<{ id: number; label: string }>) ?? [];
 
-      result.push({
-        id: s.id, name: s.name, isDefault: s.isDefault,
-        profiles, tags,
-        rootFolders: rootFolders.map((f) => ({ id: f.id, path: f.path })),
-      });
-
       console.log(`[SeerProfiles] ${type}/${s.id} "${s.name}": ${profiles.length} profiles, ${tags.length} tags`);
-    } else {
-      result.push({ id: s.id, name: s.name, isDefault: s.isDefault, profiles: [], rootFolders: [], tags: [] });
-    }
-  }
+      return { id: s.id, name: s.name, isDefault: s.isDefault, profiles, tags,
+        rootFolders: rootFolders.map((f) => ({ id: f.id, path: f.path })),
+      } as ArrServer;
+    }),
+  );
 
-  return result;
+  return results
+    .filter((r): r is PromiseFulfilledResult<ArrServer> => r.status === "fulfilled")
+    .map((r) => r.value);
 }

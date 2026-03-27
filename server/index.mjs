@@ -1313,6 +1313,7 @@ function registerBulkRoutes(app, prisma, getWorkerConfig2) {
 }
 
 // server/routes-profiles.ts
+var TIMEOUT = 3e4;
 function registerProfileRoutes(app, getPluginConfig2, getSeerrConfig) {
   app.get("/profiles", async () => {
     const config = getPluginConfig2();
@@ -1323,8 +1324,10 @@ function registerProfileRoutes(app, getPluginConfig2, getSeerrConfig) {
     const seerr = getSeerrConfig();
     if (!seerr) return reply.status(503).send({ message: "Seerr not configured" });
     try {
-      const radarr = await fetchArrOptions(seerr, "radarr");
-      const sonarr = await fetchArrOptions(seerr, "sonarr");
+      const [radarr, sonarr] = await Promise.all([
+        fetchArrOptions(seerr, "radarr"),
+        fetchArrOptions(seerr, "sonarr")
+      ]);
       console.log(`[SeerProfiles] Found ${radarr.length} Radarr, ${sonarr.length} Sonarr`);
       return { radarr, sonarr };
     } catch (err) {
@@ -1338,55 +1341,56 @@ function registerProfileRoutes(app, getPluginConfig2, getSeerrConfig) {
 async function fetchArrOptions(seerr, type) {
   const headers = { "X-Api-Key": seerr.seerrApiKey };
   let servers = [];
-  const serviceRes = await fetch(`${seerr.seerrUrl}/api/v1/service/${type}`, {
-    headers,
-    signal: AbortSignal.timeout(1e4)
-  });
-  if (serviceRes.ok) {
-    servers = await serviceRes.json();
-    console.log(`[SeerProfiles] /service/${type} returned ${servers.length} server(s)`);
-  } else {
-    console.log(`[SeerProfiles] /service/${type} failed (${serviceRes.status}), trying /settings/${type}`);
-    const settingsRes = await fetch(`${seerr.seerrUrl}/api/v1/settings/${type}`, {
+  try {
+    const serviceRes = await fetch(`${seerr.seerrUrl}/api/v1/service/${type}`, {
       headers,
-      signal: AbortSignal.timeout(1e4)
+      signal: AbortSignal.timeout(TIMEOUT)
     });
-    if (settingsRes.ok) {
-      const settings = await settingsRes.json();
-      servers = settings.map((s, i) => ({
-        id: s.id ?? i,
-        name: s.name ?? `${type} ${i}`,
-        isDefault: s.isDefault ?? i === 0,
-        is4k: s.is4k ?? false
-      }));
+    if (serviceRes.ok) {
+      servers = await serviceRes.json();
+    } else {
+      const settingsRes = await fetch(`${seerr.seerrUrl}/api/v1/settings/${type}`, {
+        headers,
+        signal: AbortSignal.timeout(TIMEOUT)
+      });
+      if (settingsRes.ok) {
+        const settings = await settingsRes.json();
+        servers = settings.map((s, i) => ({
+          id: s.id ?? i,
+          name: s.name ?? `${type} ${i}`,
+          isDefault: s.isDefault ?? i === 0,
+          is4k: s.is4k ?? false
+        }));
+      }
     }
+  } catch (err) {
+    console.warn(`[SeerProfiles] Failed to list ${type} servers:`, err instanceof Error ? err.message : err);
+    return [];
   }
   const nonFourK = servers.filter((s) => !s.is4k);
-  const result = [];
-  for (const s of nonFourK) {
-    const detailRes = await fetch(`${seerr.seerrUrl}/api/v1/service/${type}/${s.id}`, {
-      headers,
-      signal: AbortSignal.timeout(1e4)
-    });
-    if (detailRes.ok) {
+  const results = await Promise.allSettled(
+    nonFourK.map(async (s) => {
+      const detailRes = await fetch(`${seerr.seerrUrl}/api/v1/service/${type}/${s.id}`, {
+        headers,
+        signal: AbortSignal.timeout(TIMEOUT)
+      });
+      if (!detailRes.ok) return { ...s, profiles: [], rootFolders: [], tags: [] };
       const detail = await detailRes.json();
       const profiles = detail.profiles ?? [];
       const rootFolders = detail.rootFolders ?? [];
       const tags = detail.tags ?? [];
-      result.push({
+      console.log(`[SeerProfiles] ${type}/${s.id} "${s.name}": ${profiles.length} profiles, ${tags.length} tags`);
+      return {
         id: s.id,
         name: s.name,
         isDefault: s.isDefault,
         profiles,
         tags,
         rootFolders: rootFolders.map((f) => ({ id: f.id, path: f.path }))
-      });
-      console.log(`[SeerProfiles] ${type}/${s.id} "${s.name}": ${profiles.length} profiles, ${tags.length} tags`);
-    } else {
-      result.push({ id: s.id, name: s.name, isDefault: s.isDefault, profiles: [], rootFolders: [], tags: [] });
-    }
-  }
-  return result;
+      };
+    })
+  );
+  return results.filter((r) => r.status === "fulfilled").map((r) => r.value);
 }
 
 // server/index.ts
