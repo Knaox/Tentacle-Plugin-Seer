@@ -6,6 +6,7 @@ import { useMediaSimilar } from "../hooks/useMediaSimilar";
 import { useWatchProviders } from "../hooks/useWatchProviders";
 import { useRequestMedia } from "../hooks/useRequestMedia";
 import { useToast } from "../hooks/useToast";
+import { ProfileSelector } from "./ProfileSelector";
 import { ModalDetailHeader } from "./ModalDetailHeader";
 import { SeriesSeasonPicker } from "./SeriesSeasonPicker";
 import { CastRow } from "./CastRow";
@@ -21,6 +22,10 @@ interface MediaDetailModalProps {
   onClose: () => void;
   onRequest: (item: SeerrSearchResult) => void;
   requesting: boolean;
+  /** Saisons déjà demandées dans Tentacle (verrouillées, non décochables) */
+  lockedSeasons?: number[];
+  /** Profil par défaut pré-sélectionné */
+  defaultProfileId?: string | null;
 }
 
 function formatCurrency(amount: number): string {
@@ -29,7 +34,7 @@ function formatCurrency(amount: number): string {
   return `$${amount}`;
 }
 
-export function MediaDetailModal({ item, onClose, onRequest, requesting }: MediaDetailModalProps) {
+export function MediaDetailModal({ item, onClose, onRequest, requesting, lockedSeasons, defaultProfileId }: MediaDetailModalProps) {
   const { t } = useTranslation("seer");
   const toast = useToast();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -39,6 +44,7 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
   const [isClosing, setIsClosing] = useState(false);
   const [requestSuccess, setRequestSuccess] = useState(false);
   const [synopsisExpanded, setSynopsisExpanded] = useState(false);
+  const [movieProfileId, setMovieProfileId] = useState<string | null>(null);
 
   const mediaType = currentItem.mediaType === "movie" ? "movie" as const : "tv" as const;
   const { data: detail, isLoading } = useMediaDetail(mediaType, currentItem.id);
@@ -51,6 +57,18 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
   const year = mediaYear(currentItem);
   const tvDetail = detail as SeerrTvDetail | undefined;
   const movieDetail = detail as SeerrMovieDetail | undefined;
+
+  // Détection anime : genre Animation (16) + origine JP
+  const isAnime = useMemo(() => {
+    const genres = detail?.genres?.map((g) => g.id) ?? currentItem.genreIds ?? [];
+    const origins = (currentItem as any).originCountry ?? [];
+    const hasAnimation = genres.includes(16);
+    const isJapanese = origins.includes("JP") || origins.includes("KR") || detail?.originalLanguage === "ja";
+    // Keywords-based detection via the detail object
+    const keywords = ((detail as any)?.keywords as Array<{ id: number }>) ?? [];
+    const hasAnimeKeyword = keywords.some((k) => k.id === 210024);
+    return hasAnimeKeyword || (hasAnimation && isJapanese);
+  }, [detail, currentItem]);
 
   // Enriched fields from detail
   const productionStatus = detail?.status;
@@ -94,11 +112,11 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
     return map;
   }, [tvDetail?.mediaInfo?.seasons]);
 
-  const handleSeasonRequest = (seasons: number[]) => {
+  const handleSeasonRequest = (seasons: number[], profileId?: string | null) => {
     requestMedia.mutate({
       mediaType: "tv", tmdbId: currentItem.id, title,
       posterPath: currentItem.posterPath, backdropPath: currentItem.backdropPath,
-      overview: currentItem.overview, year, seasons,
+      overview: currentItem.overview, year, seasons, profileId,
     }, {
       onSuccess: () => { toast.show("success", t("requestAdded")); handleClose(); },
       onError: () => toast.show("error", t("requestError")),
@@ -107,9 +125,18 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
 
   const handleMovieRequest = () => {
     setRequestSuccess(false);
-    onRequest(currentItem);
-    setRequestSuccess(true);
-    setTimeout(() => handleClose(), 600);
+    requestMedia.mutate({
+      mediaType: "movie", tmdbId: currentItem.id, title,
+      posterPath: currentItem.posterPath, backdropPath: currentItem.backdropPath,
+      overview: currentItem.overview, year, profileId: movieProfileId,
+    }, {
+      onSuccess: () => {
+        setRequestSuccess(true);
+        toast.show("success", t("requestAdded"));
+        setTimeout(() => handleClose(), 600);
+      },
+      onError: () => toast.show("error", t("requestError")),
+    });
   };
 
   const handleSelectSimilar = (newItem: SeerrSearchResult) => {
@@ -229,12 +256,14 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
                 {t("alreadyRequested")}
               </div>
             ) : (
+              <div>
+              <ProfileSelector mediaType="movie" isAnime={isAnime} selectedId={movieProfileId} onChange={setMovieProfileId} />
               <button
                 onClick={handleMovieRequest}
-                disabled={requesting || requestSuccess}
+                disabled={requestMedia.isPending || requestSuccess}
                 className="flex w-full items-center justify-center gap-2 rounded-lg bg-purple-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-purple-500/50"
               >
-                {requesting ? (
+                {requestMedia.isPending ? (
                   <>
                     <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -251,6 +280,7 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
                   </>
                 ) : t("seer:requestMovie")}
               </button>
+              </div>
             )
           )}
 
@@ -271,6 +301,9 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting }: Media
               requestedSeasons={requestedSeasonMap}
               onRequest={handleSeasonRequest}
               requesting={requestMedia.isPending}
+              isAnime={isAnime}
+              lockedSeasons={lockedSeasons}
+              defaultProfileId={defaultProfileId}
             />
           )}
 

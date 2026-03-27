@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getMyRequests, deleteRequest, retryRequest, getQueueStatus } from "../api/seer-client";
+import { getMyRequests, deleteRequest, retryRequest, retryDeleteRequest, getQueueStatus, bulkDeleteRequests, bulkRetryRequests } from "../api/seer-client";
 
 export function useMyRequests(
   page = 1,
@@ -29,7 +29,41 @@ export function useDeleteRequest() {
 export function useRetryRequest() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (args: { id: string; seasons?: number[] }) => retryRequest(args.id, { seasons: args.seasons }),
+    mutationFn: (args: { id: string; seasons?: number[]; profileId?: string | null }) =>
+      retryRequest(args.id, { seasons: args.seasons, profileId: args.profileId }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["seer-my-requests"] });
+      qc.invalidateQueries({ queryKey: ["seer-queue-status"] });
+    },
+  });
+}
+
+export function useRetryDeleteRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => retryDeleteRequest(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["seer-my-requests"] });
+      qc.invalidateQueries({ queryKey: ["seer-queue-status"] });
+    },
+  });
+}
+
+export function useBulkDeleteRequests() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) => bulkDeleteRequests(ids),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["seer-my-requests"] });
+      qc.invalidateQueries({ queryKey: ["seer-queue-status"] });
+    },
+  });
+}
+
+export function useBulkRetryRequests() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { ids: string[]; profileId?: string | null }) => bulkRetryRequests(args.ids, args.profileId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["seer-my-requests"] });
       qc.invalidateQueries({ queryKey: ["seer-queue-status"] });

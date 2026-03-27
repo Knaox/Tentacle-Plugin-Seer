@@ -45,6 +45,21 @@ export default {
   requestDeleteError: "Failed to delete request",
   requestRetried: "Request resubmitted",
   requestRetryError: "Failed to retry request",
+  requestDeleting: "Deleting...",
+  deleteFailedRetry: "Retry deletion",
+  retryDelete: "Retry deletion",
+  forceDelete: "Force deletion",
+
+  // Bulk actions
+  bulkSelect: "Select",
+  bulkCancel: "Cancel",
+  bulkDelete: "Delete ({{count}})",
+  bulkRetry: "Retry ({{count}})",
+  bulkDeleteSuccess_one: "{{count}} request being deleted",
+  bulkDeleteSuccess_other: "{{count}} requests being deleted",
+  bulkRetrySuccess_one: "{{count}} request resubmitted",
+  bulkRetrySuccess_other: "{{count}} requests resubmitted",
+  bulkError: "Error during operation",
 
   // Filters
   filterAll: "All",
@@ -55,6 +70,7 @@ export default {
   filterDownloading: "Downloading",
   filterAvailable: "Available",
   filterFailed: "Failed",
+  filterDeleting: "Deleting",
   filterAllType: "All",
   filterMovies: "Movies",
   filterSeries: "Series",
@@ -148,6 +164,7 @@ export default {
   noRequestsAll: "You have no requests yet",
   noRequestsFiltered: "No requests with this status",
   noRequestsHint: "Discover content and request your favorite movies and series",
+  addSeasons: "Seasons",
   seasonsLabel: "S{{seasons}}",
   retry: "Retry",
   delete: "Delete",
@@ -178,6 +195,8 @@ export default {
   statusAvailable: "Available",
   statusRetryPending: "Retrying",
   statusFailed: "Failed",
+  statusDeleting: "Deleting",
+  statusDeleteFailed: "Delete Failed",
   statusCancelled: "Cancelled",
   status_queued: "Pending",
   status_processing: "Processing",
@@ -187,6 +206,8 @@ export default {
   status_available: "Available",
   status_retry_pending: "Retrying",
   status_failed: "Failed",
+  status_deleting: "Deleting",
+  status_delete_failed: "Delete Failed",
 
   // Seasons
   seasonsTitle: "Seasons",
@@ -198,6 +219,7 @@ export default {
   requestSeasons_one: "Request {{count}} season",
   requestSeasons_other: "Request {{count}} seasons",
   seasonRequested: "Requested",
+  seasonLocked: "already requested",
   seasonAvailable: "Available",
   seasonDownloading: "Downloading",
   seasonPartial: "Partial",
@@ -224,6 +246,18 @@ export default {
   discoverButton: "Discover content",
   requestSeries: "Request this show",
   requestingSeries: "Sending request...",
+
+  // Profiles
+  profileLabel: "Quality profile",
+  profileDefault: "Default",
+  profilesTitle: "Quality Profiles",
+  profileAdd: "Add profile",
+  profilesEmpty: "No profiles configured — Jellyseerr defaults will be used",
+  profileNamePlaceholder: "Profile name (e.g. Full HD, 4K HDR...)",
+  profileTarget: "Target media type",
+  profileTags: "Custom tags",
+  profileTagsHint: "If tags are selected, they will replace the default tags on the request",
+  profileTagManual: "Tag ID...",
 
   // Config
   configTitle: "Seer Configuration",

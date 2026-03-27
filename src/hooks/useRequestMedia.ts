@@ -11,6 +11,7 @@ export interface RequestMediaPayload {
   overview?: string | null;
   year?: string | null;
   seasons?: number[];
+  profileId?: string | null;
 }
 
 /** Met à jour le mediaInfo.status d'un item dans un array de résultats */

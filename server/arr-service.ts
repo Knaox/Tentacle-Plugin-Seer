@@ -106,7 +106,7 @@ export async function deleteSonarrSeries(
       headers: { "X-Api-Key": server.apiKey },
       signal: AbortSignal.timeout(10_000),
     });
-    return res.ok;
+    return res.ok || res.status === 404;
   } catch (err) {
     console.warn(`[ArrService] Failed to delete Sonarr series #${seriesId}:`, err);
     return false;
@@ -126,7 +126,7 @@ export async function deleteRadarrMovie(
       headers: { "X-Api-Key": server.apiKey },
       signal: AbortSignal.timeout(10_000),
     });
-    return res.ok;
+    return res.ok || res.status === 404;
   } catch (err) {
     console.warn(`[ArrService] Failed to delete Radarr movie #${movieId}:`, err);
     return false;
@@ -145,7 +145,8 @@ export async function deleteSeerrMedia(
       headers: { "X-Api-Key": apiKey },
       signal: AbortSignal.timeout(10_000),
     });
-    return res.ok;
+    // 404 = déjà supprimé → considérer comme succès
+    return res.ok || res.status === 404;
   } catch (err) {
     console.warn(`[ArrService] Failed to delete Seerr media #${mediaId}:`, err);
     return false;

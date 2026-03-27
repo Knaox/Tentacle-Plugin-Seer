@@ -175,7 +175,9 @@ export type RequestStatus =
   | "downloading"
   | "available"
   | "retry_pending"
-  | "failed";
+  | "failed"
+  | "deleting"
+  | "delete_failed";
 
 export interface LocalRequest {
   id: string;
@@ -201,6 +203,44 @@ export interface LocalRequest {
   updatedAt: string;
   sentAt: string | null;
   completedAt: string | null;
+  pendingCleanupId: string | null;
+  profileId: string | null;
+}
+
+export type ProfileTargetMedia = "all" | "movie" | "tv" | "anime";
+
+export interface SeerProfile {
+  id: string;
+  name: string;
+  targetMediaType?: ProfileTargetMedia;
+  radarrServerId?: number;
+  radarrProfileId?: number;
+  radarrRootFolder?: string;
+  sonarrServerId?: number;
+  sonarrProfileId?: number;
+  sonarrRootFolder?: string;
+  sonarrLanguageProfileId?: number;
+  tags?: number[];
+  isDefault?: boolean;
+}
+
+export interface QualityOption {
+  id: number;
+  name: string;
+}
+
+export interface ArrTag {
+  id: number;
+  label: string;
+}
+
+export interface ArrServerInfo {
+  id: number;
+  name: string;
+  isDefault: boolean;
+  profiles: QualityOption[];
+  rootFolders: { id: number; path: string }[];
+  tags: ArrTag[];
 }
 
 export interface LocalRequestsResponse {
@@ -214,6 +254,7 @@ export interface QueueStatus {
   processing: LocalRequest | null;
   queued: number;
   retryPending: number;
+  deleting: number;
   workerRunning: boolean;
 }
 

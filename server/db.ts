@@ -1,29 +1,40 @@
 /* ------------------------------------------------------------------ */
-/*  Seer Plugin — Database layer (raw SQL via Prisma)                  */
+/*  Seer Plugin — Database layer (schema + core CRUD)                  */
 /* ------------------------------------------------------------------ */
 
 import type { PrismaClient } from "@prisma/client";
 import type { SeerRequest, RequestStatus } from "./types";
+import { uuid, rowToRequest } from "./db-helpers";
 
 type Prisma = PrismaClient;
+
+// Re-export everything from sub-modules for backward compatibility
+export { rowToRequest, toIso, uuid } from "./db-helpers";
+export { getUserRequests, getAllRequests, getQueueStatus, getUserStats, getGlobalStats } from "./db-queries";
+export {
+  enqueueCleanup, getPendingCleanups, updateCleanupJob,
+  clearPendingCleanup, setPendingCleanup,
+  type CleanupJob,
+} from "./db-cleanup";
 
 /* ── Schema initialisation ─────────────────────────────────────────── */
 
 export async function ensureTables(prisma: Prisma): Promise<void> {
-  // Vérifier si la table existe déjà avec des données
   let existingCount = 0;
   try {
+    // Vérifier que la table a le bon schéma (colonne jellyfin_user_id)
+    await prisma.$queryRawUnsafe(`SELECT jellyfin_user_id FROM seer_requests LIMIT 1`);
     const rows = await prisma.$queryRawUnsafe<[{ cnt: bigint }]>(
       `SELECT COUNT(*) as cnt FROM seer_requests`,
     );
     existingCount = Number(rows[0].cnt);
     console.log(`[SeerDB] Table seer_requests exists with ${existingCount} rows — preserving data`);
   } catch {
-    // Table n'existe pas encore, on la crée
-    console.log("[SeerDB] Creating seer_requests table (first install)");
+    // Table inexistante ou schéma incompatible → recréer
+    console.log("[SeerDB] Table seer_requests missing or incompatible — recreating");
+    await prisma.$executeRawUnsafe(`DROP TABLE IF EXISTS seer_requests`).catch(() => {});
   }
 
-  // CREATE TABLE IF NOT EXISTS — ne touche JAMAIS aux données existantes
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS seer_requests (
       id               VARCHAR(36) NOT NULL PRIMARY KEY,
@@ -55,7 +66,14 @@ export async function ensureTables(prisma: Prisma): Promise<void> {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
 
-  // Table de file d'attente pour les opérations Sonarr/Radarr
+  // Vérifier schéma cleanup queue
+  try {
+    await prisma.$queryRawUnsafe(`SELECT next_retry_at FROM seer_cleanup_queue LIMIT 1`);
+  } catch {
+    console.log("[SeerDB] Table seer_cleanup_queue missing or incompatible — recreating");
+    await prisma.$executeRawUnsafe(`DROP TABLE IF EXISTS seer_cleanup_queue`).catch(() => {});
+  }
+
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS seer_cleanup_queue (
       id               VARCHAR(36) NOT NULL PRIMARY KEY,
@@ -76,54 +94,25 @@ export async function ensureTables(prisma: Prisma): Promise<void> {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
 
-  // Vérification post-création
+  // Migrations idempotentes
+  const addColumn = async (table: string, col: string, def: string) => {
+    try {
+      await prisma.$executeRawUnsafe(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+      console.log(`[SeerDB] Added column ${table}.${col}`);
+    } catch { /* Column already exists */ }
+  };
+
+  await addColumn("seer_cleanup_queue", "request_id", "VARCHAR(36) DEFAULT NULL");
+  await addColumn("seer_requests", "pending_cleanup_id", "VARCHAR(36) DEFAULT NULL");
+  await addColumn("seer_requests", "profile_id", "VARCHAR(36) DEFAULT NULL");
+
   const rows = await prisma.$queryRawUnsafe<[{ cnt: bigint }]>(
     `SELECT COUNT(*) as cnt FROM seer_requests`,
   );
   const finalCount = Number(rows[0].cnt);
   if (existingCount > 0 && finalCount === 0) {
-    console.error(`[SeerDB] CRITICAL: ${existingCount} rows were lost! This should never happen.`);
+    console.error(`[SeerDB] CRITICAL: ${existingCount} rows were lost!`);
   }
-}
-
-/* ── Helpers ────────────────────────────────────────────────────────── */
-
-function uuid(): string {
-  return crypto.randomUUID();
-}
-
-function rowToRequest(r: Record<string, unknown>): SeerRequest {
-  return {
-    id: r.id as string,
-    jellyfinUserId: r.jellyfin_user_id as string,
-    username: r.username as string,
-    mediaType: r.media_type as "movie" | "tv",
-    tmdbId: r.tmdb_id as number,
-    title: r.title as string,
-    posterPath: (r.poster_path as string) || null,
-    backdropPath: (r.backdrop_path as string) || null,
-    overview: (r.overview as string) || null,
-    year: (r.year as string) || null,
-    seasons: r.seasons ? (typeof r.seasons === "string" ? JSON.parse(r.seasons) : r.seasons) as number[] : null,
-    status: r.status as RequestStatus,
-    seerrRequestId: (r.seerr_request_id as number) || null,
-    seerrMediaId: (r.seerr_media_id as number) || null,
-    seerrMediaStatus: (r.seerr_media_status as number) || null,
-    retryCount: (r.retry_count as number) || 0,
-    maxRetries: (r.max_retries as number) || 10,
-    lastError: (r.last_error as string) || null,
-    priority: (r.priority as number) || 0,
-    createdAt: toIso(r.created_at),
-    updatedAt: toIso(r.updated_at),
-    sentAt: r.sent_at ? toIso(r.sent_at) : null,
-    completedAt: r.completed_at ? toIso(r.completed_at) : null,
-  };
-}
-
-function toIso(v: unknown): string {
-  if (v instanceof Date) return v.toISOString();
-  if (typeof v === "string") return v;
-  return new Date().toISOString();
 }
 
 /* ── Request CRUD ──────────────────────────────────────────────────── */
@@ -131,155 +120,46 @@ function toIso(v: unknown): string {
 export async function createRequest(
   prisma: Prisma,
   data: {
-    jellyfinUserId: string;
-    username: string;
-    mediaType: "movie" | "tv";
-    tmdbId: number;
-    title: string;
-    posterPath?: string | null;
-    backdropPath?: string | null;
-    overview?: string | null;
-    year?: string | null;
-    seasons?: number[] | null;
-    priority?: number;
+    jellyfinUserId: string; username: string; mediaType: "movie" | "tv";
+    tmdbId: number; title: string; posterPath?: string | null;
+    backdropPath?: string | null; overview?: string | null;
+    year?: string | null; seasons?: number[] | null; priority?: number;
+    profileId?: string | null;
   },
 ): Promise<SeerRequest> {
   const id = uuid();
   await prisma.$executeRawUnsafe(
     `INSERT INTO seer_requests
       (id, jellyfin_user_id, username, media_type, tmdb_id, title, poster_path,
-       backdrop_path, overview, year, seasons, status, priority)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?)`,
-    id,
-    data.jellyfinUserId,
-    data.username,
-    data.mediaType,
-    data.tmdbId,
-    data.title,
-    data.posterPath || null,
-    data.backdropPath || null,
-    data.overview || null,
-    data.year || null,
-    data.seasons ? JSON.stringify(data.seasons) : null,
-    data.priority || 0,
+       backdrop_path, overview, year, seasons, status, priority, profile_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?)`,
+    id, data.jellyfinUserId, data.username, data.mediaType, data.tmdbId, data.title,
+    data.posterPath || null, data.backdropPath || null, data.overview || null,
+    data.year || null, data.seasons ? JSON.stringify(data.seasons) : null, data.priority || 0,
+    data.profileId || null,
   );
   const rows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
-    `SELECT * FROM seer_requests WHERE id = ?`,
-    id,
+    `SELECT * FROM seer_requests WHERE id = ?`, id,
   );
   return rowToRequest(rows[0]);
 }
 
 export async function getRequestById(prisma: Prisma, id: string): Promise<SeerRequest | null> {
   const rows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
-    `SELECT * FROM seer_requests WHERE id = ?`,
-    id,
+    `SELECT * FROM seer_requests WHERE id = ?`, id,
   );
   return rows.length > 0 ? rowToRequest(rows[0]) : null;
 }
 
-export async function getUserRequests(
-  prisma: Prisma,
-  jellyfinUserId: string,
-  opts: { page?: number; limit?: number; status?: string; mediaType?: string },
-): Promise<{ results: SeerRequest[]; total: number; page: number; pages: number }> {
-  const page = opts.page || 1;
-  const limit = Math.min(opts.limit || 20, 100);
-  const offset = (page - 1) * limit;
-
-  let where = `WHERE jellyfin_user_id = ? AND status != 'deleted'`;
-  const params: unknown[] = [jellyfinUserId];
-
-  if (opts.status) {
-    const statuses = opts.status.split(",").map((s) => s.trim());
-    where += ` AND status IN (${statuses.map(() => "?").join(",")})`;
-    params.push(...statuses);
-  }
-  if (opts.mediaType) {
-    where += ` AND media_type = ?`;
-    params.push(opts.mediaType);
-  }
-
-  const countRows = await prisma.$queryRawUnsafe<[{ cnt: bigint }]>(
-    `SELECT COUNT(*) as cnt FROM seer_requests ${where}`,
-    ...params,
-  );
-  const total = Number(countRows[0].cnt);
-
-  const rows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
-    `SELECT * FROM seer_requests ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-    ...params,
-    limit,
-    offset,
-  );
-
-  return {
-    results: rows.map(rowToRequest),
-    total,
-    page,
-    pages: Math.ceil(total / limit) || 1,
-  };
-}
-
-export async function getAllRequests(
-  prisma: Prisma,
-  opts: { page?: number; limit?: number; status?: string; mediaType?: string },
-): Promise<{ results: SeerRequest[]; total: number; page: number; pages: number }> {
-  const page = opts.page || 1;
-  const limit = Math.min(opts.limit || 20, 100);
-  const offset = (page - 1) * limit;
-
-  let where = `WHERE status != 'deleted'`;
-  const params: unknown[] = [];
-
-  if (opts.status) {
-    const statuses = opts.status.split(",").map((s) => s.trim());
-    where += ` AND status IN (${statuses.map(() => "?").join(",")})`;
-    params.push(...statuses);
-  }
-  if (opts.mediaType) {
-    where += ` AND media_type = ?`;
-    params.push(opts.mediaType);
-  }
-
-  const countRows = await prisma.$queryRawUnsafe<[{ cnt: bigint }]>(
-    `SELECT COUNT(*) as cnt FROM seer_requests ${where}`,
-    ...params,
-  );
-  const total = Number(countRows[0].cnt);
-
-  const rows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
-    `SELECT * FROM seer_requests ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-    ...params,
-    limit,
-    offset,
-  );
-
-  return {
-    results: rows.map(rowToRequest),
-    total,
-    page,
-    pages: Math.ceil(total / limit) || 1,
-  };
-}
-
 export async function updateRequestStatus(
-  prisma: Prisma,
-  id: string,
-  status: RequestStatus,
+  prisma: Prisma, id: string, status: RequestStatus,
   extra?: Partial<{
-    seerrRequestId: number;
-    seerrMediaId: number;
-    seerrMediaStatus: number;
-    lastError: string;
-    retryCount: number;
-    sentAt: Date;
-    completedAt: Date;
+    seerrRequestId: number; seerrMediaId: number; seerrMediaStatus: number;
+    lastError: string; retryCount: number; sentAt: Date; completedAt: Date;
   }>,
 ): Promise<void> {
   const sets: string[] = ["status = ?"];
   const params: unknown[] = [status];
-
   if (extra?.seerrRequestId !== undefined) { sets.push("seerr_request_id = ?"); params.push(extra.seerrRequestId); }
   if (extra?.seerrMediaId !== undefined) { sets.push("seerr_media_id = ?"); params.push(extra.seerrMediaId); }
   if (extra?.seerrMediaStatus !== undefined) { sets.push("seerr_media_status = ?"); params.push(extra.seerrMediaStatus); }
@@ -287,12 +167,8 @@ export async function updateRequestStatus(
   if (extra?.retryCount !== undefined) { sets.push("retry_count = ?"); params.push(extra.retryCount); }
   if (extra?.sentAt !== undefined) { sets.push("sent_at = ?"); params.push(extra.sentAt); }
   if (extra?.completedAt !== undefined) { sets.push("completed_at = ?"); params.push(extra.completedAt); }
-
   params.push(id);
-  await prisma.$executeRawUnsafe(
-    `UPDATE seer_requests SET ${sets.join(", ")} WHERE id = ?`,
-    ...params,
-  );
+  await prisma.$executeRawUnsafe(`UPDATE seer_requests SET ${sets.join(", ")} WHERE id = ?`, ...params);
 }
 
 export async function deleteRequestById(prisma: Prisma, id: string): Promise<void> {
@@ -300,200 +176,81 @@ export async function deleteRequestById(prisma: Prisma, id: string): Promise<voi
 }
 
 export async function findDuplicate(
-  prisma: Prisma,
-  jellyfinUserId: string,
-  tmdbId: number,
-  mediaType: string,
+  prisma: Prisma, jellyfinUserId: string, tmdbId: number,
+  mediaType: string, seasons?: number[] | null,
 ): Promise<SeerRequest | null> {
   const rows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
     `SELECT * FROM seer_requests
      WHERE jellyfin_user_id = ? AND tmdb_id = ? AND media_type = ?
-       AND status NOT IN ('deleted', 'failed', 'available')
-     LIMIT 1`,
-    jellyfinUserId,
-    tmdbId,
-    mediaType,
+       AND status NOT IN ('deleted', 'failed', 'available', 'deleting', 'delete_failed')`,
+    jellyfinUserId, tmdbId, mediaType,
+  );
+  if (rows.length === 0) return null;
+  if (mediaType === "movie") return rowToRequest(rows[0]);
+
+  const requestedSeasons = new Set(seasons ?? []);
+  if (requestedSeasons.size === 0) return rowToRequest(rows[0]);
+
+  for (const row of rows) {
+    const existing = rowToRequest(row);
+    const existingSeasons = new Set(existing.seasons ?? []);
+    if (existingSeasons.size === 0) return existing;
+    for (const s of requestedSeasons) {
+      if (existingSeasons.has(s)) return existing;
+    }
+  }
+  return null;
+}
+
+/** Trouver une demande TV active existante pour le même tmdbId (pour fusion de saisons) */
+export async function findExistingTvRequest(
+  prisma: Prisma, jellyfinUserId: string, tmdbId: number,
+): Promise<SeerRequest | null> {
+  const rows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
+    `SELECT * FROM seer_requests
+     WHERE jellyfin_user_id = ? AND tmdb_id = ? AND media_type = 'tv'
+       AND status NOT IN ('deleted', 'deleting', 'delete_failed')
+     ORDER BY created_at DESC LIMIT 1`,
+    jellyfinUserId, tmdbId,
   );
   return rows.length > 0 ? rowToRequest(rows[0]) : null;
 }
 
-/** Get next item in queue (highest priority, oldest first) */
+/** Mettre à jour les saisons d'une demande et la remettre en queue pour envoi à Seerr */
+export async function addSeasonsToRequest(
+  prisma: Prisma, id: string, seasons: number[],
+): Promise<void> {
+  // Toujours remettre en queue + reset IDs Seerr pour forcer une nouvelle demande complète
+  await prisma.$executeRawUnsafe(
+    `UPDATE seer_requests
+     SET seasons = ?,
+         status = CASE WHEN status IN ('processing') THEN status ELSE 'queued' END,
+         seerr_request_id = NULL,
+         seerr_media_id = NULL,
+         seerr_media_status = NULL,
+         retry_count = 0,
+         last_error = NULL
+     WHERE id = ?`,
+    JSON.stringify(seasons), id,
+  );
+}
+
 export async function getNextQueued(prisma: Prisma): Promise<SeerRequest | null> {
   const rows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
     `SELECT * FROM seer_requests
      WHERE status IN ('queued', 'retry_pending')
+       AND (pending_cleanup_id IS NULL)
      ORDER BY priority DESC, created_at ASC
      LIMIT 1`,
   );
   return rows.length > 0 ? rowToRequest(rows[0]) : null;
 }
 
-/** Get all requests that need status sync with Seerr */
 export async function getRequestsToSync(prisma: Prisma): Promise<SeerRequest[]> {
   const rows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
     `SELECT * FROM seer_requests
      WHERE seerr_request_id IS NOT NULL
-       AND status NOT IN ('available', 'failed', 'deleted')`,
+       AND status NOT IN ('available', 'failed', 'deleted', 'deleting', 'delete_failed')`,
   );
   return rows.map(rowToRequest);
-}
-
-/** Queue status summary */
-export async function getQueueStatus(
-  prisma: Prisma,
-  jellyfinUserId?: string,
-): Promise<{ processing: SeerRequest | null; queued: number; retryPending: number }> {
-  const userFilter = jellyfinUserId ? ` AND jellyfin_user_id = ?` : "";
-  const userParams = jellyfinUserId ? [jellyfinUserId] : [];
-
-  const processingRows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
-    `SELECT * FROM seer_requests WHERE status = 'processing'${userFilter} LIMIT 1`,
-    ...userParams,
-  );
-
-  const countRows = await prisma.$queryRawUnsafe<[{ queued: bigint; retry_pending: bigint }]>(
-    `SELECT
-       SUM(CASE WHEN status = 'queued' THEN 1 ELSE 0 END) as queued,
-       SUM(CASE WHEN status = 'retry_pending' THEN 1 ELSE 0 END) as retry_pending
-     FROM seer_requests WHERE status IN ('queued', 'retry_pending')${userFilter}`,
-    ...userParams,
-  );
-
-  return {
-    processing: processingRows.length > 0 ? rowToRequest(processingRows[0]) : null,
-    queued: Number(countRows[0].queued) || 0,
-    retryPending: Number(countRows[0].retry_pending) || 0,
-  };
-}
-
-/* ── Stats ─────────────────────────────────────────────────────────── */
-
-export async function getUserStats(prisma: Prisma, jellyfinUserId: string) {
-  const byStatus = await prisma.$queryRawUnsafe<{ status: string; cnt: bigint }[]>(
-    `SELECT status, COUNT(*) as cnt FROM seer_requests
-     WHERE jellyfin_user_id = ? AND status != 'deleted'
-     GROUP BY status`,
-    jellyfinUserId,
-  );
-  const byType = await prisma.$queryRawUnsafe<{ media_type: string; cnt: bigint }[]>(
-    `SELECT media_type, COUNT(*) as cnt FROM seer_requests
-     WHERE jellyfin_user_id = ? AND status != 'deleted'
-     GROUP BY media_type`,
-    jellyfinUserId,
-  );
-  const total = byStatus.reduce((n, r) => n + Number(r.cnt), 0);
-
-  return {
-    totalRequests: total,
-    byStatus: Object.fromEntries(byStatus.map((r) => [r.status, Number(r.cnt)])),
-    byType: Object.fromEntries(byType.map((r) => [r.media_type, Number(r.cnt)])),
-  };
-}
-
-export async function getGlobalStats(prisma: Prisma) {
-  const byStatus = await prisma.$queryRawUnsafe<{ status: string; cnt: bigint }[]>(
-    `SELECT status, COUNT(*) as cnt FROM seer_requests
-     WHERE status != 'deleted' GROUP BY status`,
-  );
-  const byType = await prisma.$queryRawUnsafe<{ media_type: string; cnt: bigint }[]>(
-    `SELECT media_type, COUNT(*) as cnt FROM seer_requests
-     WHERE status != 'deleted' GROUP BY media_type`,
-  );
-  const topRequested = await prisma.$queryRawUnsafe<{ title: string; tmdb_id: number; cnt: bigint }[]>(
-    `SELECT title, tmdb_id, COUNT(*) as cnt FROM seer_requests
-     WHERE status != 'deleted' GROUP BY title, tmdb_id ORDER BY cnt DESC LIMIT 10`,
-  );
-  const topUsers = await prisma.$queryRawUnsafe<{ username: string; cnt: bigint }[]>(
-    `SELECT username, COUNT(*) as cnt FROM seer_requests
-     WHERE status != 'deleted' GROUP BY username ORDER BY cnt DESC LIMIT 10`,
-  );
-  const total = byStatus.reduce((n, r) => n + Number(r.cnt), 0);
-  const available = Number(byStatus.find((r) => r.status === "available")?.cnt || 0);
-
-  return {
-    totalRequests: total,
-    byStatus: Object.fromEntries(byStatus.map((r) => [r.status, Number(r.cnt)])),
-    byType: Object.fromEntries(byType.map((r) => [r.media_type, Number(r.cnt)])),
-    topRequested: topRequested.map((r) => ({ title: r.title, tmdbId: r.tmdb_id, count: Number(r.cnt) })),
-    topUsers: topUsers.map((r) => ({ username: r.username, count: Number(r.cnt) })),
-    successRate: total > 0 ? Math.round((available / total) * 100) : 0,
-  };
-}
-
-/* ── Cleanup Queue ─────────────────────────────────────────────────── */
-
-export interface CleanupJob {
-  id: string;
-  action: "delete" | "retry";
-  mediaType: "movie" | "tv";
-  tmdbId: number;
-  title: string;
-  seerrRequestId: number | null;
-  seerrMediaId: number | null;
-  deleteFiles: boolean;
-  retryCount: number;
-  maxRetries: number;
-  lastError: string | null;
-  status: string;
-  nextRetryAt: string;
-}
-
-export async function enqueueCleanup(
-  prisma: Prisma,
-  job: {
-    action: string;
-    mediaType: string;
-    tmdbId: number;
-    title: string;
-    seerrRequestId?: number | null;
-    seerrMediaId?: number | null;
-    deleteFiles?: boolean;
-  },
-): Promise<string> {
-  const id = uuid();
-  await prisma.$executeRawUnsafe(
-    `INSERT INTO seer_cleanup_queue (id, action, media_type, tmdb_id, title, seerr_request_id, seerr_media_id, delete_files)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    id, job.action, job.mediaType, job.tmdbId, job.title,
-    job.seerrRequestId ?? null, job.seerrMediaId ?? null, job.deleteFiles ? 1 : 0,
-  );
-  return id;
-}
-
-export async function getPendingCleanups(prisma: Prisma): Promise<CleanupJob[]> {
-  const rows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
-    `SELECT * FROM seer_cleanup_queue
-     WHERE status = 'pending' AND next_retry_at <= NOW()
-     ORDER BY created_at ASC LIMIT 5`,
-  );
-  return rows.map((r) => ({
-    id: r.id as string,
-    action: r.action as "delete" | "retry",
-    mediaType: r.media_type as "movie" | "tv",
-    tmdbId: r.tmdb_id as number,
-    title: r.title as string,
-    seerrRequestId: (r.seerr_request_id as number) || null,
-    seerrMediaId: (r.seerr_media_id as number) || null,
-    deleteFiles: Boolean(r.delete_files),
-    retryCount: (r.retry_count as number) || 0,
-    maxRetries: (r.max_retries as number) || 20,
-    lastError: (r.last_error as string) || null,
-    status: r.status as string,
-    nextRetryAt: toIso(r.next_retry_at),
-  }));
-}
-
-export async function updateCleanupJob(
-  prisma: Prisma,
-  id: string,
-  status: string,
-  extra?: { lastError?: string; retryCount?: number; nextRetryAt?: Date },
-): Promise<void> {
-  const sets: string[] = ["status = ?"];
-  const params: unknown[] = [status];
-  if (extra?.lastError !== undefined) { sets.push("last_error = ?"); params.push(extra.lastError); }
-  if (extra?.retryCount !== undefined) { sets.push("retry_count = ?"); params.push(extra.retryCount); }
-  if (extra?.nextRetryAt !== undefined) { sets.push("next_retry_at = ?"); params.push(extra.nextRetryAt); }
-  params.push(id);
-  await prisma.$executeRawUnsafe(`UPDATE seer_cleanup_queue SET ${sets.join(", ")} WHERE id = ?`, ...params);
 }

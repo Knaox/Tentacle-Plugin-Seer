@@ -160,6 +160,7 @@ export async function createRequest(body: {
   overview?: string | null;
   year?: string | null;
   seasons?: number[];
+  profileId?: string | null;
 }): Promise<LocalRequest> {
   return backendFetch("/requests", {
     method: "POST",
@@ -186,10 +187,48 @@ export async function deleteRequest(id: string, opts?: { seasons?: number[] }): 
   });
 }
 
-export async function retryRequest(id: string, opts?: { seasons?: number[] }): Promise<LocalRequest> {
+export async function retryRequest(id: string, opts?: { seasons?: number[]; profileId?: string | null }): Promise<LocalRequest> {
+  const body: Record<string, unknown> = {};
+  if (opts?.seasons) body.seasons = opts.seasons;
+  if (opts?.profileId !== undefined) body.profileId = opts.profileId;
   return backendFetch(`/requests/${id}/retry`, {
     method: "POST",
-    body: opts?.seasons ? JSON.stringify({ seasons: opts.seasons }) : undefined,
+    body: Object.keys(body).length > 0 ? JSON.stringify(body) : undefined,
+  });
+}
+
+export async function retryDeleteRequest(id: string): Promise<void> {
+  await backendFetch(`/requests/${id}/retry-delete`, { method: "POST" });
+}
+
+/* ── Profiles ────────────────────────────────────────────────────── */
+
+export async function getProfiles(): Promise<{ profiles: import("./types").SeerProfile[] }> {
+  return backendFetch("/profiles");
+}
+
+export async function getProfileOptions(): Promise<{
+  radarr: import("./types").ArrServerInfo[];
+  sonarr: import("./types").ArrServerInfo[];
+}> {
+  return backendFetch("/profiles/options");
+}
+
+/* ── Bulk actions ────────────────────────────────────────────────── */
+
+export async function bulkDeleteRequests(ids: string[]): Promise<{ deleted: number; errors: number }> {
+  return backendFetch("/requests/bulk-delete", {
+    method: "POST",
+    body: JSON.stringify({ ids }),
+  });
+}
+
+export async function bulkRetryRequests(ids: string[], profileId?: string | null): Promise<{ retried: number; errors: number }> {
+  const body: Record<string, unknown> = { ids };
+  if (profileId !== undefined) body.profileId = profileId;
+  return backendFetch("/requests/bulk-retry", {
+    method: "POST",
+    body: JSON.stringify(body),
   });
 }
 
@@ -214,7 +253,7 @@ export async function isSeerConfigured(): Promise<boolean> {
     });
     if (!res.ok) return false;
     const data = await res.json();
-    if (data.enabled && data.url && data.hasApiKey) {
+    if (data.enabled && data.url && (data.hasApiKey || data.apiKey)) {
       setConfigured(true);
       return true;
     }

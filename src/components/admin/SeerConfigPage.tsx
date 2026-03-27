@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { getSeerBackendUrl } from "../../api/endpoints";
+import { ProfilesConfig } from "./ProfilesConfig";
+import type { SeerProfile } from "../../api/types";
 
 interface SeerConfig {
   url: string;
@@ -8,6 +10,7 @@ interface SeerConfig {
   enabled: boolean;
   autoApprove: boolean;
   userLimit: number;
+  profiles: SeerProfile[];
 }
 
 export function SeerConfigPage() {
@@ -18,6 +21,7 @@ export function SeerConfigPage() {
     enabled: false,
     autoApprove: false,
     userLimit: 0,
+    profiles: [],
   });
   const [status, setStatus] = useState<"idle" | "testing" | "connected" | "error">("idle");
   const [seerrVersion, setSeerrVersion] = useState("");
@@ -28,6 +32,7 @@ export function SeerConfigPage() {
   const token = localStorage.getItem("tentacle_token") ?? "";
 
   useEffect(() => {
+    // Charger la config complète via la route plugin (admin voit tout)
     fetch(`${backendBase}/api/plugins/seer/config`, {
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -39,6 +44,7 @@ export function SeerConfigPage() {
           enabled: data.enabled ?? false,
           autoApprove: data.autoApprove ?? false,
           userLimit: data.userLimit ?? 0,
+          profiles: data.profiles ?? [],
         });
         setStatus(data.url ? "connected" : "idle");
       })
@@ -79,6 +85,7 @@ export function SeerConfigPage() {
     setSaving(true);
     setMessage("");
     try {
+      // Sauvegarder via la route plugin (admin only)
       const res = await fetch(`${backendBase}/api/plugins/seer/config`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -178,6 +185,14 @@ export function SeerConfigPage() {
           className="w-24 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-purple-500"
         />
       </div>
+
+      {/* Profiles — visible dès qu'une URL est configurée */}
+      {config.url && (
+        <ProfilesConfig
+          profiles={config.profiles}
+          onChange={(profiles) => setConfig((c) => ({ ...c, profiles }))}
+        />
+      )}
 
       {/* Save */}
       <div className="flex items-center gap-3">

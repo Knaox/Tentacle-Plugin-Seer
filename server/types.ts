@@ -11,6 +11,8 @@ export type RequestStatus =
   | "available"
   | "retry_pending"
   | "failed"
+  | "deleting"
+  | "delete_failed"
   | "deleted";
 
 export interface SeerRequest {
@@ -37,6 +39,8 @@ export interface SeerRequest {
   updatedAt: string;
   sentAt: string | null;
   completedAt: string | null;
+  pendingCleanupId: string | null;
+  profileId: string | null;
 }
 
 export interface CreateRequestBody {
@@ -48,6 +52,24 @@ export interface CreateRequestBody {
   overview?: string | null;
   year?: string | null;
   seasons?: number[];
+  profileId?: string | null;
+}
+
+export type ProfileTargetMedia = "all" | "movie" | "tv" | "anime";
+
+export interface SeerProfile {
+  id: string;
+  name: string;
+  targetMediaType?: ProfileTargetMedia;
+  radarrServerId?: number;
+  radarrProfileId?: number;
+  radarrRootFolder?: string;
+  sonarrServerId?: number;
+  sonarrProfileId?: number;
+  sonarrRootFolder?: string;
+  sonarrLanguageProfileId?: number;
+  tags?: number[];
+  isDefault?: boolean;
 }
 
 export interface ProxyPayload {

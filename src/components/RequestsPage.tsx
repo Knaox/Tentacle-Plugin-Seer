@@ -1,11 +1,22 @@
-import { useState } from "react";
+import { useState, useCallback, lazy, Suspense } from "react";
 import { useTranslation } from "react-i18next";
-import { useMyRequests, useDeleteRequest, useRetryRequest, useQueueStatus } from "../hooks/useRequests";
+import {
+  useMyRequests, useDeleteRequest, useRetryRequest, useRetryDeleteRequest,
+  useQueueStatus, useBulkDeleteRequests, useBulkRetryRequests,
+} from "../hooks/useRequests";
+import { useRequestMedia } from "../hooks/useRequestMedia";
 import { useToast } from "../hooks/useToast";
 import { RequestCard } from "./RequestCard";
 import { EmptyState } from "./EmptyState";
+import { ProfileSelector } from "./ProfileSelector";
+import { SeasonActionModal } from "./SeasonActionModal";
+import type { LocalRequest, SeerrSearchResult } from "../api/types";
 
-type StatusFilter = "all" | "queued" | "sent_to_seer" | "approved" | "downloading" | "available" | "failed";
+const MediaDetailModal = lazy(() =>
+  import("./MediaDetailModal").then((m) => ({ default: m.MediaDetailModal }))
+);
+
+type StatusFilter = "all" | "queued" | "sent_to_seer" | "approved" | "downloading" | "available" | "failed" | "deleting";
 
 const STATUS_TABS: { value: StatusFilter; key: string }[] = [
   { value: "all", key: "seer:filterAll" },
@@ -15,6 +26,7 @@ const STATUS_TABS: { value: StatusFilter; key: string }[] = [
   { value: "downloading", key: "seer:filterDownloading" },
   { value: "available", key: "seer:filterAvailable" },
   { value: "failed", key: "seer:filterFailed" },
+  { value: "deleting", key: "seer:filterDeleting" },
 ];
 
 export function RequestsPage() {
@@ -23,12 +35,23 @@ export function RequestsPage() {
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [typeFilter, setTypeFilter] = useState<"all" | "movie" | "tv">("all");
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [addSeasonsItem, setAddSeasonsItem] = useState<SeerrSearchResult | null>(null);
+  const [addSeasonsSource, setAddSeasonsSource] = useState<LocalRequest | null>(null);
+  const [bulkRetryModal, setBulkRetryModal] = useState(false);
+  const [bulkProfileId, setBulkProfileId] = useState<string | null>(null);
+  const [actionModal, setActionModal] = useState<{ request: LocalRequest; action: "delete" | "retry" } | null>(null);
 
   const backendStatus = statusFilter === "all" ? undefined : statusFilter;
   const backendType = typeFilter === "all" ? undefined : typeFilter;
   const { data, isLoading } = useMyRequests(page, 20, backendStatus, backendType);
   const deleteMutation = useDeleteRequest();
   const retryMutation = useRetryRequest();
+  const retryDeleteMutation = useRetryDeleteRequest();
+  const requestMedia = useRequestMedia();
+  const bulkDeleteMutation = useBulkDeleteRequests();
+  const bulkRetryMutation = useBulkRetryRequests();
   const { data: queueData } = useQueueStatus();
 
   const requests = data?.results ?? [];
@@ -36,15 +59,70 @@ export function RequestsPage() {
 
   const handleDelete = (id: string, seasons?: number[]) => {
     deleteMutation.mutate({ id, seasons }, {
-      onSuccess: () => toast.show("success", t("requestDeleted")),
+      onSuccess: () => toast.show("success", t("requestDeleting")),
       onError: () => toast.show("error", t("requestDeleteError")),
     });
   };
 
-  const handleRetry = (id: string, seasons?: number[]) => {
-    retryMutation.mutate({ id, seasons }, {
+  const handleRetry = (id: string, seasons?: number[], profileId?: string | null) => {
+    retryMutation.mutate({ id, seasons, profileId }, {
       onSuccess: () => toast.show("success", t("requestRetried")),
       onError: () => toast.show("error", t("requestRetryError")),
+    });
+  };
+
+  const handleRetryDelete = (id: string) => {
+    retryDeleteMutation.mutate(id, {
+      onSuccess: () => toast.show("success", t("requestDeleting")),
+      onError: () => toast.show("error", t("requestDeleteError")),
+    });
+  };
+
+  const handleAddSeasons = (req: LocalRequest) => {
+    setAddSeasonsSource(req);
+    setAddSeasonsItem({
+      id: req.tmdbId,
+      mediaType: "tv",
+      name: req.title,
+      posterPath: req.posterPath ?? undefined,
+      backdropPath: req.backdropPath ?? undefined,
+      overview: req.overview ?? undefined,
+    });
+  };
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const exitSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const handleBulkDelete = () => {
+    const ids = Array.from(selectedIds);
+    bulkDeleteMutation.mutate(ids, {
+      onSuccess: (data) => {
+        toast.show("success", t("bulkDeleteSuccess", { count: data.deleted }));
+        exitSelectionMode();
+      },
+      onError: () => toast.show("error", t("bulkError")),
+    });
+  };
+
+  const handleBulkRetry = (profileId?: string | null) => {
+    const ids = Array.from(selectedIds);
+    bulkRetryMutation.mutate({ ids, profileId }, {
+      onSuccess: (data) => {
+        toast.show("success", t("bulkRetrySuccess", { count: data.retried }));
+        exitSelectionMode();
+        setBulkRetryModal(false);
+      },
+      onError: () => toast.show("error", t("bulkError")),
     });
   };
 
@@ -53,7 +131,7 @@ export function RequestsPage() {
       <h1 className="mb-4 text-2xl font-bold text-white">{t("seer:myRequestsTitle")}</h1>
 
       {/* Queue status banner */}
-      {queueData && (queueData.queued > 0 || queueData.processing) && (
+      {queueData && (queueData.queued > 0 || queueData.processing || queueData.deleting > 0) && (
         <div className="mb-4 flex items-center gap-3 rounded-xl border border-purple-500/20 bg-purple-500/10 px-4 py-3">
           <div className="h-2 w-2 animate-pulse rounded-full bg-purple-400" />
           <div className="text-sm text-purple-300">
@@ -66,8 +144,13 @@ export function RequestsPage() {
                   </span>
                 )}
               </span>
-            ) : (
+            ) : queueData.queued > 0 ? (
               <span>{t("seer:queueWaiting", { count: queueData.queued })}</span>
+            ) : null}
+            {queueData.deleting > 0 && (
+              <span className="ml-2 text-orange-400/80">
+                {t("seer:statusDeleting")}: {queueData.deleting}
+              </span>
             )}
           </div>
         </div>
@@ -89,7 +172,7 @@ export function RequestsPage() {
           </button>
         ))}
       </div>
-      <div className="mb-6 flex gap-2">
+      <div className="mb-6 flex items-center gap-2">
         {(["all", "movie", "tv"] as const).map((v) => (
           <button
             key={v}
@@ -103,6 +186,18 @@ export function RequestsPage() {
             {v === "all" ? t("filterAllType") : v === "movie" ? t("filterMovies") : t("filterSeries")}
           </button>
         ))}
+        {requests.length > 0 && (
+          <button
+            onClick={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}
+            className={`ml-auto rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+              selectionMode
+                ? "bg-purple-600/30 text-purple-300"
+                : "bg-white/10 text-white/60 hover:bg-white/15"
+            }`}
+          >
+            {selectionMode ? t("seer:bulkCancel") : t("seer:bulkSelect")}
+          </button>
+        )}
       </div>
 
       {/* Request list */}
@@ -133,8 +228,14 @@ export function RequestsPage() {
                 request={request}
                 onDelete={handleDelete}
                 onRetry={handleRetry}
+                onRetryDelete={handleRetryDelete}
+                onAddSeasons={handleAddSeasons}
+                onOpenModal={(req, action) => setActionModal({ request: req, action })}
                 deleting={deleteMutation.isPending}
                 retrying={retryMutation.isPending}
+                selectable={selectionMode}
+                selected={selectedIds.has(request.id)}
+                onSelect={toggleSelect}
               />
             </div>
           ))}
@@ -146,11 +247,9 @@ export function RequestsPage() {
           action={statusFilter === "all" ? (
             <button
               onClick={() => {
-                // Mobile (React Native WebView) → naviguer vers le tab Discover
                 if ((window as any).ReactNativeWebView?.postMessage) {
                   (window as any).ReactNativeWebView.postMessage(JSON.stringify({ type: "NAVIGATE", route: "/(tabs)/plugins" }));
                 } else {
-                  // Web (iframe) → naviguer vers la page plugin discover
                   window.parent.postMessage({ type: "NAVIGATE", path: "/plugins/seer/discover" }, "*");
                 }
               }}
@@ -180,6 +279,86 @@ export function RequestsPage() {
           >
             {t("seer:nextPage")}
           </button>
+        </div>
+      )}
+
+      {/* Bulk action bar */}
+      {selectionMode && selectedIds.size > 0 && (
+        <div className="fixed bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-xl border border-white/10 bg-[#12121a]/95 px-5 py-3 shadow-2xl backdrop-blur-sm">
+          <button
+            onClick={handleBulkDelete}
+            disabled={bulkDeleteMutation.isPending}
+            className="rounded-lg bg-red-600/20 px-4 py-2 text-xs font-semibold text-red-400 transition-colors hover:bg-red-600/30 disabled:opacity-50"
+          >
+            {bulkDeleteMutation.isPending ? "..." : t("seer:bulkDelete", { count: selectedIds.size })}
+          </button>
+          <button
+            onClick={() => setBulkRetryModal(true)}
+            disabled={bulkRetryMutation.isPending}
+            className="rounded-lg bg-purple-600/20 px-4 py-2 text-xs font-semibold text-purple-400 transition-colors hover:bg-purple-600/30 disabled:opacity-50"
+          >
+            {bulkRetryMutation.isPending ? "..." : t("seer:bulkRetry", { count: selectedIds.size })}
+          </button>
+          <button
+            onClick={exitSelectionMode}
+            className="rounded-lg bg-white/10 px-4 py-2 text-xs text-white/50 transition-colors hover:bg-white/15"
+          >
+            {t("seer:bulkCancel")}
+          </button>
+        </div>
+      )}
+
+      {/* Modal ajout de saisons */}
+      {addSeasonsItem && (
+        <Suspense fallback={null}>
+          <MediaDetailModal
+            item={addSeasonsItem}
+            lockedSeasons={addSeasonsSource?.seasons ?? undefined}
+            defaultProfileId={addSeasonsSource?.profileId ?? undefined}
+            onClose={() => { setAddSeasonsItem(null); setAddSeasonsSource(null); }}
+            onRequest={() => {}}
+            requesting={requestMedia.isPending}
+          />
+        </Suspense>
+      )}
+
+      {/* Modal saison/profil pour retry/delete individuel */}
+      {actionModal && (
+        <SeasonActionModal
+          request={actionModal.request}
+          action={actionModal.action}
+          onConfirm={(seasons, profileId) => {
+            if (actionModal.action === "delete") handleDelete(actionModal.request.id, seasons);
+            else handleRetry(actionModal.request.id, seasons, profileId);
+            setActionModal(null);
+          }}
+          onClose={() => setActionModal(null)}
+        />
+      )}
+
+      {/* Modal choix profil pour bulk retry */}
+      {bulkRetryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          onClick={() => setBulkRetryModal(false)}>
+          <div className="mx-4 w-full max-w-sm rounded-xl bg-[#1a1a2e] p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}>
+            <h3 className="mb-4 text-sm font-semibold text-white">
+              {t("seer:bulkRetry", { count: selectedIds.size })}
+            </h3>
+            <ProfileSelector showAll selectedId={bulkProfileId} onChange={setBulkProfileId} />
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button onClick={() => setBulkRetryModal(false)}
+                className="rounded-lg bg-white/10 px-4 py-1.5 text-xs text-white/50 hover:bg-white/15">
+                {t("seer:cancel")}
+              </button>
+              <button
+                onClick={() => handleBulkRetry(bulkProfileId)}
+                disabled={bulkRetryMutation.isPending}
+                className="rounded-lg bg-[#8b5cf6] px-4 py-1.5 text-xs font-medium text-white hover:bg-[#7c3aed] disabled:opacity-40">
+                {bulkRetryMutation.isPending ? "..." : t("seer:seasonActionConfirm")}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
