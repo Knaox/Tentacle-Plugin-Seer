@@ -48,7 +48,7 @@ export function registerRequestRoutes(
       return reply.status(400).send({ message: "mediaType, tmdbId, and title are required" });
     }
 
-    // Pour les séries TV : fusionner les saisons dans la demande existante
+    // Pour les séries TV : ajouter les nouvelles saisons sans toucher à l'existant
     if (body.mediaType === "tv" && body.seasons?.length) {
       const existing = await findExistingTvRequest(prisma, user.userId, body.tmdbId);
       if (existing) {
@@ -58,26 +58,23 @@ export function registerRequestRoutes(
           return reply.status(409).send({ message: "All seasons already requested", existing });
         }
 
-        // Supprimer la request/media Seerr existante pour permettre une nouvelle demande complète
-        const config = await getWorkerConfig();
-        if (config && existing.seerrRequestId) {
-          await fetch(`${config.seerrUrl}/api/v1/request/${existing.seerrRequestId}`, {
-            method: "DELETE", headers: { "X-Api-Key": config.seerrApiKey },
-            signal: AbortSignal.timeout(10_000),
-          }).catch(() => {});
-        }
-        if (config && existing.seerrMediaId) {
-          await fetch(`${config.seerrUrl}/api/v1/media/${existing.seerrMediaId}`, {
-            method: "DELETE", headers: { "X-Api-Key": config.seerrApiKey },
-            signal: AbortSignal.timeout(10_000),
-          }).catch(() => {});
-        }
-
-        // Fusionner les saisons et remettre en queue
+        // Mettre à jour l'affichage local (toutes les saisons fusionnées)
         const merged = [...(existing.seasons ?? []), ...newSeasons].sort((a, b) => a - b);
         await addSeasonsToRequest(prisma, existing.id, merged);
+
+        // Créer une demande séparée pour les NOUVELLES saisons uniquement
+        // Le worker enverra juste celles-ci à Seerr (pas de suppression)
+        const newReq = await createRequest(prisma, {
+          jellyfinUserId: user.userId, username: user.username,
+          mediaType: body.mediaType, tmdbId: body.tmdbId, title: body.title,
+          posterPath: body.posterPath, backdropPath: body.backdropPath,
+          overview: body.overview, year: body.year,
+          seasons: newSeasons,
+          profileId: body.profileId ?? existing.profileId,
+        });
+
         const updated = await getRequestById(prisma, existing.id);
-        return reply.status(200).send(updated);
+        return reply.status(201).send(updated);
       }
     }
 
@@ -109,14 +106,8 @@ export function registerRequestRoutes(
       return reply.status(403).send({ message: "Not your request" });
     }
 
-    const config = await getWorkerConfig();
-
-    if (req.seerrRequestId && config) {
-      await fetch(`${config.seerrUrl}/api/v1/request/${req.seerrRequestId}`, {
-        method: "DELETE", headers: { "X-Api-Key": config.seerrApiKey },
-        signal: AbortSignal.timeout(10_000),
-      }).catch(() => {});
-    }
+    // NE PAS supprimer la request Seerr ici — le cleanup worker s'en charge
+    // dans le bon ordre (fichiers Sonarr/Radarr → media Seerr → request Seerr → local)
 
     const isSeasonSpecific = req.mediaType === "tv" && body.seasons && body.seasons.length > 0;
     const isFullSeries = req.mediaType === "tv" && !isSeasonSpecific;

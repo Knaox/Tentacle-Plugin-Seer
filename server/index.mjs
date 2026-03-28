@@ -435,15 +435,7 @@ async function findExistingTvRequest(prisma, jellyfinUserId, tmdbId) {
 }
 async function addSeasonsToRequest(prisma, id, seasons) {
   await prisma.$executeRawUnsafe(
-    `UPDATE seer_requests
-     SET seasons = ?,
-         status = CASE WHEN status IN ('processing') THEN status ELSE 'queued' END,
-         seerr_request_id = NULL,
-         seerr_media_id = NULL,
-         seerr_media_status = NULL,
-         retry_count = 0,
-         last_error = NULL
-     WHERE id = ?`,
+    `UPDATE seer_requests SET seasons = ? WHERE id = ?`,
     JSON.stringify(seasons),
     id
   );
@@ -659,146 +651,38 @@ function statusNotification(request, newStatus) {
   }
 }
 
-// server/arr-service.ts
-var sonarrCache = null;
-var radarrCache = null;
-async function getArrServerConfig(seerrUrl, apiKey, type) {
-  const cache = type === "sonarr" ? sonarrCache : radarrCache;
-  if (cache && Date.now() < cache.expires) return cache.data;
-  try {
-    const res = await fetch(`${seerrUrl}/api/v1/settings/${type}`, {
-      headers: { "X-Api-Key": apiKey },
-      signal: AbortSignal.timeout(1e4)
-    });
-    if (!res.ok) {
-      setCacheForType(type, null);
-      return null;
-    }
-    const servers = await res.json();
-    const defaultServer = servers.find((s) => s.isDefault);
-    if (!defaultServer) {
-      setCacheForType(type, null);
-      return null;
-    }
-    const data = {
-      hostname: defaultServer.hostname,
-      port: defaultServer.port,
-      apiKey: defaultServer.apiKey,
-      useSsl: !!defaultServer.useSsl,
-      baseUrl: defaultServer.baseUrl || ""
-    };
-    setCacheForType(type, data);
-    return data;
-  } catch {
-    setCacheForType(type, null);
-    return null;
-  }
-}
-function setCacheForType(type, data) {
-  const entry = { data, expires: Date.now() + 6e5 };
-  if (type === "sonarr") sonarrCache = entry;
-  else radarrCache = entry;
-}
-function buildArrUrl(server) {
-  const protocol = server.useSsl ? "https" : "http";
-  const base = server.baseUrl ? `/${server.baseUrl.replace(/^\/|\/$/g, "")}` : "";
-  return `${protocol}://${server.hostname}:${server.port}${base}`;
-}
-async function getMediaExternalId(seerrUrl, apiKey, mediaType, tmdbId) {
-  try {
-    const res = await fetch(`${seerrUrl}/api/v1/${mediaType}/${tmdbId}`, {
-      headers: { "X-Api-Key": apiKey },
-      signal: AbortSignal.timeout(1e4)
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (!data.mediaInfo?.externalServiceId) return null;
-    return {
-      externalServiceId: data.mediaInfo.externalServiceId,
-      serviceId: data.mediaInfo.serviceId ?? 0
-    };
-  } catch {
-    return null;
-  }
-}
-async function deleteSonarrSeries(server, seriesId, deleteFiles = false) {
-  try {
-    const url = `${buildArrUrl(server)}/api/v3/series/${seriesId}?deleteFiles=${deleteFiles}`;
-    const res = await fetch(url, {
-      method: "DELETE",
-      headers: { "X-Api-Key": server.apiKey },
-      signal: AbortSignal.timeout(1e4)
-    });
-    return res.ok || res.status === 404;
-  } catch (err) {
-    console.warn(`[ArrService] Failed to delete Sonarr series #${seriesId}:`, err);
-    return false;
-  }
-}
-async function deleteRadarrMovie(server, movieId, deleteFiles = false) {
-  try {
-    const url = `${buildArrUrl(server)}/api/v3/movie/${movieId}?deleteFiles=${deleteFiles}`;
-    const res = await fetch(url, {
-      method: "DELETE",
-      headers: { "X-Api-Key": server.apiKey },
-      signal: AbortSignal.timeout(1e4)
-    });
-    return res.ok || res.status === 404;
-  } catch (err) {
-    console.warn(`[ArrService] Failed to delete Radarr movie #${movieId}:`, err);
-    return false;
-  }
-}
-async function deleteSeerrMedia(seerrUrl, apiKey, mediaId) {
-  try {
-    const res = await fetch(`${seerrUrl}/api/v1/media/${mediaId}`, {
-      method: "DELETE",
-      headers: { "X-Api-Key": apiKey },
-      signal: AbortSignal.timeout(1e4)
-    });
-    return res.ok || res.status === 404;
-  } catch (err) {
-    console.warn(`[ArrService] Failed to delete Seerr media #${mediaId}:`, err);
-    return false;
-  }
-}
-
 // server/worker-cleanup.ts
 async function processCleanupQueue(prisma, config) {
   const jobs = await getPendingCleanups(prisma);
   if (jobs.length === 0) return;
   const job = jobs[0];
+  const headers = { "X-Api-Key": config.seerrApiKey };
   try {
-    let arrSuccess = false;
-    const ext = await getMediaExternalId(config.seerrUrl, config.seerrApiKey, job.mediaType, job.tmdbId);
-    if (ext) {
-      const arrType = job.mediaType === "movie" ? "radarr" : "sonarr";
-      const server = await getArrServerConfig(config.seerrUrl, config.seerrApiKey, arrType);
-      if (server) {
-        arrSuccess = job.mediaType === "movie" ? await deleteRadarrMovie(server, ext.externalServiceId, job.deleteFiles) : await deleteSonarrSeries(server, ext.externalServiceId, job.deleteFiles);
-        console.log(`[SeerWorker] ${arrType} delete for "${job.title}": ${arrSuccess ? "OK" : "FAILED"}`);
-      } else {
-        console.warn(`[SeerWorker] No ${arrType} server config found, skipping arr delete`);
-        arrSuccess = true;
+    if (job.seerrMediaId) {
+      const fileRes = await fetch(
+        `${config.seerrUrl}/api/v1/media/${job.seerrMediaId}/file?is4k=false`,
+        { method: "DELETE", headers, signal: AbortSignal.timeout(3e4) }
+      );
+      if (!fileRes.ok && fileRes.status !== 404) {
+        const body = await fileRes.text().catch(() => "");
+        throw new Error(`Jellyseerr /media/file returned ${fileRes.status}: ${body.slice(0, 200)}`);
       }
-    } else {
-      arrSuccess = true;
-    }
-    if (!arrSuccess) {
-      throw new Error("Sonarr/Radarr deletion failed \u2014 Seerr untouched");
+      console.log(`[SeerWorker] Deleted files via Jellyseerr for "${job.title}" (status=${fileRes.status})`);
     }
     if (job.seerrMediaId) {
-      const seerrOk = await deleteSeerrMedia(config.seerrUrl, config.seerrApiKey, job.seerrMediaId);
-      if (!seerrOk) {
-        console.warn(`[SeerWorker] Seerr media delete failed for "${job.title}" but arr is clean \u2014 continuing`);
+      const mediaRes = await fetch(
+        `${config.seerrUrl}/api/v1/media/${job.seerrMediaId}`,
+        { method: "DELETE", headers, signal: AbortSignal.timeout(15e3) }
+      );
+      if (!mediaRes.ok && mediaRes.status !== 404) {
+        console.warn(`[SeerWorker] Seerr media delete returned ${mediaRes.status} for "${job.title}"`);
       }
     }
     if (job.seerrRequestId) {
-      await fetch(`${config.seerrUrl}/api/v1/request/${job.seerrRequestId}`, {
-        method: "DELETE",
-        headers: { "X-Api-Key": config.seerrApiKey },
-        signal: AbortSignal.timeout(1e4)
-      }).catch(() => {
+      await fetch(
+        `${config.seerrUrl}/api/v1/request/${job.seerrRequestId}`,
+        { method: "DELETE", headers, signal: AbortSignal.timeout(1e4) }
+      ).catch(() => {
       });
     }
     await updateCleanupJob(prisma, job.id, "completed");
@@ -1038,27 +922,23 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
         if (newSeasons.length === 0) {
           return reply.status(409).send({ message: "All seasons already requested", existing });
         }
-        const config = await getWorkerConfig2();
-        if (config && existing.seerrRequestId) {
-          await fetch(`${config.seerrUrl}/api/v1/request/${existing.seerrRequestId}`, {
-            method: "DELETE",
-            headers: { "X-Api-Key": config.seerrApiKey },
-            signal: AbortSignal.timeout(1e4)
-          }).catch(() => {
-          });
-        }
-        if (config && existing.seerrMediaId) {
-          await fetch(`${config.seerrUrl}/api/v1/media/${existing.seerrMediaId}`, {
-            method: "DELETE",
-            headers: { "X-Api-Key": config.seerrApiKey },
-            signal: AbortSignal.timeout(1e4)
-          }).catch(() => {
-          });
-        }
         const merged = [...existing.seasons ?? [], ...newSeasons].sort((a, b) => a - b);
         await addSeasonsToRequest(prisma, existing.id, merged);
+        const newReq = await createRequest(prisma, {
+          jellyfinUserId: user.userId,
+          username: user.username,
+          mediaType: body.mediaType,
+          tmdbId: body.tmdbId,
+          title: body.title,
+          posterPath: body.posterPath,
+          backdropPath: body.backdropPath,
+          overview: body.overview,
+          year: body.year,
+          seasons: newSeasons,
+          profileId: body.profileId ?? existing.profileId
+        });
         const updated = await getRequestById(prisma, existing.id);
-        return reply.status(200).send(updated);
+        return reply.status(201).send(updated);
       }
     }
     const dup = await findDuplicate(prisma, user.userId, body.tmdbId, body.mediaType, body.seasons);
@@ -1088,15 +968,6 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
     if (!req) return reply.status(404).send({ message: "Request not found" });
     if (req.jellyfinUserId !== user.userId && !user.isAdmin) {
       return reply.status(403).send({ message: "Not your request" });
-    }
-    const config = await getWorkerConfig2();
-    if (req.seerrRequestId && config) {
-      await fetch(`${config.seerrUrl}/api/v1/request/${req.seerrRequestId}`, {
-        method: "DELETE",
-        headers: { "X-Api-Key": config.seerrApiKey },
-        signal: AbortSignal.timeout(1e4)
-      }).catch(() => {
-      });
     }
     const isSeasonSpecific = req.mediaType === "tv" && body.seasons && body.seasons.length > 0;
     const isFullSeries = req.mediaType === "tv" && !isSeasonSpecific;
@@ -1201,7 +1072,6 @@ function registerBulkRoutes(app, prisma, getWorkerConfig2) {
     if (!body.ids || !Array.isArray(body.ids) || body.ids.length === 0) {
       return reply.status(400).send({ message: "ids array required" });
     }
-    const config = await getWorkerConfig2();
     let deleted = 0;
     let errors = 0;
     for (const id of body.ids.slice(0, 50)) {
@@ -1218,14 +1088,6 @@ function registerBulkRoutes(app, prisma, getWorkerConfig2) {
         if (req.status === "deleting" || req.status === "processing") {
           errors++;
           continue;
-        }
-        if (req.seerrRequestId && config) {
-          await fetch(`${config.seerrUrl}/api/v1/request/${req.seerrRequestId}`, {
-            method: "DELETE",
-            headers: { "X-Api-Key": config.seerrApiKey },
-            signal: AbortSignal.timeout(1e4)
-          }).catch(() => {
-          });
         }
         await updateRequestStatus(prisma, id, "deleting");
         await enqueueCleanup(prisma, {

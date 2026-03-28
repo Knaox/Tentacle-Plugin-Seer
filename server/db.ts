@@ -216,21 +216,12 @@ export async function findExistingTvRequest(
   return rows.length > 0 ? rowToRequest(rows[0]) : null;
 }
 
-/** Mettre à jour les saisons d'une demande et la remettre en queue pour envoi à Seerr */
+/** Mettre à jour les saisons affichées d'une demande (sans changer le status ni les IDs Seerr) */
 export async function addSeasonsToRequest(
   prisma: Prisma, id: string, seasons: number[],
 ): Promise<void> {
-  // Toujours remettre en queue + reset IDs Seerr pour forcer une nouvelle demande complète
   await prisma.$executeRawUnsafe(
-    `UPDATE seer_requests
-     SET seasons = ?,
-         status = CASE WHEN status IN ('processing') THEN status ELSE 'queued' END,
-         seerr_request_id = NULL,
-         seerr_media_id = NULL,
-         seerr_media_status = NULL,
-         retry_count = 0,
-         last_error = NULL
-     WHERE id = ?`,
+    `UPDATE seer_requests SET seasons = ? WHERE id = ?`,
     JSON.stringify(seasons), id,
   );
 }

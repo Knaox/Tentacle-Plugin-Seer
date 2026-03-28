@@ -1,5 +1,5 @@
 /* ------------------------------------------------------------------ */
-/*  Seer Plugin — Worker: cleanup queue (Sonarr/Radarr deletions)      */
+/*  Seer Plugin — Worker: cleanup queue (suppression via Jellyseerr)   */
 /* ------------------------------------------------------------------ */
 
 import type { PrismaClient } from "@prisma/client";
@@ -7,10 +7,6 @@ import {
   getPendingCleanups, updateCleanupJob,
   clearPendingCleanup, deleteRequestById, updateRequestStatus,
 } from "./db";
-import {
-  getArrServerConfig, getMediaExternalId,
-  deleteSonarrSeries, deleteRadarrMovie, deleteSeerrMedia,
-} from "./arr-service";
 import type { WorkerConfig } from "./worker-sync";
 
 export async function processCleanupQueue(prisma: PrismaClient, config: WorkerConfig): Promise<void> {
@@ -18,52 +14,46 @@ export async function processCleanupQueue(prisma: PrismaClient, config: WorkerCo
   if (jobs.length === 0) return;
 
   const job = jobs[0];
+  const headers = { "X-Api-Key": config.seerrApiKey };
+
   try {
-    // === ÉTAPE 1 : Supprimer de Sonarr/Radarr EN PREMIER ===
-    let arrSuccess = false;
-
-    const ext = await getMediaExternalId(config.seerrUrl, config.seerrApiKey, job.mediaType, job.tmdbId);
-    if (ext) {
-      const arrType = job.mediaType === "movie" ? "radarr" : "sonarr";
-      const server = await getArrServerConfig(config.seerrUrl, config.seerrApiKey, arrType);
-      if (server) {
-        arrSuccess = job.mediaType === "movie"
-          ? await deleteRadarrMovie(server, ext.externalServiceId, job.deleteFiles)
-          : await deleteSonarrSeries(server, ext.externalServiceId, job.deleteFiles);
-        console.log(`[SeerWorker] ${arrType} delete for "${job.title}": ${arrSuccess ? "OK" : "FAILED"}`);
-      } else {
-        // Pas de config serveur → on ne peut pas supprimer, considérer comme OK
-        console.warn(`[SeerWorker] No ${arrType} server config found, skipping arr delete`);
-        arrSuccess = true;
-      }
-    } else {
-      // Pas d'ID externe = pas dans Sonarr/Radarr
-      arrSuccess = true;
-    }
-
-    // === STOP si Sonarr/Radarr a échoué — on ne touche PAS à Seerr ===
-    if (!arrSuccess) {
-      throw new Error("Sonarr/Radarr deletion failed — Seerr untouched");
-    }
-
-    // === ÉTAPE 2 : Sonarr/Radarr OK → Supprimer le média Seerr ===
+    // === ÉTAPE 1 : Supprimer de Sonarr/Radarr via Jellyseerr ===
+    // L'endpoint /media/{id}/file appelle Sonarr/Radarr pour nous
     if (job.seerrMediaId) {
-      const seerrOk = await deleteSeerrMedia(config.seerrUrl, config.seerrApiKey, job.seerrMediaId);
-      if (!seerrOk) {
-        console.warn(`[SeerWorker] Seerr media delete failed for "${job.title}" but arr is clean — continuing`);
+      const fileRes = await fetch(
+        `${config.seerrUrl}/api/v1/media/${job.seerrMediaId}/file?is4k=false`,
+        { method: "DELETE", headers, signal: AbortSignal.timeout(30_000) },
+      );
+
+      if (!fileRes.ok && fileRes.status !== 404) {
+        const body = await fileRes.text().catch(() => "");
+        throw new Error(`Jellyseerr /media/file returned ${fileRes.status}: ${body.slice(0, 200)}`);
+      }
+
+      console.log(`[SeerWorker] Deleted files via Jellyseerr for "${job.title}" (status=${fileRes.status})`);
+    }
+
+    // === ÉTAPE 2 : Supprimer le media de Jellyseerr (cascade les requests) ===
+    if (job.seerrMediaId) {
+      const mediaRes = await fetch(
+        `${config.seerrUrl}/api/v1/media/${job.seerrMediaId}`,
+        { method: "DELETE", headers, signal: AbortSignal.timeout(15_000) },
+      );
+
+      if (!mediaRes.ok && mediaRes.status !== 404) {
+        console.warn(`[SeerWorker] Seerr media delete returned ${mediaRes.status} for "${job.title}"`);
       }
     }
 
-    // === ÉTAPE 3 : Supprimer la request Seerr ===
+    // === ÉTAPE 3 : Supprimer la request Seerr (au cas où pas cascade) ===
     if (job.seerrRequestId) {
-      await fetch(`${config.seerrUrl}/api/v1/request/${job.seerrRequestId}`, {
-        method: "DELETE",
-        headers: { "X-Api-Key": config.seerrApiKey },
-        signal: AbortSignal.timeout(10_000),
-      }).catch(() => {});
+      await fetch(
+        `${config.seerrUrl}/api/v1/request/${job.seerrRequestId}`,
+        { method: "DELETE", headers, signal: AbortSignal.timeout(10_000) },
+      ).catch(() => {});
     }
 
-    // === ÉTAPE 4 : Tout OK → supprimer la demande locale ===
+    // === ÉTAPE 4 : Cleanup local ===
     await updateCleanupJob(prisma, job.id, "completed");
 
     if (job.requestId) {

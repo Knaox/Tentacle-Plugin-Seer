@@ -28,7 +28,6 @@ export function registerBulkRoutes(
       return reply.status(400).send({ message: "ids array required" });
     }
 
-    const config = await getWorkerConfig();
     let deleted = 0;
     let errors = 0;
 
@@ -38,13 +37,6 @@ export function registerBulkRoutes(
         if (!req) { errors++; continue; }
         if (req.jellyfinUserId !== user.userId && !user.isAdmin) { errors++; continue; }
         if (req.status === "deleting" || req.status === "processing") { errors++; continue; }
-
-        if (req.seerrRequestId && config) {
-          await fetch(`${config.seerrUrl}/api/v1/request/${req.seerrRequestId}`, {
-            method: "DELETE", headers: { "X-Api-Key": config.seerrApiKey },
-            signal: AbortSignal.timeout(10_000),
-          }).catch(() => {});
-        }
 
         await updateRequestStatus(prisma, id, "deleting");
         await enqueueCleanup(prisma, {
