@@ -336,6 +336,11 @@ export default {
   adminUsersSeerrNotLinked: "Non lié",
   adminUsersConfigFirst: "Renseigne d'abord l'URL et la clé API Jellyseerr dans l'onglet Configuration pour pouvoir synchroniser les utilisateurs.",
 
+  // Réassignement des propriétaires de demandes
+  adminReassignButton: "Synchroniser les demandes locales",
+  adminReassignHint: "Pour chaque demande locale, vérifie le propriétaire côté Jellyseerr et le corrige si besoin. Crée un utilisateur Jellyseerr placeholder si le compte Jellyfin a été supprimé — son historique sera récupéré dès qu'il recrée un compte avec le même nom.",
+  adminReassignDone: "{{reassigned}} réassignée(s), {{orphansCreated}} placeholder(s) créé(s), {{alreadyOk}} déjà OK, {{failed}} échec(s)",
+
   // Marquer manuellement le statut sur Jellyseerr
   markAs: "Marquer comme",
   markAsAvailable: "Disponible",

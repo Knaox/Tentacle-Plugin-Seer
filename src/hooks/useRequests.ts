@@ -14,8 +14,11 @@ export function useMyRequests(
   const query = useQuery({
     queryKey: ["seer-my-requests", page, limit, status, mediaType],
     queryFn: () => getMyRequests(page, limit, status, mediaType),
-    staleTime: 15_000,
-    refetchInterval: 30_000,
+    staleTime: 60_000,        // 1 min — backend cache de toute façon la liste 60s par user
+    gcTime: 30 * 60_000,      // 30 min en mémoire après dernière utilisation
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: false,
+    placeholderData: (prev) => prev,  // pas de flash blanc au changement de filtre/page
   });
 
   // Détecte les passages en retry_pending entre deux refreshes pour alerter l'utilisateur

@@ -333,6 +333,19 @@ export async function syncAdminUsers(): Promise<{ synced: number; failed: number
   return backendFetch("/admin/users/sync", { method: "POST" });
 }
 
+export interface SyncRequestsOwnershipResult {
+  total: number;
+  reassigned: number;
+  alreadyOk: number;
+  orphansCreated: number;
+  failed: number;
+  errors: Array<{ requestId: string; reason: string }>;
+}
+
+export async function syncRequestsOwnership(): Promise<SyncRequestsOwnershipResult> {
+  return backendFetch("/admin/sync-requests-ownership", { method: "POST" });
+}
+
 /* ── Config check ────────────────────────────────────────────────── */
 
 export async function isSeerConfigured(): Promise<boolean> {

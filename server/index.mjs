@@ -709,6 +709,43 @@ async function fetchAnimeOverrides(seerrUrl, apiKey) {
   }
 }
 
+// server/cache.ts
+var store = /* @__PURE__ */ new Map();
+var inflight = /* @__PURE__ */ new Map();
+async function cached(key, ttlMs, loader) {
+  const now = Date.now();
+  const hit = store.get(key);
+  if (hit && hit.expires > now) {
+    return hit.value;
+  }
+  const pending = inflight.get(key);
+  if (pending) return pending;
+  const p = (async () => {
+    try {
+      const value = await loader();
+      store.set(key, { value, expires: Date.now() + ttlMs });
+      return value;
+    } finally {
+      inflight.delete(key);
+    }
+  })();
+  inflight.set(key, p);
+  return p;
+}
+function invalidate(prefix) {
+  for (const key of Array.from(store.keys())) {
+    if (key === prefix || key.startsWith(prefix + ":")) {
+      store.delete(key);
+    }
+  }
+}
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of store.entries()) {
+    if (entry.expires <= now) store.delete(key);
+  }
+}, 6e4).unref?.();
+
 // server/worker-sync.ts
 async function syncStatuses(prisma, config) {
   const requests = await getRequestsToSync(prisma);
@@ -734,11 +771,13 @@ async function syncStatuses(prisma, config) {
       if (newStatus !== oldStatus) {
         if (newStatus === "failed" && request.seerrRequestId) {
           await handleFailedSync(prisma, config, request, data);
+          invalidate(`seer-cache:${request.jellyfinUserId}`);
           continue;
         }
         const extra = { seerrMediaStatus: data.media?.status };
         if (newStatus === "available") extra.completedAt = /* @__PURE__ */ new Date();
         await updateRequestStatus(prisma, request.id, newStatus, extra);
+        invalidate(`seer-cache:${request.jellyfinUserId}`);
         const notif = statusNotification(request, newStatus);
         if (notif) {
           await prisma.notification.create({
@@ -925,13 +964,27 @@ async function resolveJellyseerrUserId(config, prisma, jellyfinUserId, username)
     });
     return found.id;
   }
-  const imported = await importJellyseerrUserFromJellyfin(config, jellyfinUserId);
-  if (imported) {
-    await updateUserSettings(prisma, jellyfinUserId, {
-      jellyseerrUserId: imported.id,
-      jellyseerrLastSync: /* @__PURE__ */ new Date()
-    });
-    return imported.id;
+  if (username) {
+    const placeholder = await findOrphanPlaceholderByUsername(config, username);
+    if (placeholder) {
+      await relinkJellyseerrUserToJellyfin(config, placeholder.id, jellyfinUserId);
+      await updateUserSettings(prisma, jellyfinUserId, {
+        jellyseerrUserId: placeholder.id,
+        jellyseerrLastSync: /* @__PURE__ */ new Date()
+      });
+      return placeholder.id;
+    }
+  }
+  try {
+    const imported = await importJellyseerrUserFromJellyfin(config, jellyfinUserId);
+    if (imported) {
+      await updateUserSettings(prisma, jellyfinUserId, {
+        jellyseerrUserId: imported.id,
+        jellyseerrLastSync: /* @__PURE__ */ new Date()
+      });
+      return imported.id;
+    }
+  } catch {
   }
   const refreshed = await findJellyseerrUserByJellyfinId(config, jellyfinUserId);
   if (refreshed) {
@@ -942,6 +995,41 @@ async function resolveJellyseerrUserId(config, prisma, jellyfinUserId, username)
     return refreshed.id;
   }
   throw new Error(`Unable to resolve Jellyseerr user for jellyfinUserId=${jellyfinUserId}`);
+}
+async function findOrphanPlaceholderByUsername(config, username) {
+  const all = await listAllJellyseerrUsers(config);
+  const target = username.trim().toLowerCase();
+  return all.find(
+    (u) => !u.jellyfinUserId && (u.username && u.username.trim().toLowerCase() === target || u.jellyfinUsername && u.jellyfinUsername.trim().toLowerCase() === target)
+  ) ?? null;
+}
+async function createPlaceholderJellyseerrUser(config, username) {
+  const existing = await findOrphanPlaceholderByUsername(config, username);
+  if (existing) return existing;
+  const email = `${username.toLowerCase().replace(/[^a-z0-9._-]+/g, "")}@tentacle.local`;
+  const res = await fetch(`${config.seerrUrl}/api/v1/user`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Api-Key": config.seerrApiKey },
+    body: JSON.stringify({ email, username }),
+    signal: AbortSignal.timeout(15e3)
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Jellyseerr POST /user failed (${res.status}): ${text.slice(0, 200)}`);
+  }
+  return await res.json();
+}
+async function relinkJellyseerrUserToJellyfin(config, jellyseerrUserId, jellyfinUserId) {
+  const res = await fetch(`${config.seerrUrl}/api/v1/user/${jellyseerrUserId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "X-Api-Key": config.seerrApiKey },
+    body: JSON.stringify({ jellyfinUserId }),
+    signal: AbortSignal.timeout(1e4)
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Jellyseerr PUT /user/${jellyseerrUserId} failed (${res.status}): ${text.slice(0, 200)}`);
+  }
 }
 async function findJellyseerrUserByJellyfinId(config, jellyfinUserId) {
   const all = await listAllJellyseerrUsers(config);
@@ -1124,6 +1212,7 @@ async function processNextRequest(prisma, config) {
       seerrMediaStatus: data.media?.status,
       sentAt: /* @__PURE__ */ new Date()
     });
+    invalidate(`seer-cache:${request.jellyfinUserId}`);
     await prisma.notification.create({
       data: {
         jellyfinUserId: request.jellyfinUserId,
@@ -1291,45 +1380,47 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
   app.get("/requests/stats", async (request, reply) => {
     const user = getUser(request);
     const config = await getWorkerConfig2();
-    const byStatus = {};
-    const byType = { movie: 0, tv: 0 };
-    let total = 0;
-    if (config) {
-      try {
-        const seerUserId = await resolveJellyseerrUserId(config, prisma, user.userId, user.username);
-        let skip = 0;
-        const take = 100;
-        for (let i = 0; i < 25; i++) {
-          const { rows } = await fetchSeerrRequestsForUser(config, seerUserId, take, skip);
-          for (const sr of rows) {
-            total++;
-            const status = mapSeerrStatus(sr.status, sr.media?.status, sr.media?.downloadStatus);
-            byStatus[status] = (byStatus[status] ?? 0) + 1;
-            const mt = sr.media?.mediaType;
-            if (mt === "movie") byType.movie++;
-            else if (mt === "tv") byType.tv++;
+    return cached(`seer-cache:${user.userId}:stats`, 6e4, async () => {
+      const byStatus = {};
+      const byType = { movie: 0, tv: 0 };
+      let total = 0;
+      if (config) {
+        try {
+          const seerUserId = await resolveJellyseerrUserId(config, prisma, user.userId, user.username);
+          let skip = 0;
+          const take = 100;
+          for (let i = 0; i < 25; i++) {
+            const { rows } = await fetchSeerrRequestsForUser(config, seerUserId, take, skip);
+            for (const sr of rows) {
+              total++;
+              const status = mapSeerrStatus(sr.status, sr.media?.status, sr.media?.downloadStatus);
+              byStatus[status] = (byStatus[status] ?? 0) + 1;
+              const mt = sr.media?.mediaType;
+              if (mt === "movie") byType.movie++;
+              else if (mt === "tv") byType.tv++;
+            }
+            if (rows.length < take) break;
+            skip += take;
           }
-          if (rows.length < take) break;
-          skip += take;
+        } catch (err) {
+          request.log?.warn?.({ err }, "Seerr stats fetch failed");
         }
-      } catch (err) {
-        request.log?.warn?.({ err }, "Seerr stats fetch failed");
       }
-    }
-    const localPending = await prisma.$queryRawUnsafe(
-      `SELECT status, media_type FROM seer_requests
-       WHERE jellyfin_user_id = ?
-         AND seerr_request_id IS NULL
-         AND status IN ('queued','processing','retry_pending','failed')`,
-      user.userId
-    );
-    for (const r of localPending) {
-      total++;
-      byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
-      if (r.media_type === "movie") byType.movie++;
-      else if (r.media_type === "tv") byType.tv++;
-    }
-    return { total, byStatus, byType };
+      const localPending = await prisma.$queryRawUnsafe(
+        `SELECT status, media_type FROM seer_requests
+         WHERE jellyfin_user_id = ?
+           AND seerr_request_id IS NULL
+           AND status IN ('queued','processing','retry_pending','failed')`,
+        user.userId
+      );
+      for (const r of localPending) {
+        total++;
+        byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
+        if (r.media_type === "movie") byType.movie++;
+        else if (r.media_type === "tv") byType.tv++;
+      }
+      return { total, byStatus, byType };
+    });
   });
   app.get("/requests", async (request, reply) => {
     const user = getUser(request);
@@ -1349,68 +1440,74 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
       const local = await getUserRequests(prisma, user.userId, { page, limit, mediaType: query.type });
       return { ...local, results: local.results.map(localToUnified) };
     }
-    const localPendingRows = await prisma.$queryRawUnsafe(
-      `SELECT * FROM seer_requests
-       WHERE jellyfin_user_id = ?
-         AND status IN ('queued','processing','retry_pending','failed','deleting','delete_failed')
-       ORDER BY created_at DESC`,
-      user.userId
-    );
-    const { rowToRequest: rowToRequest2 } = await Promise.resolve().then(() => (init_db_helpers(), db_helpers_exports));
-    const localPending = localPendingRows.map(rowToRequest2);
-    const localBySeerrId = /* @__PURE__ */ new Map();
-    const allLocalRows = await prisma.$queryRawUnsafe(
-      `SELECT * FROM seer_requests WHERE jellyfin_user_id = ? AND seerr_request_id IS NOT NULL`,
-      user.userId
-    );
-    for (const row of allLocalRows) {
-      const r = rowToRequest2(row);
-      if (r.seerrRequestId) localBySeerrId.set(r.seerrRequestId, r);
-    }
-    const filterActive = !!(query.status || query.type);
-    let seerrUnified = [];
-    try {
-      const seerUserId = await resolveJellyseerrUserId(config, prisma, user.userId, user.username);
-      const take = 100;
-      const allRows = [];
-      const maxPages = filterActive ? 25 : Math.max(2, Math.ceil((page * limit + limit) / take));
-      let skip = 0;
-      for (let i = 0; i < maxPages; i++) {
-        const { rows } = await fetchSeerrRequestsForUser(config, seerUserId, take, skip);
-        allRows.push(...rows);
-        if (rows.length < take) break;
-        skip += take;
-      }
-      const detailCache = /* @__PURE__ */ new Map();
-      const tasks = allRows.map(async (sr) => {
-        if (!sr.media) return null;
-        const key = `${sr.media.mediaType}-${sr.media.tmdbId}`;
-        if (!detailCache.has(key)) {
-          detailCache.set(key, await fetchSeerrTmdbDetail(config, sr.media.mediaType, sr.media.tmdbId));
+    const merged = await cached(
+      `seer-cache:${user.userId}:list`,
+      6e4,
+      async () => {
+        const { rowToRequest: rowToRequest2 } = await Promise.resolve().then(() => (init_db_helpers(), db_helpers_exports));
+        const localPendingRows = await prisma.$queryRawUnsafe(
+          `SELECT * FROM seer_requests
+           WHERE jellyfin_user_id = ?
+             AND status IN ('queued','processing','retry_pending','failed','deleting','delete_failed')
+           ORDER BY created_at DESC`,
+          user.userId
+        );
+        const localPending = localPendingRows.map(rowToRequest2);
+        const localBySeerrId = /* @__PURE__ */ new Map();
+        const allLocalRows = await prisma.$queryRawUnsafe(
+          `SELECT * FROM seer_requests WHERE jellyfin_user_id = ? AND seerr_request_id IS NOT NULL`,
+          user.userId
+        );
+        for (const row of allLocalRows) {
+          const r = rowToRequest2(row);
+          if (r.seerrRequestId) localBySeerrId.set(r.seerrRequestId, r);
         }
-        return seerrRequestToUnified(sr, detailCache.get(key) ?? null, localBySeerrId, {
-          jellyfinUserId: user.userId,
-          username: user.username
-        });
-      });
-      seerrUnified = (await Promise.all(tasks)).filter((x) => x !== null);
-    } catch (err) {
-      request.log?.warn?.({ err }, "Seerr fetch failed, falling back to local only");
-    }
-    const seerrSeenIds = new Set(seerrUnified.map((u) => u.seerrRequestId).filter(Boolean));
-    const localFiltered = localPending.filter((l) => !l.seerrRequestId || !seerrSeenIds.has(l.seerrRequestId)).map(localToUnified);
-    let merged = [...localFiltered, ...seerrUnified];
+        let seerrUnified = [];
+        try {
+          const seerUserId = await resolveJellyseerrUserId(config, prisma, user.userId, user.username);
+          const take = 100;
+          const allRows = [];
+          let skip = 0;
+          for (let i = 0; i < 25; i++) {
+            const { rows } = await fetchSeerrRequestsForUser(config, seerUserId, take, skip);
+            allRows.push(...rows);
+            if (rows.length < take) break;
+            skip += take;
+          }
+          const detailCache = /* @__PURE__ */ new Map();
+          const tasks = allRows.map(async (sr) => {
+            if (!sr.media) return null;
+            const key = `${sr.media.mediaType}-${sr.media.tmdbId}`;
+            if (!detailCache.has(key)) {
+              detailCache.set(key, await fetchSeerrTmdbDetail(config, sr.media.mediaType, sr.media.tmdbId));
+            }
+            return seerrRequestToUnified(sr, detailCache.get(key) ?? null, localBySeerrId, {
+              jellyfinUserId: user.userId,
+              username: user.username
+            });
+          });
+          seerrUnified = (await Promise.all(tasks)).filter((x) => x !== null);
+        } catch (err) {
+          request.log?.warn?.({ err }, "Seerr fetch failed, falling back to local only");
+        }
+        const seerrSeenIds = new Set(seerrUnified.map((u) => u.seerrRequestId).filter(Boolean));
+        const localFiltered = localPending.filter((l) => !l.seerrRequestId || !seerrSeenIds.has(l.seerrRequestId)).map(localToUnified);
+        const out = [...localFiltered, ...seerrUnified];
+        out.sort((a, b) => b.createdAt > a.createdAt ? 1 : -1);
+        return out;
+      }
+    );
+    let filtered = merged;
     if (query.type) {
-      merged = merged.filter((r) => r.mediaType === query.type);
+      filtered = filtered.filter((r) => r.mediaType === query.type);
     }
     if (query.status) {
       const wanted = new Set(query.status.split(",").map((s) => s.trim()));
-      merged = merged.filter((r) => wanted.has(r.status));
+      filtered = filtered.filter((r) => wanted.has(r.status));
     }
-    merged.sort((a, b) => b.createdAt > a.createdAt ? 1 : -1);
-    const total = merged.length;
+    const total = filtered.length;
     const offset = (page - 1) * limit;
-    const sliced = merged.slice(offset, offset + limit);
+    const sliced = filtered.slice(offset, offset + limit);
     return {
       results: sliced,
       total,
@@ -1478,6 +1575,7 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
           isAnime
         });
         const updated = await getRequestById(prisma, existing.id);
+        invalidate(`seer-cache:${user.userId}`);
         return reply.status(201).send(updated);
       }
     }
@@ -1499,6 +1597,7 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
       profileId: body.profileId,
       isAnime
     });
+    invalidate(`seer-cache:${user.userId}`);
     return reply.status(201).send(req);
   });
   app.delete("/requests/:id", async (request, reply) => {
@@ -1530,6 +1629,7 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
       } else {
         await deleteRequestById(prisma, parsed.id);
       }
+      invalidate(`seer-cache:${user.userId}`);
       return { success: true, status: "deleting" };
     }
     const config = await getWorkerConfig2();
@@ -1556,6 +1656,7 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
       deleteFiles,
       requestId: null
     });
+    invalidate(`seer-cache:${user.userId}`);
     return { success: true, status: "deleting" };
   });
   app.post("/requests/:id/retry", async (request, reply) => {
@@ -1607,6 +1708,7 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
         profileId: newProfileId,
         isAnime: req.isAnime
       });
+      invalidate(`seer-cache:${user.userId}`);
       return reply.status(201).send(newReq2);
     }
     if (!config) return reply.status(503).send({ message: "Seerr not configured" });
@@ -1657,6 +1759,7 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
       profileId: body.profileId ?? null,
       isAnime: false
     });
+    invalidate(`seer-cache:${user.userId}`);
     return reply.status(201).send(newReq);
   });
   app.post("/requests/:id/mark", async (request, reply) => {
@@ -1709,6 +1812,7 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
       const localStatus = target === "available" ? "available" : target === "partial" ? "partially_available" : "sent_to_seer";
       await updateRequestStatus(prisma, parsed.id, localStatus);
     }
+    invalidate(`seer-cache:${user.userId}`);
     return { success: true, target };
   });
   app.post("/requests/:id/retry-delete", async (request, reply) => {
@@ -2022,6 +2126,161 @@ function registerUsersRoutes(app, prisma, getWorkerConfig2, requireAdmin) {
       return { synced, failed, created, total: all.length, jellyfinAdminOk: jellyfinError === null };
     }
   );
+  app.post(
+    "/admin/sync-requests-ownership",
+    { preHandler: requireAdmin },
+    async (_request, reply) => {
+      const config = await getWorkerConfig2();
+      if (!config) return reply.status(503).send({ message: "Seerr not configured" });
+      let alreadyOk = 0;
+      let reassigned = 0;
+      let orphansCreated = 0;
+      let failed = 0;
+      const usersTouched = /* @__PURE__ */ new Set();
+      const errors = [];
+      const rows = await prisma.$queryRawUnsafe(
+        `SELECT id, jellyfin_user_id, username, seerr_request_id, seerr_media_id, media_type, tmdb_id
+         FROM seer_requests
+         WHERE seerr_request_id IS NOT NULL
+           AND status NOT IN ('deleted','deleting','delete_failed')`
+      );
+      const targetByJellyfin = /* @__PURE__ */ new Map();
+      const distinctUsers = /* @__PURE__ */ new Map();
+      for (const r of rows) {
+        if (!distinctUsers.has(r.jellyfin_user_id)) distinctUsers.set(r.jellyfin_user_id, r.username);
+      }
+      for (const [jfUserId, jfUsername] of distinctUsers) {
+        try {
+          const seerUserId = await resolveJellyseerrUserId(config, prisma, jfUserId, jfUsername);
+          targetByJellyfin.set(jfUserId, seerUserId);
+        } catch {
+          try {
+            const placeholder = await createPlaceholderJellyseerrUser(config, jfUsername);
+            await updateUserSettings(prisma, jfUserId, {
+              jellyseerrUserId: placeholder.id,
+              jellyseerrLastSync: /* @__PURE__ */ new Date()
+            });
+            targetByJellyfin.set(jfUserId, placeholder.id);
+            orphansCreated++;
+          } catch (err) {
+            errors.push({
+              requestId: jfUserId,
+              reason: err instanceof Error ? err.message : "placeholder creation failed"
+            });
+          }
+        }
+      }
+      for (const r of rows) {
+        if (!r.seerr_request_id) continue;
+        const target = targetByJellyfin.get(r.jellyfin_user_id);
+        if (!target) {
+          failed++;
+          continue;
+        }
+        try {
+          const result = await reassignSeerrRequestOwnership(
+            config,
+            r.seerr_request_id,
+            target
+          );
+          if (result.method === "skip") {
+            alreadyOk++;
+          } else {
+            reassigned++;
+            usersTouched.add(r.jellyfin_user_id);
+            if (result.method === "recreate" && result.newRequestId) {
+              await prisma.$executeRawUnsafe(
+                `UPDATE seer_requests SET seerr_request_id = ? WHERE id = ?`,
+                result.newRequestId,
+                r.id
+              );
+            }
+          }
+        } catch (err) {
+          failed++;
+          errors.push({
+            requestId: r.id,
+            reason: err instanceof Error ? err.message : "reassign failed"
+          });
+        }
+      }
+      for (const uid of usersTouched) invalidate(`seer-cache:${uid}`);
+      return {
+        total: rows.length,
+        reassigned,
+        alreadyOk,
+        orphansCreated,
+        failed,
+        errors: errors.slice(0, 20)
+        // limiter le payload
+      };
+    }
+  );
+}
+async function reassignSeerrRequestOwnership(config, seerrRequestId, targetUserId) {
+  const headers = { "Content-Type": "application/json", "X-Api-Key": config.seerrApiKey };
+  const cur = await fetch(`${config.seerrUrl}/api/v1/request/${seerrRequestId}`, {
+    headers: { "X-Api-Key": config.seerrApiKey },
+    signal: AbortSignal.timeout(1e4)
+  });
+  if (!cur.ok) {
+    throw new Error(`GET request ${seerrRequestId} failed: ${cur.status}`);
+  }
+  const req = await cur.json();
+  if (req.requestedBy?.id === targetUserId) return { method: "skip" };
+  const putBody = {
+    mediaType: req.media?.mediaType,
+    userId: targetUserId
+  };
+  if (req.serverId != null) putBody.serverId = req.serverId;
+  if (req.profileId != null) putBody.profileId = req.profileId;
+  if (req.rootFolder) putBody.rootFolder = req.rootFolder;
+  if (req.languageProfileId != null) putBody.languageProfileId = req.languageProfileId;
+  if (req.tags?.length) putBody.tags = req.tags;
+  const putRes = await fetch(`${config.seerrUrl}/api/v1/request/${seerrRequestId}`, {
+    method: "PUT",
+    headers,
+    body: JSON.stringify(putBody),
+    signal: AbortSignal.timeout(15e3)
+  });
+  if (putRes.ok) {
+    const updated = await putRes.json().catch(() => null);
+    if (updated?.requestedBy?.id === targetUserId) {
+      return { method: "put" };
+    }
+  }
+  await fetch(`${config.seerrUrl}/api/v1/request/${seerrRequestId}`, {
+    method: "DELETE",
+    headers: { "X-Api-Key": config.seerrApiKey },
+    signal: AbortSignal.timeout(1e4)
+  }).catch(() => {
+  });
+  if (!req.media?.tmdbId || !req.media?.mediaType) {
+    throw new Error("missing media info for recreate");
+  }
+  const createBody = {
+    mediaType: req.media.mediaType,
+    mediaId: req.media.tmdbId,
+    userId: targetUserId
+  };
+  if (req.seasons?.length) createBody.seasons = req.seasons.map((s) => s.seasonNumber);
+  if (req.serverId != null) createBody.serverId = req.serverId;
+  if (req.profileId != null) createBody.profileId = req.profileId;
+  if (req.rootFolder) createBody.rootFolder = req.rootFolder;
+  if (req.languageProfileId != null) createBody.languageProfileId = req.languageProfileId;
+  if (req.tags?.length) createBody.tags = req.tags;
+  const postRes = await fetch(`${config.seerrUrl}/api/v1/request`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(createBody),
+    signal: AbortSignal.timeout(15e3)
+  });
+  if (!postRes.ok) {
+    const text = await postRes.text().catch(() => "");
+    throw new Error(`recreate failed (${postRes.status}): ${text.slice(0, 200)}`);
+  }
+  const created = await postRes.json();
+  return { method: "recreate", newRequestId: created.id };
 }
 async function fetchJellyfinUsers() {
   const baseUrl = (process.env.JELLYFIN_URL || "").replace(/\/$/, "");
@@ -2192,9 +2451,9 @@ async function seerBackend(app, ctx) {
     const toFetch = [];
     for (const item of body.items.slice(0, 200)) {
       const key = `${item.mediaType}-${item.tmdbId}`;
-      const cached = providerCache.get(key);
-      if (cached && Date.now() < cached.expires) {
-        result[item.tmdbId] = cached.providers;
+      const cached2 = providerCache.get(key);
+      if (cached2 && Date.now() < cached2.expires) {
+        result[item.tmdbId] = cached2.providers;
       } else {
         toFetch.push(item);
       }

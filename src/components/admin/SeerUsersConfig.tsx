@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { useAdminUsers, useUpdateAdminUser, useSyncAdminUsers } from "../../hooks/useAdminUsers";
+import { useAdminUsers, useUpdateAdminUser, useSyncAdminUsers, useSyncRequestsOwnership } from "../../hooks/useAdminUsers";
 import { useToast } from "../../hooks/useToast";
 import { formatSeerError } from "../../api/seer-client";
 import type { AdminUserRow, UpdateAdminUserBody } from "../../api/types";
@@ -16,6 +16,7 @@ export function SeerUsersConfig({ seerrConfigured = true }: SeerUsersConfigProps
   const { data: users, isLoading } = useAdminUsers();
   const updateMutation = useUpdateAdminUser();
   const syncMutation = useSyncAdminUsers();
+  const reassignMutation = useSyncRequestsOwnership();
 
   const handleSync = () => {
     if (!seerrConfigured) {
@@ -27,6 +28,24 @@ export function SeerUsersConfig({ seerrConfigured = true }: SeerUsersConfigProps
         toast.show("success", t("seer:adminUsersSyncDone", {
           created: data.created ?? 0,
           synced: data.synced,
+          failed: data.failed,
+        }));
+      },
+      onError: (err) => toast.show("error", formatSeerError(err, t)),
+    });
+  };
+
+  const handleReassign = () => {
+    if (!seerrConfigured) {
+      toast.show("error", t("seer:statusNotConfigured"));
+      return;
+    }
+    reassignMutation.mutate(undefined, {
+      onSuccess: (data) => {
+        toast.show("success", t("seer:adminReassignDone", {
+          reassigned: data.reassigned,
+          alreadyOk: data.alreadyOk,
+          orphansCreated: data.orphansCreated,
           failed: data.failed,
         }));
       },
@@ -46,14 +65,26 @@ export function SeerUsersConfig({ seerrConfigured = true }: SeerUsersConfigProps
             </p>
           )}
         </div>
-        <button
-          onClick={handleSync}
-          disabled={syncMutation.isPending || !seerrConfigured}
-          title={!seerrConfigured ? t("seer:statusNotConfigured") : undefined}
-          className="rounded-tentacle-md bg-tentacle-cta-ghost px-3 py-1.5 text-xs font-medium text-tentacle-text-secondary transition-colors hover:bg-[color:var(--cta-ghost-bg-hover)] disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {syncMutation.isPending ? "..." : t("seer:adminUsersSync")}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleReassign}
+            disabled={reassignMutation.isPending || !seerrConfigured}
+            title={!seerrConfigured
+              ? t("seer:statusNotConfigured")
+              : t("seer:adminReassignHint")}
+            className="rounded-tentacle-md bg-tentacle-cta-ghost px-3 py-1.5 text-xs font-medium text-tentacle-text-secondary transition-colors hover:bg-[color:var(--cta-ghost-bg-hover)] disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {reassignMutation.isPending ? "..." : t("seer:adminReassignButton")}
+          </button>
+          <button
+            onClick={handleSync}
+            disabled={syncMutation.isPending || !seerrConfigured}
+            title={!seerrConfigured ? t("seer:statusNotConfigured") : undefined}
+            className="rounded-tentacle-md bg-tentacle-cta-ghost px-3 py-1.5 text-xs font-medium text-tentacle-text-secondary transition-colors hover:bg-[color:var(--cta-ghost-bg-hover)] disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {syncMutation.isPending ? "..." : t("seer:adminUsersSync")}
+          </button>
+        </div>
       </div>
 
       {!seerrConfigured && (

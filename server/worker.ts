@@ -8,6 +8,7 @@ import { fetchMediaDetail, isAnimeFromKeywords, fetchAnimeOverrides } from "./an
 import { syncStatuses, retryFailedRequests, type WorkerConfig } from "./worker-sync";
 import { processCleanupQueue } from "./worker-cleanup";
 import { resolveJellyseerrUserId } from "./jellyseerr-user";
+import { invalidate } from "./cache";
 import type { SeerProfile } from "./types";
 
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -156,6 +157,7 @@ async function processNextRequest(prisma: PrismaClient, config: WorkerConfig): P
       seerrMediaStatus: data.media?.status,
       sentAt: new Date(),
     });
+    invalidate(`seer-cache:${request.jellyfinUserId}`);
 
     await prisma.notification.create({
       data: {

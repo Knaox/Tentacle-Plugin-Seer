@@ -22,8 +22,12 @@ interface JellyseerrUser {
 /**
  * Résout l'ID Jellyseerr correspondant à un user Jellyfin :
  *  1) cache local (seer_user_settings.jellyseerr_user_id)
- *  2) lookup live : GET /api/v1/user?take=1000 et match par jellyfinUserId
- *  3) import : POST /api/v1/user/import-from-jellyfin
+ *  2) lookup live par jellyfinUserId (user Jellyseerr déjà importé)
+ *  3) réconciliation par username : si un user Jellyseerr "placeholder" existe
+ *     avec le même username et SANS jellyfinUserId, on l'ATTACHE au user Jellyfin
+ *     courant (PATCH /api/v1/user/{id}). Ça permet de récupérer l'historique
+ *     d'un user dont le compte Jellyfin avait été supprimé puis recréé.
+ *  4) import : POST /api/v1/user/import-from-jellyfin
  * Throw si rien ne marche — le worker retombera sur retry_pending.
  */
 export async function resolveJellyseerrUserId(
@@ -35,7 +39,7 @@ export async function resolveJellyseerrUserId(
   const settings = await getOrCreateUserSettings(prisma, jellyfinUserId, username);
   if (settings.jellyseerrUserId) return settings.jellyseerrUserId;
 
-  // Lookup live
+  // Lookup live par jellyfinUserId
   const found = await findJellyseerrUserByJellyfinId(config, jellyfinUserId);
   if (found) {
     await updateUserSettings(prisma, jellyfinUserId, {
@@ -45,14 +49,31 @@ export async function resolveJellyseerrUserId(
     return found.id;
   }
 
-  // Import depuis Jellyfin
-  const imported = await importJellyseerrUserFromJellyfin(config, jellyfinUserId);
-  if (imported) {
-    await updateUserSettings(prisma, jellyfinUserId, {
-      jellyseerrUserId: imported.id,
-      jellyseerrLastSync: new Date(),
-    });
-    return imported.id;
+  // Réconciliation par username : un placeholder orphelin ?
+  if (username) {
+    const placeholder = await findOrphanPlaceholderByUsername(config, username);
+    if (placeholder) {
+      await relinkJellyseerrUserToJellyfin(config, placeholder.id, jellyfinUserId);
+      await updateUserSettings(prisma, jellyfinUserId, {
+        jellyseerrUserId: placeholder.id,
+        jellyseerrLastSync: new Date(),
+      });
+      return placeholder.id;
+    }
+  }
+
+  // Import depuis Jellyfin (suppose que le user Jellyfin existe encore)
+  try {
+    const imported = await importJellyseerrUserFromJellyfin(config, jellyfinUserId);
+    if (imported) {
+      await updateUserSettings(prisma, jellyfinUserId, {
+        jellyseerrUserId: imported.id,
+        jellyseerrLastSync: new Date(),
+      });
+      return imported.id;
+    }
+  } catch {
+    // Tomberons sur le re-lookup ou l'erreur finale
   }
 
   // Dernier essai après import : Jellyseerr peut avoir importé sans renvoyer l'objet
@@ -66,6 +87,64 @@ export async function resolveJellyseerrUserId(
   }
 
   throw new Error(`Unable to resolve Jellyseerr user for jellyfinUserId=${jellyfinUserId}`);
+}
+
+/** Cherche un user Jellyseerr local ("placeholder") par username, sans jellyfinUserId attaché. */
+async function findOrphanPlaceholderByUsername(
+  config: SeerConfig,
+  username: string,
+): Promise<JellyseerrUser | null> {
+  const all = await listAllJellyseerrUsers(config);
+  const target = username.trim().toLowerCase();
+  return all.find((u) =>
+    !u.jellyfinUserId &&
+    (
+      (u.username && u.username.trim().toLowerCase() === target) ||
+      (u.jellyfinUsername && u.jellyfinUsername.trim().toLowerCase() === target)
+    ),
+  ) ?? null;
+}
+
+/** Crée un user "placeholder" Jellyseerr de type local (sans lien Jellyfin), pour préserver
+ *  l'historique d'un demandeur dont le compte Jellyfin a été supprimé. Si un user du même
+ *  username existe déjà, on le réutilise. */
+export async function createPlaceholderJellyseerrUser(
+  config: SeerConfig,
+  username: string,
+): Promise<JellyseerrUser> {
+  const existing = await findOrphanPlaceholderByUsername(config, username);
+  if (existing) return existing;
+
+  const email = `${username.toLowerCase().replace(/[^a-z0-9._-]+/g, "")}@tentacle.local`;
+  const res = await fetch(`${config.seerrUrl}/api/v1/user`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Api-Key": config.seerrApiKey },
+    body: JSON.stringify({ email, username }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Jellyseerr POST /user failed (${res.status}): ${text.slice(0, 200)}`);
+  }
+  return (await res.json()) as JellyseerrUser;
+}
+
+/** Attache un jellyfinUserId à un user Jellyseerr existant via PATCH /api/v1/user/{id}. */
+export async function relinkJellyseerrUserToJellyfin(
+  config: SeerConfig,
+  jellyseerrUserId: number,
+  jellyfinUserId: string,
+): Promise<void> {
+  const res = await fetch(`${config.seerrUrl}/api/v1/user/${jellyseerrUserId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "X-Api-Key": config.seerrApiKey },
+    body: JSON.stringify({ jellyfinUserId }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Jellyseerr PUT /user/${jellyseerrUserId} failed (${res.status}): ${text.slice(0, 200)}`);
+  }
 }
 
 async function findJellyseerrUserByJellyfinId(

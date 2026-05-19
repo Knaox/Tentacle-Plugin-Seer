@@ -335,6 +335,11 @@ export default {
   adminUsersSeerrNotLinked: "Not linked",
   adminUsersConfigFirst: "Fill in the Jellyseerr URL and API key in the Configuration tab before syncing users.",
 
+  // Reassign request ownership
+  adminReassignButton: "Sync local requests",
+  adminReassignHint: "Walks through every local request, checks the owner on Jellyseerr and fixes it if wrong. Creates a placeholder Jellyseerr user if the Jellyfin account was removed — their history will be linked back when they recreate the account with the same username.",
+  adminReassignDone: "{{reassigned}} reassigned, {{orphansCreated}} placeholder(s) created, {{alreadyOk}} already OK, {{failed}} failed",
+
   // Manually mark Jellyseerr media status
   markAs: "Mark as",
   markAsAvailable: "Available",

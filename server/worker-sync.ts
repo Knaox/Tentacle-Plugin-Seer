@@ -4,6 +4,7 @@
 
 import type { PrismaClient } from "@prisma/client";
 import { getRequestsToSync, updateRequestStatus } from "./db";
+import { invalidate } from "./cache";
 import type { SeerRequest, SeerProfile } from "./types";
 
 export interface WorkerConfig {
@@ -52,6 +53,7 @@ export async function syncStatuses(prisma: PrismaClient, config: WorkerConfig): 
       if (newStatus !== oldStatus) {
         if (newStatus === "failed" && request.seerrRequestId) {
           await handleFailedSync(prisma, config, request, data);
+          invalidate(`seer-cache:${request.jellyfinUserId}`);
           continue;
         }
 
@@ -59,6 +61,7 @@ export async function syncStatuses(prisma: PrismaClient, config: WorkerConfig): 
         if (newStatus === "available") extra.completedAt = new Date();
 
         await updateRequestStatus(prisma, request.id, newStatus, extra as any);
+        invalidate(`seer-cache:${request.jellyfinUserId}`);
 
         const notif = statusNotification(request, newStatus);
         if (notif) {

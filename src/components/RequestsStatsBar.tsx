@@ -29,8 +29,11 @@ export function RequestsStatsBar() {
   const { data: stats, isLoading } = useQuery({
     queryKey: ["seer-stats-overview"],
     queryFn: () => getRequestsStats(),
-    staleTime: 30_000,
+    staleTime: 60_000,
+    gcTime: 30 * 60_000,
     refetchInterval: 60_000,
+    refetchOnWindowFocus: false,
+    placeholderData: (prev) => prev,
   });
 
   if (isLoading) {
