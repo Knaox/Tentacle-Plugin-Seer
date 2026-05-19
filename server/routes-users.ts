@@ -4,7 +4,7 @@
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import type { PrismaClient } from "@prisma/client";
-import { listUsersWithStats, getOrCreateUserSettings, getUserSettings, updateUserSettings } from "./db";
+import { listUsersWithStats, listJellyfinUsersWithStats, getOrCreateUserSettings, getUserSettings, updateUserSettings } from "./db";
 import {
   resolveJellyseerrUserId,
   listAllJellyseerrUsers,
@@ -35,8 +35,44 @@ export function registerUsersRoutes(
   app.get(
     "/admin/users",
     { preHandler: requireAdmin },
-    async () => {
-      return await listUsersWithStats(prisma);
+    async (_request, reply) => {
+      // Source autoritative : la liste réelle des users Jellyfin (jamais la DB locale seule).
+      // Fallback : les users Jellyseerr ayant un jellyfinUserId (= déjà importés depuis Jellyfin).
+      const config = await getWorkerConfig();
+
+      let jellyfinUsers: Array<{ id: string; name: string }> = [];
+      let jellyfinError: string | null = null;
+      try {
+        jellyfinUsers = await fetchJellyfinUsers();
+      } catch (err) {
+        jellyfinError = err instanceof Error ? err.message : "Jellyfin fetch failed";
+      }
+
+      // Compléter / fallback via Jellyseerr (users avec jellyfinUserId)
+      if (config) {
+        try {
+          const seerUsers = await listAllJellyseerrUsers(config);
+          const known = new Set(jellyfinUsers.map((u) => u.id));
+          for (const su of seerUsers) {
+            if (!su.jellyfinUserId || known.has(su.jellyfinUserId)) continue;
+            jellyfinUsers.push({
+              id: su.jellyfinUserId,
+              name: su.jellyfinUsername || su.username || su.jellyfinUserId,
+            });
+          }
+        } catch { /* Jellyseerr inaccessible — on continue avec Jellyfin si on l'a */ }
+      }
+
+      if (jellyfinUsers.length === 0) {
+        return reply.status(503).send({
+          message: jellyfinError
+            ? `Cannot list Jellyfin users: ${jellyfinError}`
+            : "No source available to list Jellyfin users",
+        });
+      }
+
+      // Pour chaque vrai user Jellyfin, charge (ou crée) les settings + stats
+      return await listJellyfinUsersWithStats(prisma, jellyfinUsers);
     },
   );
 

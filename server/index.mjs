@@ -554,6 +554,53 @@ async function listUsersWithStats(prisma) {
   }
   return result.sort((a, b) => a.username.localeCompare(b.username));
 }
+async function listJellyfinUsersWithStats(prisma, jellyfinUsers) {
+  if (jellyfinUsers.length === 0) return [];
+  const ids = jellyfinUsers.map((u) => u.id);
+  const placeholders = ids.map(() => "?").join(",");
+  const settingsRows = await prisma.$queryRawUnsafe(
+    `SELECT * FROM seer_user_settings WHERE jellyfin_user_id IN (${placeholders})`,
+    ...ids
+  );
+  const settingsByUserId = /* @__PURE__ */ new Map();
+  for (const row of settingsRows) {
+    const s = rowToUserSettings(row);
+    settingsByUserId.set(s.jellyfinUserId, s);
+  }
+  const statsRows = await prisma.$queryRawUnsafe(
+    `SELECT
+       jellyfin_user_id,
+       SUM(CASE WHEN created_at >= CURDATE() AND status NOT IN ('failed','deleted') THEN 1 ELSE 0 END) AS requests_today,
+       SUM(CASE WHEN status != 'deleted' THEN 1 ELSE 0 END) AS requests_total
+     FROM seer_requests
+     WHERE jellyfin_user_id IN (${placeholders})
+     GROUP BY jellyfin_user_id`,
+    ...ids
+  );
+  const statsByUserId = /* @__PURE__ */ new Map();
+  for (const r of statsRows) {
+    statsByUserId.set(r.jellyfin_user_id, {
+      today: Number(r.requests_today) || 0,
+      total: Number(r.requests_total) || 0
+    });
+  }
+  const result = [];
+  for (const u of jellyfinUsers) {
+    let settings = settingsByUserId.get(u.id);
+    if (!settings) {
+      settings = await getOrCreateUserSettings(prisma, u.id, u.name);
+    } else if (u.name && u.name !== u.id && settings.username !== u.name) {
+      const isUuid = /^[0-9a-f]{8,}(-[0-9a-f]+)*$/i;
+      if (isUuid.test(settings.username) || settings.username === u.id) {
+        await updateUserSettings(prisma, u.id, { username: u.name });
+        settings = { ...settings, username: u.name };
+      }
+    }
+    const s = statsByUserId.get(u.id) ?? { today: 0, total: 0 };
+    result.push({ ...settings, requestsToday: s.today, requestsTotal: s.total });
+  }
+  return result.sort((a, b) => a.username.localeCompare(b.username));
+}
 async function getRequestById(prisma, id) {
   const rows = await prisma.$queryRawUnsafe(
     `SELECT * FROM seer_requests WHERE id = ?`,
@@ -2058,8 +2105,35 @@ function registerUsersRoutes(app, prisma, getWorkerConfig2, requireAdmin) {
   app.get(
     "/admin/users",
     { preHandler: requireAdmin },
-    async () => {
-      return await listUsersWithStats(prisma);
+    async (_request, reply) => {
+      const config = await getWorkerConfig2();
+      let jellyfinUsers = [];
+      let jellyfinError = null;
+      try {
+        jellyfinUsers = await fetchJellyfinUsers();
+      } catch (err) {
+        jellyfinError = err instanceof Error ? err.message : "Jellyfin fetch failed";
+      }
+      if (config) {
+        try {
+          const seerUsers = await listAllJellyseerrUsers(config);
+          const known = new Set(jellyfinUsers.map((u) => u.id));
+          for (const su of seerUsers) {
+            if (!su.jellyfinUserId || known.has(su.jellyfinUserId)) continue;
+            jellyfinUsers.push({
+              id: su.jellyfinUserId,
+              name: su.jellyfinUsername || su.username || su.jellyfinUserId
+            });
+          }
+        } catch {
+        }
+      }
+      if (jellyfinUsers.length === 0) {
+        return reply.status(503).send({
+          message: jellyfinError ? `Cannot list Jellyfin users: ${jellyfinError}` : "No source available to list Jellyfin users"
+        });
+      }
+      return await listJellyfinUsersWithStats(prisma, jellyfinUsers);
     }
   );
   app.put(

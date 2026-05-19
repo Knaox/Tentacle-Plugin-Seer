@@ -310,6 +310,70 @@ export async function listUsersWithStats(prisma: Prisma): Promise<AdminUserRow[]
   return result.sort((a, b) => a.username.localeCompare(b.username));
 }
 
+/**
+ * Variante stricte : ne renvoie QUE les users passés en input (= vrais users Jellyfin).
+ * Charge ou crée les settings, calcule les stats, ignore les rows locales orphelines.
+ */
+export async function listJellyfinUsersWithStats(
+  prisma: Prisma,
+  jellyfinUsers: Array<{ id: string; name: string }>,
+): Promise<AdminUserRow[]> {
+  if (jellyfinUsers.length === 0) return [];
+
+  // 1) Charge en masse les settings existants
+  const ids = jellyfinUsers.map((u) => u.id);
+  const placeholders = ids.map(() => "?").join(",");
+  const settingsRows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
+    `SELECT * FROM seer_user_settings WHERE jellyfin_user_id IN (${placeholders})`,
+    ...ids,
+  );
+  const settingsByUserId = new Map<string, SeerUserSettings>();
+  for (const row of settingsRows) {
+    const s = rowToUserSettings(row);
+    settingsByUserId.set(s.jellyfinUserId, s);
+  }
+
+  // 2) Stats agrégées (par user)
+  const statsRows = await prisma.$queryRawUnsafe<Array<{
+    jellyfin_user_id: string; requests_today: bigint | number; requests_total: bigint | number;
+  }>>(
+    `SELECT
+       jellyfin_user_id,
+       SUM(CASE WHEN created_at >= CURDATE() AND status NOT IN ('failed','deleted') THEN 1 ELSE 0 END) AS requests_today,
+       SUM(CASE WHEN status != 'deleted' THEN 1 ELSE 0 END) AS requests_total
+     FROM seer_requests
+     WHERE jellyfin_user_id IN (${placeholders})
+     GROUP BY jellyfin_user_id`,
+    ...ids,
+  );
+  const statsByUserId = new Map<string, { today: number; total: number }>();
+  for (const r of statsRows) {
+    statsByUserId.set(r.jellyfin_user_id, {
+      today: Number(r.requests_today) || 0,
+      total: Number(r.requests_total) || 0,
+    });
+  }
+
+  // 3) Compose le résultat — crée à la volée les settings manquants (lazy)
+  const result: AdminUserRow[] = [];
+  for (const u of jellyfinUsers) {
+    let settings = settingsByUserId.get(u.id);
+    if (!settings) {
+      settings = await getOrCreateUserSettings(prisma, u.id, u.name);
+    } else if (u.name && u.name !== u.id && settings.username !== u.name) {
+      // Met à jour le username si la source autoritative en a un meilleur
+      const isUuid = /^[0-9a-f]{8,}(-[0-9a-f]+)*$/i;
+      if (isUuid.test(settings.username) || settings.username === u.id) {
+        await updateUserSettings(prisma, u.id, { username: u.name });
+        settings = { ...settings, username: u.name };
+      }
+    }
+    const s = statsByUserId.get(u.id) ?? { today: 0, total: 0 };
+    result.push({ ...settings, requestsToday: s.today, requestsTotal: s.total });
+  }
+  return result.sort((a, b) => a.username.localeCompare(b.username));
+}
+
 export async function getRequestById(prisma: Prisma, id: string): Promise<SeerRequest | null> {
   const rows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
     `SELECT * FROM seer_requests WHERE id = ?`, id,
