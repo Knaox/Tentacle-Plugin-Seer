@@ -323,7 +323,7 @@ export default {
   adminUsersRequestsTodayUnlimited: "{{count}} today",
   adminUsersUnlimited: "Unlimited",
   adminUsersSync: "Sync with Jellyseerr",
-  adminUsersSyncDone: "{{created}} new, {{synced}} synced, {{removed}} removed, {{failed}} failed",
+  adminUsersSyncDone: "{{created}} new, {{synced}} synced, {{invalidatedLinks}} broken link(s) cleared, {{removed}} removed, {{failed}} failed",
   adminUsersSaved: "Changes saved",
   adminUsersSaveError: "Save failed",
   adminUsersTotal: "Total: {{count}}",

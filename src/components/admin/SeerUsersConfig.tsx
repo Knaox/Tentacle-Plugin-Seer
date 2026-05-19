@@ -30,6 +30,7 @@ export function SeerUsersConfig({ seerrConfigured = true }: SeerUsersConfigProps
           synced: data.synced,
           failed: data.failed,
           removed: (data as { removed?: number }).removed ?? 0,
+          invalidatedLinks: (data as { invalidatedLinks?: number }).invalidatedLinks ?? 0,
         }));
       },
       onError: (err) => toast.show("error", formatSeerError(err, t)),

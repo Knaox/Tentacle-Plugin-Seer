@@ -129,6 +129,35 @@ export async function createPlaceholderJellyseerrUser(
   return (await res.json()) as JellyseerrUser;
 }
 
+/**
+ * Vérifie quels jellyseerr_user_id en cache local pointent encore vers un user
+ * réellement existant dans Jellyseerr. Met à NULL les caches stale.
+ * Retourne le nombre d'invalidations effectuées.
+ */
+export async function invalidateStaleJellyseerrCache(
+  config: SeerConfig,
+  prisma: PrismaClient,
+): Promise<number> {
+  const seerUsers = await listAllJellyseerrUsers(config);
+  const validIds = new Set(seerUsers.map((u) => u.id));
+
+  const rows = await prisma.$queryRawUnsafe<Array<{ jellyfin_user_id: string; jellyseerr_user_id: number }>>(
+    `SELECT jellyfin_user_id, jellyseerr_user_id FROM seer_user_settings WHERE jellyseerr_user_id IS NOT NULL`,
+  );
+
+  let invalidated = 0;
+  for (const row of rows) {
+    if (!validIds.has(row.jellyseerr_user_id)) {
+      await prisma.$executeRawUnsafe(
+        `UPDATE seer_user_settings SET jellyseerr_user_id = NULL, jellyseerr_last_sync = NULL WHERE jellyfin_user_id = ?`,
+        row.jellyfin_user_id,
+      );
+      invalidated++;
+    }
+  }
+  return invalidated;
+}
+
 /** Attache un jellyfinUserId à un user Jellyseerr existant via PATCH /api/v1/user/{id}. */
 export async function relinkJellyseerrUserToJellyfin(
   config: SeerConfig,

@@ -1019,6 +1019,24 @@ async function createPlaceholderJellyseerrUser(config, username) {
   }
   return await res.json();
 }
+async function invalidateStaleJellyseerrCache(config, prisma) {
+  const seerUsers = await listAllJellyseerrUsers(config);
+  const validIds = new Set(seerUsers.map((u) => u.id));
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT jellyfin_user_id, jellyseerr_user_id FROM seer_user_settings WHERE jellyseerr_user_id IS NOT NULL`
+  );
+  let invalidated = 0;
+  for (const row of rows) {
+    if (!validIds.has(row.jellyseerr_user_id)) {
+      await prisma.$executeRawUnsafe(
+        `UPDATE seer_user_settings SET jellyseerr_user_id = NULL, jellyseerr_last_sync = NULL WHERE jellyfin_user_id = ?`,
+        row.jellyfin_user_id
+      );
+      invalidated++;
+    }
+  }
+  return invalidated;
+}
 async function relinkJellyseerrUserToJellyfin(config, jellyseerrUserId, jellyfinUserId) {
   const res = await fetch(`${config.seerrUrl}/api/v1/user/${jellyseerrUserId}`, {
     method: "PUT",
@@ -2076,6 +2094,11 @@ function registerUsersRoutes(app, prisma, getWorkerConfig2, requireAdmin) {
     async (_request, reply) => {
       const config = await getWorkerConfig2();
       if (!config) return reply.status(503).send({ message: "Seerr not configured" });
+      let invalidatedLinks = 0;
+      try {
+        invalidatedLinks = await invalidateStaleJellyseerrCache(config, prisma);
+      } catch {
+      }
       let users = [];
       let jellyfinError = null;
       try {
@@ -2149,6 +2172,7 @@ function registerUsersRoutes(app, prisma, getWorkerConfig2, requireAdmin) {
         failed,
         created,
         removed,
+        invalidatedLinks,
         total: all.length,
         jellyfinAdminOk: jellyfinError === null
       };
@@ -2160,6 +2184,10 @@ function registerUsersRoutes(app, prisma, getWorkerConfig2, requireAdmin) {
     async (_request, reply) => {
       const config = await getWorkerConfig2();
       if (!config) return reply.status(503).send({ message: "Seerr not configured" });
+      try {
+        await invalidateStaleJellyseerrCache(config, prisma);
+      } catch {
+      }
       let alreadyOk = 0;
       let reassigned = 0;
       let recreated = 0;

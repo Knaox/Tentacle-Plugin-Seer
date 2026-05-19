@@ -9,6 +9,7 @@ import {
   resolveJellyseerrUserId,
   listAllJellyseerrUsers,
   createPlaceholderJellyseerrUser,
+  invalidateStaleJellyseerrCache,
 } from "./jellyseerr-user";
 import { invalidate } from "./cache";
 
@@ -79,6 +80,15 @@ export function registerUsersRoutes(
     async (_request, reply) => {
       const config = await getWorkerConfig();
       if (!config) return reply.status(503).send({ message: "Seerr not configured" });
+
+      // 0) Invalide les jellyseerr_user_id cachés qui ne pointent plus vers un user existant
+      //    (ex: l'admin a supprimé le user côté Jellyseerr depuis la dernière sync)
+      let invalidatedLinks = 0;
+      try {
+        invalidatedLinks = await invalidateStaleJellyseerrCache(config, prisma);
+      } catch {
+        // Si l'API user Jellyseerr est en panne, on passe l'étape — non bloquant
+      }
 
       // 1) Tente d'abord l'API admin Jellyfin (source la plus complète)
       let users: Array<{ id: string; name: string }> = [];
@@ -166,7 +176,7 @@ export function registerUsersRoutes(
       }
 
       return {
-        synced, failed, created, removed,
+        synced, failed, created, removed, invalidatedLinks,
         total: all.length,
         jellyfinAdminOk: jellyfinError === null,
       };
@@ -192,6 +202,13 @@ export function registerUsersRoutes(
     async (_request, reply) => {
       const config = await getWorkerConfig();
       if (!config) return reply.status(503).send({ message: "Seerr not configured" });
+
+      // 0) Invalide les jellyseerr_user_id cachés morts (user supprimé côté Jellyseerr).
+      //    Sans ça, resolveJellyseerrUserId retournerait un ID stale et tout le sync
+      //    pointerait vers un user inexistant.
+      try {
+        await invalidateStaleJellyseerrCache(config, prisma);
+      } catch { /* non bloquant */ }
 
       let alreadyOk = 0;
       let reassigned = 0;

@@ -324,7 +324,7 @@ export default {
   adminUsersRequestsTodayUnlimited: "{{count}} aujourd'hui",
   adminUsersUnlimited: "Illimité",
   adminUsersSync: "Synchroniser avec Jellyseerr",
-  adminUsersSyncDone: "{{created}} nouveau(x), {{synced}} synchronisé(s), {{removed}} retiré(s), {{failed}} échec(s)",
+  adminUsersSyncDone: "{{created}} nouveau(x), {{synced}} synchronisé(s), {{invalidatedLinks}} lien(s) cassé(s) nettoyé(s), {{removed}} retiré(s), {{failed}} échec(s)",
   adminUsersSaved: "Modifications enregistrées",
   adminUsersSaveError: "Échec de la sauvegarde",
   adminUsersTotal: "Total : {{count}}",
