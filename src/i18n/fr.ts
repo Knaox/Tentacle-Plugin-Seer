@@ -324,7 +324,7 @@ export default {
   adminUsersRequestsTodayUnlimited: "{{count}} aujourd'hui",
   adminUsersUnlimited: "Illimité",
   adminUsersSync: "Synchroniser avec Jellyseerr",
-  adminUsersSyncDone: "{{created}} nouveau(x), {{synced}} synchronisé(s), {{failed}} échec(s)",
+  adminUsersSyncDone: "{{created}} nouveau(x), {{synced}} synchronisé(s), {{removed}} retiré(s), {{failed}} échec(s)",
   adminUsersSaved: "Modifications enregistrées",
   adminUsersSaveError: "Échec de la sauvegarde",
   adminUsersTotal: "Total : {{count}}",
@@ -339,7 +339,7 @@ export default {
   // Réassignement des propriétaires de demandes
   adminReassignButton: "Synchroniser les demandes locales",
   adminReassignHint: "Pour chaque demande locale, vérifie le propriétaire côté Jellyseerr et le corrige si besoin. Crée un utilisateur Jellyseerr placeholder si le compte Jellyfin a été supprimé — son historique sera récupéré dès qu'il recrée un compte avec le même nom.",
-  adminReassignDone: "{{reassigned}} réassignée(s), {{orphansCreated}} placeholder(s) créé(s), {{alreadyOk}} déjà OK, {{failed}} échec(s)",
+  adminReassignDone: "{{reassigned}} réassignée(s), {{recreated}} recréée(s), {{orphansCreated}} placeholder(s), {{alreadyOk}} déjà OK, {{failed}} échec(s)",
 
   // Marquer manuellement le statut sur Jellyseerr
   markAs: "Marquer comme",

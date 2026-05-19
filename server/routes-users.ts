@@ -140,7 +140,36 @@ export function registerUsersRoutes(
         }
       }
 
-      return { synced, failed, created, total: all.length, jellyfinAdminOk: jellyfinError === null };
+      // 5) Nettoyage : retire les rows seer_user_settings dont le user n'existe plus
+      //    NI côté Jellyfin NI côté Jellyseerr ET qui n'a aucune demande locale active.
+      //    On garde les demandes pour la traçabilité — seule la row settings est supprimée.
+      const aliveIds = new Set<string>(users.map((u) => u.id));
+      let removed = 0;
+      const allSettings = await prisma.$queryRawUnsafe<Array<{ jellyfin_user_id: string }>>(
+        `SELECT jellyfin_user_id FROM seer_user_settings`,
+      );
+      for (const row of allSettings) {
+        if (aliveIds.has(row.jellyfin_user_id)) continue;
+        const hasReqs = await prisma.$queryRawUnsafe<Array<{ cnt: bigint }>>(
+          `SELECT COUNT(*) AS cnt FROM seer_requests
+           WHERE jellyfin_user_id = ?
+             AND status NOT IN ('deleted','delete_failed')`,
+          row.jellyfin_user_id,
+        );
+        if (Number(hasReqs[0]?.cnt ?? 0) === 0) {
+          await prisma.$executeRawUnsafe(
+            `DELETE FROM seer_user_settings WHERE jellyfin_user_id = ?`,
+            row.jellyfin_user_id,
+          );
+          removed++;
+        }
+      }
+
+      return {
+        synced, failed, created, removed,
+        total: all.length,
+        jellyfinAdminOk: jellyfinError === null,
+      };
     },
   );
 
@@ -166,6 +195,7 @@ export function registerUsersRoutes(
 
       let alreadyOk = 0;
       let reassigned = 0;
+      let recreated = 0;
       let orphansCreated = 0;
       let failed = 0;
       const usersTouched = new Set<string>();
@@ -175,32 +205,38 @@ export function registerUsersRoutes(
       const rows = await prisma.$queryRawUnsafe<Array<{
         id: string; jellyfin_user_id: string; username: string;
         seerr_request_id: number | null; seerr_media_id: number | null;
-        media_type: string; tmdb_id: number;
+        media_type: string; tmdb_id: number; seasons: unknown;
       }>>(
-        `SELECT id, jellyfin_user_id, username, seerr_request_id, seerr_media_id, media_type, tmdb_id
+        `SELECT id, jellyfin_user_id, username, seerr_request_id, seerr_media_id, media_type, tmdb_id, seasons
          FROM seer_requests
          WHERE seerr_request_id IS NOT NULL
            AND status NOT IN ('deleted','deleting','delete_failed')`,
       );
 
-      // 2) Résoudre tous les jellyseerrUserId cibles (mise en cache par jellyfin_user_id)
-      const targetByJellyfin = new Map<string, number>();
-      const distinctUsers = new Map<string, string>(); // jellyfin_user_id → username
+      // 2) Pour chaque user distinct, déterminer son meilleur username (priorité au plus
+      //    récent et qui ne ressemble PAS à un UUID Jellyfin — préserve un placeholder
+      //    propre quand le compte Jellyfin a été supprimé).
+      const distinctUsers = new Map<string, string>();
       for (const r of rows) {
-        if (!distinctUsers.has(r.jellyfin_user_id)) distinctUsers.set(r.jellyfin_user_id, r.username);
+        if (distinctUsers.has(r.jellyfin_user_id)) continue;
+        const best = await pickBestUsernameFor(prisma, r.jellyfin_user_id, r.username);
+        distinctUsers.set(r.jellyfin_user_id, best);
       }
 
+      // 3) Résoudre tous les jellyseerrUserId cibles
+      const targetByJellyfin = new Map<string, number>();
       for (const [jfUserId, jfUsername] of distinctUsers) {
         try {
           const seerUserId = await resolveJellyseerrUserId(config, prisma, jfUserId, jfUsername);
           targetByJellyfin.set(jfUserId, seerUserId);
         } catch {
-          // User Jellyfin probablement supprimé → créer un placeholder par username
+          // User Jellyfin probablement supprimé → créer un placeholder avec le vrai username
           try {
             const placeholder = await createPlaceholderJellyseerrUser(config, jfUsername);
             await updateUserSettings(prisma, jfUserId, {
               jellyseerrUserId: placeholder.id,
               jellyseerrLastSync: new Date(),
+              username: jfUsername,
             });
             targetByJellyfin.set(jfUserId, placeholder.id);
             orphansCreated++;
@@ -213,22 +249,45 @@ export function registerUsersRoutes(
         }
       }
 
-      // 3) Pour chaque request, comparer et réassigner si besoin
+      // 4) Pour chaque request, comparer et réassigner OU recréer si manquante côté Jellyseerr
       for (const r of rows) {
         if (!r.seerr_request_id) continue;
         const target = targetByJellyfin.get(r.jellyfin_user_id);
         if (!target) { failed++; continue; }
 
+        // Parse seasons si JSON stocké
+        let parsedSeasons: number[] | null = null;
+        if (r.seasons) {
+          try {
+            parsedSeasons = typeof r.seasons === "string"
+              ? JSON.parse(r.seasons)
+              : (r.seasons as number[]);
+          } catch { parsedSeasons = null; }
+        }
+
         try {
           const result = await reassignSeerrRequestOwnership(
             config, r.seerr_request_id, target,
+            {
+              mediaType: r.media_type as "movie" | "tv",
+              tmdbId: r.tmdb_id,
+              seasons: parsedSeasons,
+            },
           );
           if (result.method === "skip") {
             alreadyOk++;
+          } else if (result.method === "create-missing") {
+            recreated++;
+            usersTouched.add(r.jellyfin_user_id);
+            if (result.newRequestId) {
+              await prisma.$executeRawUnsafe(
+                `UPDATE seer_requests SET seerr_request_id = ? WHERE id = ?`,
+                result.newRequestId, r.id,
+              );
+            }
           } else {
             reassigned++;
             usersTouched.add(r.jellyfin_user_id);
-            // Si on a recréé la request → MAJ du seerr_request_id local
             if (result.method === "recreate" && result.newRequestId) {
               await prisma.$executeRawUnsafe(
                 `UPDATE seer_requests SET seerr_request_id = ? WHERE id = ?`,
@@ -245,12 +304,13 @@ export function registerUsersRoutes(
         }
       }
 
-      // 4) Invalider les caches des users touchés
+      // 5) Invalider les caches des users touchés
       for (const uid of usersTouched) invalidate(`seer-cache:${uid}`);
 
       return {
         total: rows.length,
         reassigned,
+        recreated,
         alreadyOk,
         orphansCreated,
         failed,
@@ -258,6 +318,38 @@ export function registerUsersRoutes(
       };
     },
   );
+}
+
+/** Sélectionne le meilleur username Jellyfin pour un jellyfin_user_id donné.
+ *  Préfère un username depuis seer_requests qui ne ressemble PAS à un UUID,
+ *  fallback : la valeur la plus récente, fallback : `fallback`. */
+async function pickBestUsernameFor(
+  prisma: PrismaClient,
+  jellyfinUserId: string,
+  fallback: string,
+): Promise<string> {
+  const isUuid = /^[0-9a-f]{8,}(-[0-9a-f]+)*$/i;
+  const rows = await prisma.$queryRawUnsafe<Array<{ username: string }>>(
+    `SELECT username FROM seer_requests
+     WHERE jellyfin_user_id = ? AND username IS NOT NULL AND username <> ''
+     ORDER BY created_at DESC LIMIT 50`,
+    jellyfinUserId,
+  );
+  for (const r of rows) {
+    if (r.username && !isUuid.test(r.username) && r.username !== jellyfinUserId) {
+      return r.username;
+    }
+  }
+  // Aucun username valide en historique : essayer seer_user_settings
+  const settings = await prisma.$queryRawUnsafe<Array<{ username: string }>>(
+    `SELECT username FROM seer_user_settings WHERE jellyfin_user_id = ? LIMIT 1`,
+    jellyfinUserId,
+  );
+  if (settings[0]?.username && !isUuid.test(settings[0].username) && settings[0].username !== jellyfinUserId) {
+    return settings[0].username;
+  }
+  // Fallback final : la valeur passée (peut être un UUID) ou rows[0] s'il existe
+  return rows[0]?.username || fallback;
 }
 
 interface SeerrRequestPayload {
@@ -278,18 +370,44 @@ interface SeerrRequestPayload {
  * - Tente d'abord PUT /api/v1/request/{id} avec userId: target
  * - Si Jellyseerr ne propage pas le changement, fallback DELETE + POST avec userId: target
  *   (le media reste, pas de re-téléchargement)
+ * - Si la demande n'existe plus côté Jellyseerr (404) → recréation complète depuis les
+ *   infos locales (mediaType, tmdbId, seasons) avec le bon userId.
  */
 async function reassignSeerrRequestOwnership(
   config: { seerrUrl: string; seerrApiKey: string },
   seerrRequestId: number,
   targetUserId: number,
-): Promise<{ method: "skip" | "put" | "recreate"; newRequestId?: number }> {
+  localMedia: { mediaType: "movie" | "tv"; tmdbId: number; seasons: number[] | null },
+): Promise<{ method: "skip" | "put" | "recreate" | "create-missing"; newRequestId?: number }> {
   const headers = { "Content-Type": "application/json", "X-Api-Key": config.seerrApiKey };
 
   const cur = await fetch(`${config.seerrUrl}/api/v1/request/${seerrRequestId}`, {
     headers: { "X-Api-Key": config.seerrApiKey },
     signal: AbortSignal.timeout(10_000),
   });
+
+  // Demande disparue côté Jellyseerr → on la recrée depuis les infos locales
+  if (cur.status === 404) {
+    if (!localMedia.tmdbId) throw new Error("missing local tmdbId for re-creation");
+    const createBody: Record<string, unknown> = {
+      mediaType: localMedia.mediaType,
+      mediaId: localMedia.tmdbId,
+      userId: targetUserId,
+    };
+    if (localMedia.seasons?.length) createBody.seasons = localMedia.seasons;
+
+    const postRes = await fetch(`${config.seerrUrl}/api/v1/request`, {
+      method: "POST", headers, body: JSON.stringify(createBody),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!postRes.ok) {
+      const text = await postRes.text().catch(() => "");
+      throw new Error(`re-create missing failed (${postRes.status}): ${text.slice(0, 200)}`);
+    }
+    const created = (await postRes.json()) as { id: number };
+    return { method: "create-missing", newRequestId: created.id };
+  }
+
   if (!cur.ok) {
     throw new Error(`GET request ${seerrRequestId} failed: ${cur.status}`);
   }

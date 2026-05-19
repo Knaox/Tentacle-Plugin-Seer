@@ -29,6 +29,7 @@ export function SeerUsersConfig({ seerrConfigured = true }: SeerUsersConfigProps
           created: data.created ?? 0,
           synced: data.synced,
           failed: data.failed,
+          removed: (data as { removed?: number }).removed ?? 0,
         }));
       },
       onError: (err) => toast.show("error", formatSeerError(err, t)),
@@ -44,6 +45,7 @@ export function SeerUsersConfig({ seerrConfigured = true }: SeerUsersConfigProps
       onSuccess: (data) => {
         toast.show("success", t("seer:adminReassignDone", {
           reassigned: data.reassigned,
+          recreated: data.recreated ?? 0,
           alreadyOk: data.alreadyOk,
           orphansCreated: data.orphansCreated,
           failed: data.failed,

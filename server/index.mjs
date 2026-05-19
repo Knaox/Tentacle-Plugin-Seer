@@ -2123,7 +2123,35 @@ function registerUsersRoutes(app, prisma, getWorkerConfig2, requireAdmin) {
           failed++;
         }
       }
-      return { synced, failed, created, total: all.length, jellyfinAdminOk: jellyfinError === null };
+      const aliveIds = new Set(users.map((u) => u.id));
+      let removed = 0;
+      const allSettings = await prisma.$queryRawUnsafe(
+        `SELECT jellyfin_user_id FROM seer_user_settings`
+      );
+      for (const row of allSettings) {
+        if (aliveIds.has(row.jellyfin_user_id)) continue;
+        const hasReqs = await prisma.$queryRawUnsafe(
+          `SELECT COUNT(*) AS cnt FROM seer_requests
+           WHERE jellyfin_user_id = ?
+             AND status NOT IN ('deleted','delete_failed')`,
+          row.jellyfin_user_id
+        );
+        if (Number(hasReqs[0]?.cnt ?? 0) === 0) {
+          await prisma.$executeRawUnsafe(
+            `DELETE FROM seer_user_settings WHERE jellyfin_user_id = ?`,
+            row.jellyfin_user_id
+          );
+          removed++;
+        }
+      }
+      return {
+        synced,
+        failed,
+        created,
+        removed,
+        total: all.length,
+        jellyfinAdminOk: jellyfinError === null
+      };
     }
   );
   app.post(
@@ -2134,21 +2162,24 @@ function registerUsersRoutes(app, prisma, getWorkerConfig2, requireAdmin) {
       if (!config) return reply.status(503).send({ message: "Seerr not configured" });
       let alreadyOk = 0;
       let reassigned = 0;
+      let recreated = 0;
       let orphansCreated = 0;
       let failed = 0;
       const usersTouched = /* @__PURE__ */ new Set();
       const errors = [];
       const rows = await prisma.$queryRawUnsafe(
-        `SELECT id, jellyfin_user_id, username, seerr_request_id, seerr_media_id, media_type, tmdb_id
+        `SELECT id, jellyfin_user_id, username, seerr_request_id, seerr_media_id, media_type, tmdb_id, seasons
          FROM seer_requests
          WHERE seerr_request_id IS NOT NULL
            AND status NOT IN ('deleted','deleting','delete_failed')`
       );
-      const targetByJellyfin = /* @__PURE__ */ new Map();
       const distinctUsers = /* @__PURE__ */ new Map();
       for (const r of rows) {
-        if (!distinctUsers.has(r.jellyfin_user_id)) distinctUsers.set(r.jellyfin_user_id, r.username);
+        if (distinctUsers.has(r.jellyfin_user_id)) continue;
+        const best = await pickBestUsernameFor(prisma, r.jellyfin_user_id, r.username);
+        distinctUsers.set(r.jellyfin_user_id, best);
       }
+      const targetByJellyfin = /* @__PURE__ */ new Map();
       for (const [jfUserId, jfUsername] of distinctUsers) {
         try {
           const seerUserId = await resolveJellyseerrUserId(config, prisma, jfUserId, jfUsername);
@@ -2158,7 +2189,8 @@ function registerUsersRoutes(app, prisma, getWorkerConfig2, requireAdmin) {
             const placeholder = await createPlaceholderJellyseerrUser(config, jfUsername);
             await updateUserSettings(prisma, jfUserId, {
               jellyseerrUserId: placeholder.id,
-              jellyseerrLastSync: /* @__PURE__ */ new Date()
+              jellyseerrLastSync: /* @__PURE__ */ new Date(),
+              username: jfUsername
             });
             targetByJellyfin.set(jfUserId, placeholder.id);
             orphansCreated++;
@@ -2177,14 +2209,37 @@ function registerUsersRoutes(app, prisma, getWorkerConfig2, requireAdmin) {
           failed++;
           continue;
         }
+        let parsedSeasons = null;
+        if (r.seasons) {
+          try {
+            parsedSeasons = typeof r.seasons === "string" ? JSON.parse(r.seasons) : r.seasons;
+          } catch {
+            parsedSeasons = null;
+          }
+        }
         try {
           const result = await reassignSeerrRequestOwnership(
             config,
             r.seerr_request_id,
-            target
+            target,
+            {
+              mediaType: r.media_type,
+              tmdbId: r.tmdb_id,
+              seasons: parsedSeasons
+            }
           );
           if (result.method === "skip") {
             alreadyOk++;
+          } else if (result.method === "create-missing") {
+            recreated++;
+            usersTouched.add(r.jellyfin_user_id);
+            if (result.newRequestId) {
+              await prisma.$executeRawUnsafe(
+                `UPDATE seer_requests SET seerr_request_id = ? WHERE id = ?`,
+                result.newRequestId,
+                r.id
+              );
+            }
           } else {
             reassigned++;
             usersTouched.add(r.jellyfin_user_id);
@@ -2208,6 +2263,7 @@ function registerUsersRoutes(app, prisma, getWorkerConfig2, requireAdmin) {
       return {
         total: rows.length,
         reassigned,
+        recreated,
         alreadyOk,
         orphansCreated,
         failed,
@@ -2217,12 +2273,55 @@ function registerUsersRoutes(app, prisma, getWorkerConfig2, requireAdmin) {
     }
   );
 }
-async function reassignSeerrRequestOwnership(config, seerrRequestId, targetUserId) {
+async function pickBestUsernameFor(prisma, jellyfinUserId, fallback) {
+  const isUuid = /^[0-9a-f]{8,}(-[0-9a-f]+)*$/i;
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT username FROM seer_requests
+     WHERE jellyfin_user_id = ? AND username IS NOT NULL AND username <> ''
+     ORDER BY created_at DESC LIMIT 50`,
+    jellyfinUserId
+  );
+  for (const r of rows) {
+    if (r.username && !isUuid.test(r.username) && r.username !== jellyfinUserId) {
+      return r.username;
+    }
+  }
+  const settings = await prisma.$queryRawUnsafe(
+    `SELECT username FROM seer_user_settings WHERE jellyfin_user_id = ? LIMIT 1`,
+    jellyfinUserId
+  );
+  if (settings[0]?.username && !isUuid.test(settings[0].username) && settings[0].username !== jellyfinUserId) {
+    return settings[0].username;
+  }
+  return rows[0]?.username || fallback;
+}
+async function reassignSeerrRequestOwnership(config, seerrRequestId, targetUserId, localMedia) {
   const headers = { "Content-Type": "application/json", "X-Api-Key": config.seerrApiKey };
   const cur = await fetch(`${config.seerrUrl}/api/v1/request/${seerrRequestId}`, {
     headers: { "X-Api-Key": config.seerrApiKey },
     signal: AbortSignal.timeout(1e4)
   });
+  if (cur.status === 404) {
+    if (!localMedia.tmdbId) throw new Error("missing local tmdbId for re-creation");
+    const createBody2 = {
+      mediaType: localMedia.mediaType,
+      mediaId: localMedia.tmdbId,
+      userId: targetUserId
+    };
+    if (localMedia.seasons?.length) createBody2.seasons = localMedia.seasons;
+    const postRes2 = await fetch(`${config.seerrUrl}/api/v1/request`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(createBody2),
+      signal: AbortSignal.timeout(15e3)
+    });
+    if (!postRes2.ok) {
+      const text = await postRes2.text().catch(() => "");
+      throw new Error(`re-create missing failed (${postRes2.status}): ${text.slice(0, 200)}`);
+    }
+    const created2 = await postRes2.json();
+    return { method: "create-missing", newRequestId: created2.id };
+  }
   if (!cur.ok) {
     throw new Error(`GET request ${seerrRequestId} failed: ${cur.status}`);
   }

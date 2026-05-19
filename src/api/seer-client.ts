@@ -336,6 +336,7 @@ export async function syncAdminUsers(): Promise<{ synced: number; failed: number
 export interface SyncRequestsOwnershipResult {
   total: number;
   reassigned: number;
+  recreated: number;
   alreadyOk: number;
   orphansCreated: number;
   failed: number;
