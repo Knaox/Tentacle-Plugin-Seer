@@ -2,11 +2,16 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { LocalRequest } from "../api/types";
 import { ProfileSelector } from "./ProfileSelector";
+import { CTA_PRIMARY, CTA_PRIMARY_HALO, CTA_SECONDARY } from "../styles/cta";
 
 interface SeasonActionModalProps {
   request: LocalRequest;
   action: "delete" | "retry";
-  onConfirm: (seasons?: number[], profileId?: string | null) => void;
+  onConfirm: (
+    seasons?: number[],
+    profileId?: string | null,
+    options?: { deleteFiles?: boolean; forceRedownload?: boolean },
+  ) => void;
   onClose: () => void;
 }
 
@@ -16,6 +21,9 @@ export function SeasonActionModal({ request, action, onConfirm, onClose }: Seaso
   const hasSeasons = seasons.length > 0;
   const [selected, setSelected] = useState<Set<number>>(new Set(seasons));
   const [profileId, setProfileId] = useState<string | null>(request.profileId ?? null);
+  // Toggles destructifs — décochés par défaut (1 clic = action peu invasive)
+  const [deleteFiles, setDeleteFiles] = useState(false);
+  const [forceRedownload, setForceRedownload] = useState(false);
 
   const toggle = (s: number) => {
     setSelected((prev) => {
@@ -29,19 +37,25 @@ export function SeasonActionModal({ request, action, onConfirm, onClose }: Seaso
 
   const handleConfirm = () => {
     const s = !hasSeasons || allSelected ? undefined : Array.from(selected).sort((a, b) => a - b);
-    onConfirm(s, action === "retry" ? profileId : undefined);
+    onConfirm(
+      s,
+      action === "retry" ? profileId : undefined,
+      action === "delete" ? { deleteFiles } : { forceRedownload },
+    );
   };
 
   const title = action === "delete"
     ? (hasSeasons ? t("seer:seasonActionDeleteTitle") : t("seer:confirmDelete"))
     : (hasSeasons ? t("seer:seasonActionRetryTitle") : t("seer:confirmRetry"));
 
+  // L'avertissement n'a de sens que si l'utilisateur active explicitement l'option destructive
+  const showWarn = action === "delete" ? deleteFiles : forceRedownload;
   const warn = action === "delete" ? t("seer:seasonActionDeleteWarn") : t("seer:seasonActionRetryWarn");
   const canConfirm = !hasSeasons || selected.size > 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={onClose}>
-      <div className="mx-4 flex w-full max-w-sm max-h-[85vh] flex-col rounded-xl bg-[#1a1a2e] p-5 shadow-2xl"
+      <div className="mx-4 flex w-full max-w-sm max-h-[85vh] flex-col rounded-xl bg-tentacle-surface-2 p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}>
         <h3 className="mb-4 text-sm font-semibold text-white">{title}</h3>
 
@@ -52,8 +66,8 @@ export function SeasonActionModal({ request, action, onConfirm, onClose }: Seaso
               {seasons.map((s) => (
                 <button key={s} onClick={() => toggle(s)}
                   className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
-                    selected.has(s) ? "bg-[#8b5cf6] text-white shadow-lg shadow-purple-500/20"
-                      : "bg-white/5 text-white/50 hover:bg-white/10"
+                    selected.has(s) ? "bg-white text-black shadow-sm"
+                      : "bg-white/[0.06] text-white/60 hover:bg-white/[0.10] hover:text-white"
                   }`}>
                   S{s}
                 </button>
@@ -62,13 +76,12 @@ export function SeasonActionModal({ request, action, onConfirm, onClose }: Seaso
 
             <button onClick={() => setSelected(new Set(seasons))}
               className={`mb-3 w-full flex-shrink-0 rounded-lg px-3 py-2 text-xs font-medium transition-all ${
-                allSelected ? "bg-[#8b5cf6]/20 text-purple-300 ring-1 ring-purple-500/30"
+                allSelected ? "bg-tentacle-brand/20 text-tentacle-brand-light ring-1 ring-tentacle-brand/30"
                   : "bg-white/5 text-white/50 hover:bg-white/10"
               }`}>
               {t("seer:seasonActionAll")}
             </button>
 
-            {allSelected && <p className="mb-3 text-[10px] text-orange-400/70">{warn}</p>}
           </>
         )}
 
@@ -83,13 +96,36 @@ export function SeasonActionModal({ request, action, onConfirm, onClose }: Seaso
           </div>
         )}
 
+        {/* Option destructive — décochée par défaut */}
+        <label className="mb-3 flex flex-shrink-0 cursor-pointer items-start gap-2 rounded-lg bg-white/[0.04] px-3 py-2">
+          <input
+            type="checkbox"
+            checked={action === "delete" ? deleteFiles : forceRedownload}
+            onChange={(e) => action === "delete" ? setDeleteFiles(e.target.checked) : setForceRedownload(e.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-tentacle-brand"
+          />
+          <div className="min-w-0 flex-1">
+            <span className="block text-[11px] font-medium text-white/80">
+              {action === "delete" ? t("seer:deleteAlsoFiles") : t("seer:forceRedownload")}
+            </span>
+            <span className="block text-[10px] text-white/40">
+              {action === "delete" ? t("seer:deleteAlsoFilesHint") : t("seer:forceRedownloadHint")}
+            </span>
+          </div>
+        </label>
+
+        {showWarn && <p className="mb-3 text-[10px] text-orange-400/70">{warn}</p>}
+
         <div className="flex flex-shrink-0 items-center justify-end gap-2">
-          <button onClick={onClose}
-            className="rounded-lg bg-white/10 px-4 py-1.5 text-xs text-white/50 hover:bg-white/15">
+          <button onClick={onClose} className={`${CTA_SECONDARY} h-9 px-4 text-xs`}>
             {t("seer:cancel")}
           </button>
-          <button onClick={handleConfirm} disabled={!canConfirm}
-            className="rounded-lg bg-[#8b5cf6] px-4 py-1.5 text-xs font-medium text-white shadow-lg shadow-purple-500/20 transition-colors hover:bg-[#7c3aed] disabled:opacity-40">
+          <button
+            onClick={handleConfirm}
+            disabled={!canConfirm}
+            style={CTA_PRIMARY_HALO}
+            className={`${CTA_PRIMARY} h-9 px-4 text-xs`}
+          >
             {t("seer:seasonActionConfirm")}
             {hasSeasons && selected.size > 0 && !allSelected && ` (S${Array.from(selected).sort((a, b) => a - b).join(", S")})`}
           </button>

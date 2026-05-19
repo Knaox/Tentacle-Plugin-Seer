@@ -1,12 +1,22 @@
 // Seer Plugin — Server module (auto-generated, do not edit)
-
-// server/index.ts
-import { Readable } from "stream";
-import { resolve, dirname } from "path";
-import { existsSync, readFileSync, writeFileSync } from "fs";
-import { fileURLToPath } from "url";
+var __defProp = Object.defineProperty;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
 
 // server/db-helpers.ts
+var db_helpers_exports = {};
+__export(db_helpers_exports, {
+  rowToRequest: () => rowToRequest,
+  rowToUserSettings: () => rowToUserSettings,
+  toIso: () => toIso,
+  uuid: () => uuid
+});
 function uuid() {
   return crypto.randomUUID();
 }
@@ -36,7 +46,23 @@ function rowToRequest(r) {
     sentAt: r.sent_at ? toIso(r.sent_at) : null,
     completedAt: r.completed_at ? toIso(r.completed_at) : null,
     pendingCleanupId: r.pending_cleanup_id || null,
-    profileId: r.profile_id || null
+    profileId: r.profile_id || null,
+    isAnime: Boolean(r.is_anime)
+  };
+}
+function rowToUserSettings(r) {
+  return {
+    jellyfinUserId: r.jellyfin_user_id,
+    username: r.username,
+    blocked: Boolean(r.blocked),
+    dailyLimit: r.daily_limit === null || r.daily_limit === void 0 ? null : Number(r.daily_limit),
+    allowMovies: Boolean(r.allow_movies),
+    allowTv: Boolean(r.allow_tv),
+    allowAnime: Boolean(r.allow_anime),
+    jellyseerrUserId: r.jellyseerr_user_id === null || r.jellyseerr_user_id === void 0 ? null : Number(r.jellyseerr_user_id),
+    jellyseerrLastSync: r.jellyseerr_last_sync ? toIso(r.jellyseerr_last_sync) : null,
+    createdAt: toIso(r.created_at),
+    updatedAt: toIso(r.updated_at)
   };
 }
 function toIso(v) {
@@ -44,8 +70,24 @@ function toIso(v) {
   if (typeof v === "string") return v;
   return (/* @__PURE__ */ new Date()).toISOString();
 }
+var init_db_helpers = __esm({
+  "server/db-helpers.ts"() {
+    "use strict";
+  }
+});
+
+// server/index.ts
+import { Readable } from "stream";
+import { resolve, dirname } from "path";
+import { existsSync, readFileSync, writeFileSync } from "fs";
+import { fileURLToPath } from "url";
+
+// server/db.ts
+init_db_helpers();
+init_db_helpers();
 
 // server/db-queries.ts
+init_db_helpers();
 async function getUserRequests(prisma, jellyfinUserId, opts) {
   const page = opts.page || 1;
   const limit = Math.min(opts.limit || 20, 100);
@@ -174,6 +216,7 @@ async function getGlobalStats(prisma) {
 }
 
 // server/db-cleanup.ts
+init_db_helpers();
 async function enqueueCleanup(prisma, job) {
   const id = uuid();
   await prisma.$executeRawUnsafe(
@@ -320,6 +363,23 @@ async function ensureTables(prisma) {
   await addColumn("seer_cleanup_queue", "request_id", "VARCHAR(36) DEFAULT NULL");
   await addColumn("seer_requests", "pending_cleanup_id", "VARCHAR(36) DEFAULT NULL");
   await addColumn("seer_requests", "profile_id", "VARCHAR(36) DEFAULT NULL");
+  await addColumn("seer_requests", "is_anime", "TINYINT(1) NOT NULL DEFAULT 0");
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS seer_user_settings (
+      jellyfin_user_id     VARCHAR(255) NOT NULL PRIMARY KEY,
+      username             VARCHAR(255) NOT NULL,
+      blocked              TINYINT(1)   NOT NULL DEFAULT 0,
+      daily_limit          INT          DEFAULT NULL,
+      allow_movies         TINYINT(1)   NOT NULL DEFAULT 1,
+      allow_tv             TINYINT(1)   NOT NULL DEFAULT 1,
+      allow_anime          TINYINT(1)   NOT NULL DEFAULT 1,
+      jellyseerr_user_id   INT          DEFAULT NULL,
+      jellyseerr_last_sync DATETIME     DEFAULT NULL,
+      created_at           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_seer_user_seerrid (jellyseerr_user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
   const rows = await prisma.$queryRawUnsafe(
     `SELECT COUNT(*) as cnt FROM seer_requests`
   );
@@ -333,8 +393,8 @@ async function createRequest(prisma, data) {
   await prisma.$executeRawUnsafe(
     `INSERT INTO seer_requests
       (id, jellyfin_user_id, username, media_type, tmdb_id, title, poster_path,
-       backdrop_path, overview, year, seasons, status, priority, profile_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?)`,
+       backdrop_path, overview, year, seasons, status, priority, profile_id, is_anime)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?)`,
     id,
     data.jellyfinUserId,
     data.username,
@@ -347,13 +407,152 @@ async function createRequest(prisma, data) {
     data.year || null,
     data.seasons ? JSON.stringify(data.seasons) : null,
     data.priority || 0,
-    data.profileId || null
+    data.profileId || null,
+    data.isAnime ? 1 : 0
   );
   const rows = await prisma.$queryRawUnsafe(
     `SELECT * FROM seer_requests WHERE id = ?`,
     id
   );
   return rowToRequest(rows[0]);
+}
+async function getOrCreateUserSettings(prisma, jellyfinUserId, username) {
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT * FROM seer_user_settings WHERE jellyfin_user_id = ?`,
+    jellyfinUserId
+  );
+  if (rows.length > 0) {
+    if (username && rows[0].username !== username) {
+      await prisma.$executeRawUnsafe(
+        `UPDATE seer_user_settings SET username = ? WHERE jellyfin_user_id = ?`,
+        username,
+        jellyfinUserId
+      );
+      rows[0].username = username;
+    }
+    return rowToUserSettings(rows[0]);
+  }
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO seer_user_settings
+      (jellyfin_user_id, username, blocked, daily_limit, allow_movies, allow_tv, allow_anime)
+     VALUES (?, ?, 0, NULL, 1, 1, 1)`,
+    jellyfinUserId,
+    username || jellyfinUserId
+  );
+  const created = await prisma.$queryRawUnsafe(
+    `SELECT * FROM seer_user_settings WHERE jellyfin_user_id = ?`,
+    jellyfinUserId
+  );
+  return rowToUserSettings(created[0]);
+}
+async function getUserSettings(prisma, jellyfinUserId) {
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT * FROM seer_user_settings WHERE jellyfin_user_id = ?`,
+    jellyfinUserId
+  );
+  return rows.length > 0 ? rowToUserSettings(rows[0]) : null;
+}
+async function updateUserSettings(prisma, jellyfinUserId, patch) {
+  const sets = [];
+  const params = [];
+  if (patch.blocked !== void 0) {
+    sets.push("blocked = ?");
+    params.push(patch.blocked ? 1 : 0);
+  }
+  if (patch.dailyLimit !== void 0) {
+    sets.push("daily_limit = ?");
+    params.push(patch.dailyLimit);
+  }
+  if (patch.allowMovies !== void 0) {
+    sets.push("allow_movies = ?");
+    params.push(patch.allowMovies ? 1 : 0);
+  }
+  if (patch.allowTv !== void 0) {
+    sets.push("allow_tv = ?");
+    params.push(patch.allowTv ? 1 : 0);
+  }
+  if (patch.allowAnime !== void 0) {
+    sets.push("allow_anime = ?");
+    params.push(patch.allowAnime ? 1 : 0);
+  }
+  if (patch.jellyseerrUserId !== void 0) {
+    sets.push("jellyseerr_user_id = ?");
+    params.push(patch.jellyseerrUserId);
+  }
+  if (patch.jellyseerrLastSync !== void 0) {
+    sets.push("jellyseerr_last_sync = ?");
+    params.push(patch.jellyseerrLastSync);
+  }
+  if (patch.username !== void 0) {
+    sets.push("username = ?");
+    params.push(patch.username);
+  }
+  if (sets.length === 0) return;
+  params.push(jellyfinUserId);
+  await prisma.$executeRawUnsafe(
+    `UPDATE seer_user_settings SET ${sets.join(", ")} WHERE jellyfin_user_id = ?`,
+    ...params
+  );
+}
+async function countRequestsToday(prisma, jellyfinUserId) {
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT COUNT(*) as cnt FROM seer_requests
+     WHERE jellyfin_user_id = ?
+       AND created_at >= CURDATE()
+       AND status NOT IN ('failed', 'deleted')`,
+    jellyfinUserId
+  );
+  return Number(rows[0].cnt);
+}
+async function listUsersWithStats(prisma) {
+  const settingsRows = await prisma.$queryRawUnsafe(
+    `SELECT s.*,
+       (SELECT COUNT(*) FROM seer_requests r
+          WHERE r.jellyfin_user_id = s.jellyfin_user_id
+            AND r.created_at >= CURDATE()
+            AND r.status NOT IN ('failed', 'deleted')) AS requests_today,
+       (SELECT COUNT(*) FROM seer_requests r
+          WHERE r.jellyfin_user_id = s.jellyfin_user_id
+            AND r.status != 'deleted') AS requests_total
+     FROM seer_user_settings s
+     ORDER BY s.username ASC`
+  );
+  const known = new Set(settingsRows.map((r) => r.jellyfin_user_id));
+  const orphanRows = await prisma.$queryRawUnsafe(
+    `SELECT
+       r.jellyfin_user_id,
+       MAX(r.username) AS username,
+       SUM(CASE WHEN r.created_at >= CURDATE() AND r.status NOT IN ('failed','deleted') THEN 1 ELSE 0 END) AS requests_today,
+       SUM(CASE WHEN r.status != 'deleted' THEN 1 ELSE 0 END) AS requests_total
+     FROM seer_requests r
+     GROUP BY r.jellyfin_user_id`
+  );
+  const result = settingsRows.map((r) => ({
+    ...rowToUserSettings(r),
+    requestsToday: Number(r.requests_today) || 0,
+    requestsTotal: Number(r.requests_total) || 0
+  }));
+  for (const o of orphanRows) {
+    if (known.has(o.jellyfin_user_id)) continue;
+    const userId = o.jellyfin_user_id;
+    const username = o.username || userId;
+    result.push({
+      jellyfinUserId: userId,
+      username,
+      blocked: false,
+      dailyLimit: null,
+      allowMovies: true,
+      allowTv: true,
+      allowAnime: true,
+      jellyseerrUserId: null,
+      jellyseerrLastSync: null,
+      createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      requestsToday: Number(o.requests_today) || 0,
+      requestsTotal: Number(o.requests_total) || 0
+    });
+  }
+  return result.sort((a, b) => a.username.localeCompare(b.username));
 }
 async function getRequestById(prisma, id) {
   const rows = await prisma.$queryRawUnsafe(
@@ -627,13 +826,10 @@ function mapSeerrStatus(requestStatus, mediaStatus, downloadStatus) {
   if (requestStatus === 3) return "failed";
   if (requestStatus === 4) return "failed";
   if (downloadStatus?.some((d) => d.status === "failed" || d.status === "warning")) return "failed";
-  if (requestStatus === 1) {
-    if (mediaStatus === 5) return "available";
-    if (mediaStatus === 3 || mediaStatus === 4) return "downloading";
-    return "sent_to_seer";
-  }
   if (mediaStatus === 5) return "available";
-  if (mediaStatus === 3 || mediaStatus === 4) return "downloading";
+  if (mediaStatus === 4) return "partially_available";
+  if (mediaStatus === 3) return "downloading";
+  if (requestStatus === 1) return "sent_to_seer";
   return "approved";
 }
 function statusNotification(request, newStatus) {
@@ -658,7 +854,7 @@ async function processCleanupQueue(prisma, config) {
   const job = jobs[0];
   const headers = { "X-Api-Key": config.seerrApiKey };
   try {
-    if (job.seerrMediaId) {
+    if (job.deleteFiles && job.seerrMediaId) {
       const fileRes = await fetch(
         `${config.seerrUrl}/api/v1/media/${job.seerrMediaId}/file?is4k=false`,
         { method: "DELETE", headers, signal: AbortSignal.timeout(3e4) }
@@ -669,7 +865,7 @@ async function processCleanupQueue(prisma, config) {
       }
       console.log(`[SeerWorker] Deleted files via Jellyseerr for "${job.title}" (status=${fileRes.status})`);
     }
-    if (job.seerrMediaId) {
+    if (job.deleteFiles && job.seerrMediaId) {
       const mediaRes = await fetch(
         `${config.seerrUrl}/api/v1/media/${job.seerrMediaId}`,
         { method: "DELETE", headers, signal: AbortSignal.timeout(15e3) }
@@ -715,6 +911,79 @@ async function processCleanupQueue(prisma, config) {
       console.log(`[SeerWorker] Cleanup retry ${newRetry}/${job.maxRetries} for "${job.title}" in ${delaySec}s`);
     }
   }
+}
+
+// server/jellyseerr-user.ts
+async function resolveJellyseerrUserId(config, prisma, jellyfinUserId, username) {
+  const settings = await getOrCreateUserSettings(prisma, jellyfinUserId, username);
+  if (settings.jellyseerrUserId) return settings.jellyseerrUserId;
+  const found = await findJellyseerrUserByJellyfinId(config, jellyfinUserId);
+  if (found) {
+    await updateUserSettings(prisma, jellyfinUserId, {
+      jellyseerrUserId: found.id,
+      jellyseerrLastSync: /* @__PURE__ */ new Date()
+    });
+    return found.id;
+  }
+  const imported = await importJellyseerrUserFromJellyfin(config, jellyfinUserId);
+  if (imported) {
+    await updateUserSettings(prisma, jellyfinUserId, {
+      jellyseerrUserId: imported.id,
+      jellyseerrLastSync: /* @__PURE__ */ new Date()
+    });
+    return imported.id;
+  }
+  const refreshed = await findJellyseerrUserByJellyfinId(config, jellyfinUserId);
+  if (refreshed) {
+    await updateUserSettings(prisma, jellyfinUserId, {
+      jellyseerrUserId: refreshed.id,
+      jellyseerrLastSync: /* @__PURE__ */ new Date()
+    });
+    return refreshed.id;
+  }
+  throw new Error(`Unable to resolve Jellyseerr user for jellyfinUserId=${jellyfinUserId}`);
+}
+async function findJellyseerrUserByJellyfinId(config, jellyfinUserId) {
+  const all = await listAllJellyseerrUsers(config);
+  const normalized = (id) => (id || "").toLowerCase().replace(/-/g, "");
+  const target = normalized(jellyfinUserId);
+  return all.find((u) => normalized(u.jellyfinUserId) === target) ?? null;
+}
+async function listAllJellyseerrUsers(config) {
+  const out = [];
+  let skip = 0;
+  const take = 100;
+  for (let i = 0; i < 10; i++) {
+    const res = await fetch(`${config.seerrUrl}/api/v1/user?take=${take}&skip=${skip}`, {
+      headers: { "X-Api-Key": config.seerrApiKey },
+      signal: AbortSignal.timeout(1e4)
+    });
+    if (!res.ok) {
+      throw new Error(`Jellyseerr GET /user failed: ${res.status}`);
+    }
+    const data = await res.json();
+    const page = data.results ?? [];
+    out.push(...page);
+    if (page.length < take) break;
+    skip += take;
+  }
+  return out;
+}
+async function importJellyseerrUserFromJellyfin(config, jellyfinUserId) {
+  const res = await fetch(`${config.seerrUrl}/api/v1/user/import-from-jellyfin`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Api-Key": config.seerrApiKey },
+    body: JSON.stringify({ jellyfinUserIds: [jellyfinUserId] }),
+    signal: AbortSignal.timeout(15e3)
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Jellyseerr import-from-jellyfin failed (${res.status}): ${text.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  if (Array.isArray(data) && data.length > 0) return data[0];
+  if (!Array.isArray(data) && data && typeof data === "object") return data;
+  return null;
 }
 
 // server/worker.ts
@@ -831,6 +1100,13 @@ async function processNextRequest(prisma, config) {
         console.log(`[SeerWorker] Applied profile "${profile.name}" for "${request.title}" (tags: ${JSON.stringify(profile.tags ?? "default")})`);
       }
     }
+    const seerUserId = await resolveJellyseerrUserId(
+      config,
+      prisma,
+      request.jellyfinUserId,
+      request.username
+    );
+    seerrBody.userId = seerUserId;
     const res = await fetch(`${config.seerrUrl}/api/v1/request`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Api-Key": config.seerrApiKey },
@@ -881,6 +1157,17 @@ async function processNextRequest(prisma, config) {
         lastError: errMsg,
         retryCount: newRetryCount
       });
+      if (request.retryCount === 0) {
+        await prisma.notification.create({
+          data: {
+            jellyfinUserId: request.jellyfinUserId,
+            type: "request_status",
+            title: request.title,
+            body: `Votre demande pour \xAB ${request.title} \xBB a rencontr\xE9 une erreur, elle sera r\xE9essay\xE9e automatiquement`,
+            refId: request.id
+          }
+        });
+      }
       console.warn(`[SeerWorker] Request for "${request.title}" retry ${newRetryCount}/${request.maxRetries}: ${errMsg}`);
     }
   }
@@ -890,29 +1177,281 @@ async function processNextRequest(prisma, config) {
 function getUser(request) {
   return request.user;
 }
+function seerrRequestToUnified(sr, detail, localById, fallbackUser) {
+  const local = localById.get(sr.id);
+  const status = mapSeerrStatus(sr.status, sr.media?.status, sr.media?.downloadStatus);
+  const seasons = sr.seasons?.map((s) => s.seasonNumber).filter((n) => typeof n === "number") ?? null;
+  const mediaType = sr.media?.mediaType ?? "movie";
+  const title = detail?.title ?? detail?.name ?? local?.title ?? `#${sr.id}`;
+  const year = (detail?.releaseDate ?? detail?.firstAirDate ?? "").slice(0, 4) || null;
+  return {
+    id: local?.id ?? `seerr-${sr.id}`,
+    source: "seerr",
+    jellyfinUserId: sr.requestedBy?.jellyfinUserId ?? fallbackUser.jellyfinUserId,
+    username: sr.requestedBy?.jellyfinUsername ?? fallbackUser.username,
+    mediaType,
+    tmdbId: sr.media?.tmdbId ?? 0,
+    title,
+    posterPath: detail?.posterPath ?? local?.posterPath ?? null,
+    backdropPath: detail?.backdropPath ?? local?.backdropPath ?? null,
+    overview: detail?.overview ?? local?.overview ?? null,
+    year: year || local?.year || null,
+    seasons: seasons && seasons.length > 0 ? seasons : local?.seasons ?? null,
+    status,
+    seerrRequestId: sr.id,
+    seerrMediaId: sr.media?.id ?? null,
+    seerrMediaStatus: sr.media?.status ?? null,
+    retryCount: local?.retryCount ?? 0,
+    maxRetries: local?.maxRetries ?? 10,
+    lastError: local?.lastError ?? null,
+    priority: local?.priority ?? 0,
+    createdAt: sr.createdAt ?? local?.createdAt ?? (/* @__PURE__ */ new Date()).toISOString(),
+    updatedAt: sr.updatedAt ?? local?.updatedAt ?? (/* @__PURE__ */ new Date()).toISOString(),
+    sentAt: local?.sentAt ?? null,
+    completedAt: local?.completedAt ?? null,
+    profileId: local?.profileId ?? null,
+    isAnime: local?.isAnime ?? false
+  };
+}
+function localToUnified(r) {
+  return {
+    id: r.id,
+    source: "local",
+    jellyfinUserId: r.jellyfinUserId,
+    username: r.username,
+    mediaType: r.mediaType,
+    tmdbId: r.tmdbId,
+    title: r.title,
+    posterPath: r.posterPath,
+    backdropPath: r.backdropPath,
+    overview: r.overview,
+    year: r.year,
+    seasons: r.seasons,
+    status: r.status,
+    seerrRequestId: r.seerrRequestId,
+    seerrMediaId: r.seerrMediaId,
+    seerrMediaStatus: r.seerrMediaStatus,
+    retryCount: r.retryCount,
+    maxRetries: r.maxRetries,
+    lastError: r.lastError,
+    priority: r.priority,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+    sentAt: r.sentAt,
+    completedAt: r.completedAt,
+    profileId: r.profileId,
+    isAnime: r.isAnime
+  };
+}
+async function fetchSeerrRequestsForUser(config, seerUserId, take, skip) {
+  const url = `${config.seerrUrl}/api/v1/request?take=${take}&skip=${skip}&filter=all&sort=added&requestedBy=${seerUserId}`;
+  const res = await fetch(url, {
+    headers: { "X-Api-Key": config.seerrApiKey },
+    signal: AbortSignal.timeout(1e4)
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Jellyseerr GET /request?requestedBy=${seerUserId} failed: ${res.status} ${body.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  return { rows: data.results ?? [], total: data.pageInfo?.results ?? data.results?.length ?? 0 };
+}
+async function fetchSeerrTmdbDetail(config, mediaType, tmdbId) {
+  try {
+    const res = await fetch(`${config.seerrUrl}/api/v1/${mediaType}/${tmdbId}`, {
+      headers: { "X-Api-Key": config.seerrApiKey },
+      signal: AbortSignal.timeout(8e3)
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+async function fetchSeerrRequestById(config, seerrId) {
+  try {
+    const res = await fetch(`${config.seerrUrl}/api/v1/request/${seerrId}`, {
+      headers: { "X-Api-Key": config.seerrApiKey },
+      signal: AbortSignal.timeout(1e4)
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+function parseRequestId(id) {
+  if (id.startsWith("seerr-")) {
+    const n = Number(id.slice(6));
+    if (Number.isFinite(n)) return { kind: "seerr", seerrId: n };
+  }
+  return { kind: "local", id };
+}
 function registerRequestRoutes(app, prisma, getWorkerConfig2) {
-  app.get("/requests", async (request) => {
+  app.get("/requests/stats", async (request, reply) => {
+    const user = getUser(request);
+    const config = await getWorkerConfig2();
+    const byStatus = {};
+    const byType = { movie: 0, tv: 0 };
+    let total = 0;
+    if (config) {
+      try {
+        const seerUserId = await resolveJellyseerrUserId(config, prisma, user.userId, user.username);
+        let skip = 0;
+        const take = 100;
+        for (let i = 0; i < 25; i++) {
+          const { rows } = await fetchSeerrRequestsForUser(config, seerUserId, take, skip);
+          for (const sr of rows) {
+            total++;
+            const status = mapSeerrStatus(sr.status, sr.media?.status, sr.media?.downloadStatus);
+            byStatus[status] = (byStatus[status] ?? 0) + 1;
+            const mt = sr.media?.mediaType;
+            if (mt === "movie") byType.movie++;
+            else if (mt === "tv") byType.tv++;
+          }
+          if (rows.length < take) break;
+          skip += take;
+        }
+      } catch (err) {
+        request.log?.warn?.({ err }, "Seerr stats fetch failed");
+      }
+    }
+    const localPending = await prisma.$queryRawUnsafe(
+      `SELECT status, media_type FROM seer_requests
+       WHERE jellyfin_user_id = ?
+         AND seerr_request_id IS NULL
+         AND status IN ('queued','processing','retry_pending','failed')`,
+      user.userId
+    );
+    for (const r of localPending) {
+      total++;
+      byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
+      if (r.media_type === "movie") byType.movie++;
+      else if (r.media_type === "tv") byType.tv++;
+    }
+    return { total, byStatus, byType };
+  });
+  app.get("/requests", async (request, reply) => {
     const user = getUser(request);
     const query = request.query;
     if (user.isAdmin && query.status === "all_users") {
-      return getAllRequests(prisma, {
+      const list = await getAllRequests(prisma, {
         page: Number(query.page) || 1,
         limit: Number(query.limit) || 20,
         mediaType: query.type
       });
+      return { ...list, results: list.results.map(localToUnified) };
     }
-    return getUserRequests(prisma, user.userId, {
-      page: Number(query.page) || 1,
-      limit: Number(query.limit) || 20,
-      status: query.status,
-      mediaType: query.type
-    });
+    const page = Number(query.page) || 1;
+    const limit = Math.min(Number(query.limit) || 20, 100);
+    const config = await getWorkerConfig2();
+    if (!config) {
+      const local = await getUserRequests(prisma, user.userId, { page, limit, mediaType: query.type });
+      return { ...local, results: local.results.map(localToUnified) };
+    }
+    const localPendingRows = await prisma.$queryRawUnsafe(
+      `SELECT * FROM seer_requests
+       WHERE jellyfin_user_id = ?
+         AND status IN ('queued','processing','retry_pending','failed','deleting','delete_failed')
+       ORDER BY created_at DESC`,
+      user.userId
+    );
+    const { rowToRequest: rowToRequest2 } = await Promise.resolve().then(() => (init_db_helpers(), db_helpers_exports));
+    const localPending = localPendingRows.map(rowToRequest2);
+    const localBySeerrId = /* @__PURE__ */ new Map();
+    const allLocalRows = await prisma.$queryRawUnsafe(
+      `SELECT * FROM seer_requests WHERE jellyfin_user_id = ? AND seerr_request_id IS NOT NULL`,
+      user.userId
+    );
+    for (const row of allLocalRows) {
+      const r = rowToRequest2(row);
+      if (r.seerrRequestId) localBySeerrId.set(r.seerrRequestId, r);
+    }
+    const filterActive = !!(query.status || query.type);
+    let seerrUnified = [];
+    try {
+      const seerUserId = await resolveJellyseerrUserId(config, prisma, user.userId, user.username);
+      const take = 100;
+      const allRows = [];
+      const maxPages = filterActive ? 25 : Math.max(2, Math.ceil((page * limit + limit) / take));
+      let skip = 0;
+      for (let i = 0; i < maxPages; i++) {
+        const { rows } = await fetchSeerrRequestsForUser(config, seerUserId, take, skip);
+        allRows.push(...rows);
+        if (rows.length < take) break;
+        skip += take;
+      }
+      const detailCache = /* @__PURE__ */ new Map();
+      const tasks = allRows.map(async (sr) => {
+        if (!sr.media) return null;
+        const key = `${sr.media.mediaType}-${sr.media.tmdbId}`;
+        if (!detailCache.has(key)) {
+          detailCache.set(key, await fetchSeerrTmdbDetail(config, sr.media.mediaType, sr.media.tmdbId));
+        }
+        return seerrRequestToUnified(sr, detailCache.get(key) ?? null, localBySeerrId, {
+          jellyfinUserId: user.userId,
+          username: user.username
+        });
+      });
+      seerrUnified = (await Promise.all(tasks)).filter((x) => x !== null);
+    } catch (err) {
+      request.log?.warn?.({ err }, "Seerr fetch failed, falling back to local only");
+    }
+    const seerrSeenIds = new Set(seerrUnified.map((u) => u.seerrRequestId).filter(Boolean));
+    const localFiltered = localPending.filter((l) => !l.seerrRequestId || !seerrSeenIds.has(l.seerrRequestId)).map(localToUnified);
+    let merged = [...localFiltered, ...seerrUnified];
+    if (query.type) {
+      merged = merged.filter((r) => r.mediaType === query.type);
+    }
+    if (query.status) {
+      const wanted = new Set(query.status.split(",").map((s) => s.trim()));
+      merged = merged.filter((r) => wanted.has(r.status));
+    }
+    merged.sort((a, b) => b.createdAt > a.createdAt ? 1 : -1);
+    const total = merged.length;
+    const offset = (page - 1) * limit;
+    const sliced = merged.slice(offset, offset + limit);
+    return {
+      results: sliced,
+      total,
+      page,
+      pages: Math.max(1, Math.ceil(total / limit))
+    };
   });
   app.post("/requests", async (request, reply) => {
     const user = getUser(request);
     const body = request.body;
     if (!body.mediaType || !body.tmdbId || !body.title) {
       return reply.status(400).send({ message: "mediaType, tmdbId, and title are required" });
+    }
+    const settings = await getOrCreateUserSettings(prisma, user.userId, user.username);
+    if (settings.blocked) {
+      return reply.status(403).send({ errorKey: "seer:errUserBlocked", message: "User is blocked" });
+    }
+    let isAnime = false;
+    const config = await getWorkerConfig2();
+    if (body.mediaType === "tv" && config) {
+      const detail = await fetchMediaDetail(config.seerrUrl, config.seerrApiKey, "tv", body.tmdbId);
+      if (detail && isAnimeFromKeywords(detail)) isAnime = true;
+    }
+    if (body.mediaType === "movie" && !settings.allowMovies) {
+      return reply.status(403).send({ errorKey: "seer:errMoviesDenied", message: "Movies denied" });
+    }
+    if (body.mediaType === "tv" && isAnime && !settings.allowAnime) {
+      return reply.status(403).send({ errorKey: "seer:errAnimeDenied", message: "Anime denied" });
+    }
+    if (body.mediaType === "tv" && !isAnime && !settings.allowTv) {
+      return reply.status(403).send({ errorKey: "seer:errTvDenied", message: "TV denied" });
+    }
+    if (settings.dailyLimit !== null && settings.dailyLimit !== void 0) {
+      const todayCount = await countRequestsToday(prisma, user.userId);
+      if (todayCount >= settings.dailyLimit) {
+        return reply.status(429).send({
+          errorKey: "seer:errQuotaReached",
+          limit: settings.dailyLimit,
+          message: `Daily quota reached (${settings.dailyLimit})`
+        });
+      }
     }
     if (body.mediaType === "tv" && body.seasons?.length) {
       const existing = await findExistingTvRequest(prisma, user.userId, body.tmdbId);
@@ -924,7 +1463,7 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
         }
         const merged = [...existing.seasons ?? [], ...newSeasons].sort((a, b) => a - b);
         await addSeasonsToRequest(prisma, existing.id, merged);
-        const newReq = await createRequest(prisma, {
+        await createRequest(prisma, {
           jellyfinUserId: user.userId,
           username: user.username,
           mediaType: body.mediaType,
@@ -935,7 +1474,8 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
           overview: body.overview,
           year: body.year,
           seasons: newSeasons,
-          profileId: body.profileId ?? existing.profileId
+          profileId: body.profileId ?? existing.profileId,
+          isAnime
         });
         const updated = await getRequestById(prisma, existing.id);
         return reply.status(201).send(updated);
@@ -956,7 +1496,8 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
       overview: body.overview,
       year: body.year,
       seasons: body.seasons,
-      profileId: body.profileId
+      profileId: body.profileId,
+      isAnime
     });
     return reply.status(201).send(req);
   });
@@ -964,76 +1505,211 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
     const { id } = request.params;
     const user = getUser(request);
     const body = request.body ?? {};
-    const req = await getRequestById(prisma, id);
-    if (!req) return reply.status(404).send({ message: "Request not found" });
-    if (req.jellyfinUserId !== user.userId && !user.isAdmin) {
-      return reply.status(403).send({ message: "Not your request" });
+    const deleteFiles = body.deleteFiles === true;
+    const parsed = parseRequestId(id);
+    if (parsed.kind === "local") {
+      const req = await getRequestById(prisma, parsed.id);
+      if (!req) return reply.status(404).send({ message: "Request not found" });
+      if (req.jellyfinUserId !== user.userId && !user.isAdmin) {
+        return reply.status(403).send({ message: "Not your request" });
+      }
+      const isSeasonSpecific = req.mediaType === "tv" && body.seasons && body.seasons.length > 0;
+      const isFullSeries = req.mediaType === "tv" && !isSeasonSpecific;
+      if (req.mediaType === "movie" || isFullSeries) {
+        await updateRequestStatus(prisma, parsed.id, "deleting");
+        await enqueueCleanup(prisma, {
+          action: "delete",
+          mediaType: req.mediaType,
+          tmdbId: req.tmdbId,
+          title: req.title,
+          seerrRequestId: req.seerrRequestId,
+          seerrMediaId: req.seerrMediaId,
+          deleteFiles,
+          requestId: parsed.id
+        });
+      } else {
+        await deleteRequestById(prisma, parsed.id);
+      }
+      return { success: true, status: "deleting" };
     }
-    const isSeasonSpecific = req.mediaType === "tv" && body.seasons && body.seasons.length > 0;
-    const isFullSeries = req.mediaType === "tv" && !isSeasonSpecific;
-    if (req.mediaType === "movie" || isFullSeries) {
-      await updateRequestStatus(prisma, id, "deleting");
-      await enqueueCleanup(prisma, {
-        action: "delete",
-        mediaType: req.mediaType,
-        tmdbId: req.tmdbId,
-        title: req.title,
-        seerrRequestId: req.seerrRequestId,
-        seerrMediaId: req.seerrMediaId,
-        deleteFiles: true,
-        requestId: id
-      });
-    } else {
-      await deleteRequestById(prisma, id);
+    const config = await getWorkerConfig2();
+    if (!config) return reply.status(503).send({ message: "Seerr not configured" });
+    const seerrReq = await fetchSeerrRequestById(config, parsed.seerrId);
+    if (!seerrReq) return reply.status(404).send({ message: "Seerr request not found" });
+    if (!user.isAdmin) {
+      const settingsRows = await prisma.$queryRawUnsafe(
+        `SELECT jellyseerr_user_id FROM seer_user_settings WHERE jellyfin_user_id = ? LIMIT 1`,
+        user.userId
+      );
+      const myId = settingsRows[0]?.jellyseerr_user_id ?? null;
+      if (!myId || seerrReq.requestedBy?.id !== myId) {
+        return reply.status(403).send({ message: "Not your request" });
+      }
     }
+    await enqueueCleanup(prisma, {
+      action: "delete",
+      mediaType: seerrReq.media?.mediaType ?? "movie",
+      tmdbId: seerrReq.media?.tmdbId ?? 0,
+      title: `#${seerrReq.id}`,
+      seerrRequestId: seerrReq.id,
+      seerrMediaId: seerrReq.media?.id ?? null,
+      deleteFiles,
+      requestId: null
+    });
     return { success: true, status: "deleting" };
   });
   app.post("/requests/:id/retry", async (request, reply) => {
     const { id } = request.params;
     const user = getUser(request);
     const body = request.body ?? {};
-    const req = await getRequestById(prisma, id);
-    if (!req) return reply.status(404).send({ message: "Request not found" });
-    if (req.jellyfinUserId !== user.userId && !user.isAdmin) {
-      return reply.status(403).send({ message: "Not your request" });
-    }
-    const newProfileId = body.profileId !== void 0 ? body.profileId : req.profileId;
+    const forceRedownload = body.forceRedownload === true;
+    const parsed = parseRequestId(id);
     const config = await getWorkerConfig2();
-    if (config) {
-      if (req.seerrRequestId) {
-        await fetch(`${config.seerrUrl}/api/v1/request/${req.seerrRequestId}`, {
-          method: "DELETE",
-          headers: { "X-Api-Key": config.seerrApiKey },
-          signal: AbortSignal.timeout(1e4)
-        }).catch(() => {
-        });
+    if (parsed.kind === "local") {
+      const req = await getRequestById(prisma, parsed.id);
+      if (!req) return reply.status(404).send({ message: "Request not found" });
+      if (req.jellyfinUserId !== user.userId && !user.isAdmin) {
+        return reply.status(403).send({ message: "Not your request" });
       }
-      if (req.seerrMediaId) {
-        await fetch(`${config.seerrUrl}/api/v1/media/${req.seerrMediaId}`, {
-          method: "DELETE",
-          headers: { "X-Api-Key": config.seerrApiKey },
-          signal: AbortSignal.timeout(1e4)
-        }).catch(() => {
-        });
+      const newProfileId = body.profileId !== void 0 ? body.profileId : req.profileId;
+      if (config) {
+        if (req.seerrRequestId) {
+          await fetch(`${config.seerrUrl}/api/v1/request/${req.seerrRequestId}`, {
+            method: "DELETE",
+            headers: { "X-Api-Key": config.seerrApiKey },
+            signal: AbortSignal.timeout(1e4)
+          }).catch(() => {
+          });
+        }
+        if (forceRedownload && req.seerrMediaId) {
+          await fetch(`${config.seerrUrl}/api/v1/media/${req.seerrMediaId}`, {
+            method: "DELETE",
+            headers: { "X-Api-Key": config.seerrApiKey },
+            signal: AbortSignal.timeout(1e4)
+          }).catch(() => {
+          });
+        }
+      }
+      await deleteRequestById(prisma, parsed.id);
+      const retrySeasons2 = body.seasons && body.seasons.length > 0 ? body.seasons : req.seasons;
+      const newReq2 = await createRequest(prisma, {
+        jellyfinUserId: req.jellyfinUserId,
+        username: req.username,
+        mediaType: req.mediaType,
+        tmdbId: req.tmdbId,
+        title: req.title,
+        posterPath: req.posterPath,
+        backdropPath: req.backdropPath,
+        overview: req.overview,
+        year: req.year,
+        seasons: retrySeasons2,
+        priority: 1,
+        profileId: newProfileId,
+        isAnime: req.isAnime
+      });
+      return reply.status(201).send(newReq2);
+    }
+    if (!config) return reply.status(503).send({ message: "Seerr not configured" });
+    const seerrReq = await fetchSeerrRequestById(config, parsed.seerrId);
+    if (!seerrReq) return reply.status(404).send({ message: "Seerr request not found" });
+    if (!user.isAdmin) {
+      const settingsRows = await prisma.$queryRawUnsafe(
+        `SELECT jellyseerr_user_id FROM seer_user_settings WHERE jellyfin_user_id = ? LIMIT 1`,
+        user.userId
+      );
+      const myId = settingsRows[0]?.jellyseerr_user_id ?? null;
+      if (!myId || seerrReq.requestedBy?.id !== myId) {
+        return reply.status(403).send({ message: "Not your request" });
       }
     }
-    await deleteRequestById(prisma, id);
-    const retrySeasons = body.seasons && body.seasons.length > 0 ? body.seasons : req.seasons;
+    const mediaType = seerrReq.media?.mediaType ?? "movie";
+    const tmdbId = seerrReq.media?.tmdbId ?? 0;
+    if (!tmdbId) return reply.status(400).send({ message: "Cannot retry: missing TMDB id" });
+    const detail = await fetchSeerrTmdbDetail(config, mediaType, tmdbId);
+    const title = detail?.title ?? detail?.name ?? `#${seerrReq.id}`;
+    await fetch(`${config.seerrUrl}/api/v1/request/${seerrReq.id}`, {
+      method: "DELETE",
+      headers: { "X-Api-Key": config.seerrApiKey },
+      signal: AbortSignal.timeout(1e4)
+    }).catch(() => {
+    });
+    if (forceRedownload && seerrReq.media?.id) {
+      await fetch(`${config.seerrUrl}/api/v1/media/${seerrReq.media.id}`, {
+        method: "DELETE",
+        headers: { "X-Api-Key": config.seerrApiKey },
+        signal: AbortSignal.timeout(1e4)
+      }).catch(() => {
+      });
+    }
+    const retrySeasons = body.seasons && body.seasons.length > 0 ? body.seasons : seerrReq.seasons?.map((s) => s.seasonNumber) ?? null;
     const newReq = await createRequest(prisma, {
-      jellyfinUserId: req.jellyfinUserId,
-      username: req.username,
-      mediaType: req.mediaType,
-      tmdbId: req.tmdbId,
-      title: req.title,
-      posterPath: req.posterPath,
-      backdropPath: req.backdropPath,
-      overview: req.overview,
-      year: req.year,
+      jellyfinUserId: user.userId,
+      username: user.username,
+      mediaType,
+      tmdbId,
+      title,
+      posterPath: detail?.posterPath ?? null,
+      backdropPath: detail?.backdropPath ?? null,
+      overview: detail?.overview ?? null,
+      year: (detail?.releaseDate ?? detail?.firstAirDate ?? "").slice(0, 4) || null,
       seasons: retrySeasons,
       priority: 1,
-      profileId: newProfileId
+      profileId: body.profileId ?? null,
+      isAnime: false
     });
     return reply.status(201).send(newReq);
+  });
+  app.post("/requests/:id/mark", async (request, reply) => {
+    const { id } = request.params;
+    const user = getUser(request);
+    const body = request.body ?? {};
+    const target = body.status;
+    if (!target || !["available", "partial", "unknown"].includes(target)) {
+      return reply.status(400).send({ message: "status must be 'available', 'partial' or 'unknown'" });
+    }
+    const config = await getWorkerConfig2();
+    if (!config) return reply.status(503).send({ message: "Seerr not configured" });
+    const parsed = parseRequestId(id);
+    let seerrMediaId = null;
+    let ownerJellyfinUserId = null;
+    if (parsed.kind === "local") {
+      const req = await getRequestById(prisma, parsed.id);
+      if (!req) return reply.status(404).send({ message: "Request not found" });
+      seerrMediaId = req.seerrMediaId;
+      ownerJellyfinUserId = req.jellyfinUserId;
+    } else {
+      const seerrReq = await fetchSeerrRequestById(config, parsed.seerrId);
+      if (!seerrReq) return reply.status(404).send({ message: "Seerr request not found" });
+      seerrMediaId = seerrReq.media?.id ?? null;
+      if (seerrReq.requestedBy?.id) {
+        const rows = await prisma.$queryRawUnsafe(
+          `SELECT jellyfin_user_id FROM seer_user_settings WHERE jellyseerr_user_id = ? LIMIT 1`,
+          seerrReq.requestedBy.id
+        );
+        ownerJellyfinUserId = rows[0]?.jellyfin_user_id ?? null;
+      }
+    }
+    if (!seerrMediaId) return reply.status(400).send({ message: "No Jellyseerr media linked" });
+    if (!user.isAdmin && ownerJellyfinUserId && ownerJellyfinUserId !== user.userId) {
+      return reply.status(403).send({ message: "Not your request" });
+    }
+    const res = await fetch(`${config.seerrUrl}/api/v1/media/${seerrMediaId}/${target}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Api-Key": config.seerrApiKey },
+      body: JSON.stringify({ is4k: false }),
+      signal: AbortSignal.timeout(15e3)
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      return reply.status(502).send({
+        message: `Jellyseerr mark ${target} failed: ${res.status} ${text.slice(0, 200)}`
+      });
+    }
+    if (parsed.kind === "local") {
+      const localStatus = target === "available" ? "available" : target === "partial" ? "partially_available" : "sent_to_seer";
+      await updateRequestStatus(prisma, parsed.id, localStatus);
+    }
+    return { success: true, target };
   });
   app.post("/requests/:id/retry-delete", async (request, reply) => {
     const { id } = request.params;
@@ -1255,6 +1931,115 @@ async function fetchArrOptions(seerr, type) {
   return results.filter((r) => r.status === "fulfilled").map((r) => r.value);
 }
 
+// server/routes-users.ts
+function registerUsersRoutes(app, prisma, getWorkerConfig2, requireAdmin) {
+  app.get(
+    "/admin/users",
+    { preHandler: requireAdmin },
+    async () => {
+      return await listUsersWithStats(prisma);
+    }
+  );
+  app.put(
+    "/admin/users/:jellyfinUserId",
+    { preHandler: requireAdmin },
+    async (request, reply) => {
+      const { jellyfinUserId } = request.params;
+      const body = request.body ?? {};
+      const current = await getUserSettings(prisma, jellyfinUserId);
+      const usernameForCreation = current?.username || jellyfinUserId;
+      const existing = await getOrCreateUserSettings(prisma, jellyfinUserId, usernameForCreation);
+      let dailyLimit = body.dailyLimit;
+      if (dailyLimit === 0 || typeof dailyLimit === "string" && dailyLimit === "") {
+        dailyLimit = null;
+      }
+      if (typeof dailyLimit === "number" && Number.isNaN(dailyLimit)) dailyLimit = null;
+      await updateUserSettings(prisma, jellyfinUserId, {
+        blocked: body.blocked,
+        dailyLimit,
+        allowMovies: body.allowMovies,
+        allowTv: body.allowTv,
+        allowAnime: body.allowAnime
+      });
+      const all = await listUsersWithStats(prisma);
+      const updated = all.find((u) => u.jellyfinUserId === jellyfinUserId);
+      return updated ?? existing;
+    }
+  );
+  app.post(
+    "/admin/users/sync",
+    { preHandler: requireAdmin },
+    async (_request, reply) => {
+      const config = await getWorkerConfig2();
+      if (!config) return reply.status(503).send({ message: "Seerr not configured" });
+      let users = [];
+      let jellyfinError = null;
+      try {
+        users = await fetchJellyfinUsers();
+      } catch (err) {
+        jellyfinError = err instanceof Error ? err.message : "Jellyfin fetch failed";
+      }
+      try {
+        const seerUsers = await listAllJellyseerrUsers(config);
+        const known = new Set(users.map((u) => u.id));
+        for (const su of seerUsers) {
+          if (!su.jellyfinUserId || known.has(su.jellyfinUserId)) continue;
+          users.push({
+            id: su.jellyfinUserId,
+            name: su.jellyfinUsername || su.username || su.jellyfinUserId
+          });
+        }
+      } catch {
+        if (jellyfinError && users.length === 0) {
+          return reply.status(503).send({ message: `Sync failed: ${jellyfinError}` });
+        }
+      }
+      let created = 0;
+      const isUuid = /^[0-9a-f]{8,}(-[0-9a-f]+)*$/i;
+      for (const u of users) {
+        const existing = await prisma.$queryRawUnsafe(
+          `SELECT jellyfin_user_id, username FROM seer_user_settings WHERE jellyfin_user_id = ? LIMIT 1`,
+          u.id
+        );
+        if (existing.length === 0) {
+          created++;
+          await getOrCreateUserSettings(prisma, u.id, u.name);
+        } else if (u.name && u.name !== u.id && (isUuid.test(existing[0].username) || existing[0].username === u.id)) {
+          await updateUserSettings(prisma, u.id, { username: u.name });
+        }
+      }
+      const all = await listUsersWithStats(prisma);
+      let synced = 0;
+      let failed = 0;
+      for (const u of all) {
+        try {
+          await resolveJellyseerrUserId(config, prisma, u.jellyfinUserId, u.username);
+          synced++;
+        } catch {
+          failed++;
+        }
+      }
+      return { synced, failed, created, total: all.length, jellyfinAdminOk: jellyfinError === null };
+    }
+  );
+}
+async function fetchJellyfinUsers() {
+  const baseUrl = (process.env.JELLYFIN_URL || "").replace(/\/$/, "");
+  const apiKey = process.env.JELLYFIN_ADMIN_API_KEY || "";
+  if (!baseUrl || !apiKey) {
+    throw new Error("Jellyfin not configured on Tentacle backend (JELLYFIN_URL or JELLYFIN_ADMIN_API_KEY missing)");
+  }
+  const res = await fetch(`${baseUrl}/Users`, {
+    headers: { "X-Emby-Token": apiKey },
+    signal: AbortSignal.timeout(15e3)
+  });
+  if (!res.ok) {
+    throw new Error(`Jellyfin GET /Users failed: ${res.status}`);
+  }
+  const data = await res.json();
+  return data.filter((u) => !u.Policy?.IsDisabled).map((u) => ({ id: u.Id, name: u.Name }));
+}
+
 // server/index.ts
 var __pluginDir = dirname(dirname(fileURLToPath(import.meta.url)));
 function getPluginConfig(ctx) {
@@ -1394,6 +2179,7 @@ async function seerBackend(app, ctx) {
     if (!url || !apiKey) return null;
     return { seerrUrl: url.replace(/\/$/, ""), seerrApiKey: apiKey };
   });
+  registerUsersRoutes(app, prisma, gwc, ctx.requireAdmin);
   const providerCache = /* @__PURE__ */ new Map();
   app.post("/check-providers", async (request, reply) => {
     const body = request.body;

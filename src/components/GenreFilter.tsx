@@ -24,7 +24,7 @@ export function GenreFilter({ genres, selected, onToggle }: GenreFilterProps) {
               onClick={() => onToggle(g.id)}
               className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                 active
-                  ? "bg-[#8b5cf6]/20 text-[#8b5cf6] ring-1 ring-[#8b5cf6]/50"
+                  ? "bg-tentacle-brand/20 text-tentacle-brand ring-1 ring-tentacle-brand/50"
                   : "bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/70"
               }`}
             >

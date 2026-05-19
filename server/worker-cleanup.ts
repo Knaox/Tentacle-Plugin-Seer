@@ -19,7 +19,8 @@ export async function processCleanupQueue(prisma: PrismaClient, config: WorkerCo
   try {
     // === ÉTAPE 1 : Supprimer de Sonarr/Radarr via Jellyseerr ===
     // L'endpoint /media/{id}/file appelle Sonarr/Radarr pour nous
-    if (job.seerrMediaId) {
+    // Skipée si deleteFiles=false (par défaut UI) — on ne touche pas aux fichiers téléchargés.
+    if (job.deleteFiles && job.seerrMediaId) {
       const fileRes = await fetch(
         `${config.seerrUrl}/api/v1/media/${job.seerrMediaId}/file?is4k=false`,
         { method: "DELETE", headers, signal: AbortSignal.timeout(30_000) },
@@ -34,7 +35,8 @@ export async function processCleanupQueue(prisma: PrismaClient, config: WorkerCo
     }
 
     // === ÉTAPE 2 : Supprimer le media de Jellyseerr (cascade les requests) ===
-    if (job.seerrMediaId) {
+    // Skipée si deleteFiles=false : on conserve le media et on supprime juste la request.
+    if (job.deleteFiles && job.seerrMediaId) {
       const mediaRes = await fetch(
         `${config.seerrUrl}/api/v1/media/${job.seerrMediaId}`,
         { method: "DELETE", headers, signal: AbortSignal.timeout(15_000) },
@@ -45,7 +47,7 @@ export async function processCleanupQueue(prisma: PrismaClient, config: WorkerCo
       }
     }
 
-    // === ÉTAPE 3 : Supprimer la request Seerr (au cas où pas cascade) ===
+    // === ÉTAPE 3 : Supprimer la request Seerr (toujours faite) ===
     if (job.seerrRequestId) {
       await fetch(
         `${config.seerrUrl}/api/v1/request/${job.seerrRequestId}`,

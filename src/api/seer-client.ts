@@ -11,7 +11,39 @@ import type {
   LocalRequestsResponse,
   QueueStatus,
   StatsResponse,
+  AdminUserRow,
+  UpdateAdminUserBody,
 } from "./types";
+
+/** Error thrown by backendFetch carrying optional i18n errorKey + extra context. */
+export class SeerBackendApiError extends Error {
+  status: number;
+  errorKey?: string;
+  limit?: number;
+  constructor(message: string, status: number, opts?: { errorKey?: string; limit?: number }) {
+    super(message);
+    this.name = "SeerBackendApiError";
+    this.status = status;
+    this.errorKey = opts?.errorKey;
+    this.limit = opts?.limit;
+  }
+}
+
+/**
+ * Formate une erreur backend en message traduit. Si l'erreur expose `errorKey`,
+ * on l'utilise comme clé i18n avec `limit` injecté. Sinon on retombe sur `fallback`.
+ */
+export function formatSeerError(
+  err: unknown,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+  fallbackKey = "seer:requestError",
+): string {
+  if (err instanceof SeerBackendApiError && err.errorKey) {
+    return t(err.errorKey, err.limit !== undefined ? { limit: err.limit } : undefined);
+  }
+  if (err instanceof Error && err.message) return err.message;
+  return t(fallbackKey);
+}
 
 function getToken(): string {
   return localStorage.getItem("tentacle_token") ?? "";
@@ -31,8 +63,13 @@ async function backendFetch<T>(path: string, opts?: RequestInit): Promise<T> {
     headers: { ...authHeaders(), ...opts?.headers },
   });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error(body.message || `HTTP ${res.status}`);
+    const body = await res.json().catch(() => ({ message: res.statusText })) as {
+      message?: string; errorKey?: string; limit?: number;
+    };
+    throw new SeerBackendApiError(body.message || `HTTP ${res.status}`, res.status, {
+      errorKey: body.errorKey,
+      limit: body.limit,
+    });
   }
   return res.json();
 }
@@ -180,17 +217,27 @@ export async function getMyRequests(
   return backendFetch(`/requests?${params}`);
 }
 
-export async function deleteRequest(id: string, opts?: { seasons?: number[] }): Promise<void> {
+export async function deleteRequest(
+  id: string,
+  opts?: { seasons?: number[]; deleteFiles?: boolean },
+): Promise<void> {
+  const body: Record<string, unknown> = {};
+  if (opts?.seasons) body.seasons = opts.seasons;
+  if (opts?.deleteFiles !== undefined) body.deleteFiles = opts.deleteFiles;
   await backendFetch(`/requests/${id}`, {
     method: "DELETE",
-    body: opts?.seasons ? JSON.stringify({ seasons: opts.seasons }) : undefined,
+    body: Object.keys(body).length > 0 ? JSON.stringify(body) : undefined,
   });
 }
 
-export async function retryRequest(id: string, opts?: { seasons?: number[]; profileId?: string | null }): Promise<LocalRequest> {
+export async function retryRequest(
+  id: string,
+  opts?: { seasons?: number[]; profileId?: string | null; forceRedownload?: boolean },
+): Promise<LocalRequest> {
   const body: Record<string, unknown> = {};
   if (opts?.seasons) body.seasons = opts.seasons;
   if (opts?.profileId !== undefined) body.profileId = opts.profileId;
+  if (opts?.forceRedownload !== undefined) body.forceRedownload = opts.forceRedownload;
   return backendFetch(`/requests/${id}/retry`, {
     method: "POST",
     body: Object.keys(body).length > 0 ? JSON.stringify(body) : undefined,
@@ -199,6 +246,16 @@ export async function retryRequest(id: string, opts?: { seasons?: number[]; prof
 
 export async function retryDeleteRequest(id: string): Promise<void> {
   await backendFetch(`/requests/${id}/retry-delete`, { method: "POST" });
+}
+
+export async function markRequestStatus(
+  id: string,
+  status: "available" | "partial" | "unknown",
+): Promise<{ success: boolean; target: string }> {
+  return backendFetch(`/requests/${id}/mark`, {
+    method: "POST",
+    body: JSON.stringify({ status }),
+  });
 }
 
 /* ── Profiles ────────────────────────────────────────────────────── */
@@ -242,6 +299,38 @@ export async function getQueueStatus(): Promise<QueueStatus> {
 
 export async function getStats(): Promise<StatsResponse> {
   return backendFetch("/stats");
+}
+
+/* ── Stats overview (Jellyseerr source de vérité) ────────────────── */
+
+export interface RequestsStatsOverview {
+  total: number;
+  byStatus: Record<string, number>;
+  byType: { movie: number; tv: number };
+}
+
+export async function getRequestsStats(): Promise<RequestsStatsOverview> {
+  return backendFetch("/requests/stats");
+}
+
+/* ── Admin users (permissions / quotas) ──────────────────────────── */
+
+export async function getAdminUsers(): Promise<AdminUserRow[]> {
+  return backendFetch("/admin/users");
+}
+
+export async function updateAdminUser(
+  jellyfinUserId: string,
+  patch: UpdateAdminUserBody,
+): Promise<AdminUserRow> {
+  return backendFetch(`/admin/users/${encodeURIComponent(jellyfinUserId)}`, {
+    method: "PUT",
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function syncAdminUsers(): Promise<{ synced: number; failed: number; created: number; total: number }> {
+  return backendFetch("/admin/users/sync", { method: "POST" });
 }
 
 /* ── Config check ────────────────────────────────────────────────── */

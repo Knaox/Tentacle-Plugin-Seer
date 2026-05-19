@@ -35,7 +35,7 @@ export function ProfilesConfig({ profiles, onChange }: ProfilesConfigProps) {
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-white">{t("seer:profilesTitle")}</h3>
         <button onClick={() => onChange([...profiles, emptyProfile()])}
-          className="rounded-lg bg-purple-600/20 px-3 py-1.5 text-xs font-medium text-purple-400 hover:bg-purple-600/30">
+          className="rounded-lg bg-tentacle-brand/20 px-3 py-1.5 text-xs font-medium text-tentacle-brand-light hover:bg-tentacle-brand/30">
           + {t("seer:profileAdd")}
         </button>
       </div>
@@ -80,10 +80,10 @@ function ProfileCard({ profile, radarrServers, sonarrServers, onUpdate, onSetDef
         <input type="text" value={profile.name}
           onChange={(e) => onUpdate({ name: e.target.value })}
           placeholder={t("seer:profileNamePlaceholder")}
-          className="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white placeholder-white/20 outline-none focus:border-purple-500" />
+          className="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white placeholder-white/20 outline-none focus:border-tentacle-brand" />
         <button onClick={onSetDefault}
           className={`rounded-lg px-2 py-1.5 text-[10px] font-medium transition-colors ${
-            profile.isDefault ? "bg-purple-600/30 text-purple-300" : "bg-white/5 text-white/30 hover:bg-white/10"
+            profile.isDefault ? "bg-tentacle-brand/30 text-tentacle-brand-light" : "bg-white/5 text-white/30 hover:bg-white/10"
           }`}>
           {t("seer:profileDefault")}
         </button>
@@ -104,7 +104,7 @@ function ProfileCard({ profile, radarrServers, sonarrServers, onUpdate, onSetDef
               onClick={() => onUpdate({ targetMediaType: opt.value })}
               className={`rounded-md border px-2.5 py-1 text-[10px] font-medium transition-all ${
                 target === opt.value
-                  ? "border-purple-500 bg-purple-600/20 text-white"
+                  ? "border-tentacle-brand bg-tentacle-brand/20 text-white"
                   : "border-white/10 bg-white/5 text-white/40 hover:border-white/20"
               }`}>
               {opt.label}
@@ -204,7 +204,7 @@ function TagsSection({ radarrServers, sonarrServers, selectedTags, onChange, t }
             <button key={tag.id} type="button" onClick={() => toggle(tag.id)}
               className={`rounded-md border px-2 py-1 text-[10px] font-medium transition-all ${
                 selectedTags.includes(tag.id)
-                  ? "border-purple-500 bg-purple-600/20 text-purple-300"
+                  ? "border-tentacle-brand bg-tentacle-brand/20 text-tentacle-brand-light"
                   : "border-white/10 bg-white/5 text-white/30 hover:border-white/20"
               }`}>
               {tag.label}
@@ -231,7 +231,7 @@ function TagsSection({ radarrServers, sonarrServers, selectedTags, onChange, t }
           onChange={(e) => setManualTag(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && addManual()}
           placeholder={t("seer:profileTagManual")}
-          className="w-28 rounded border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white placeholder-white/20 outline-none focus:border-purple-500" />
+          className="w-28 rounded border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white placeholder-white/20 outline-none focus:border-tentacle-brand" />
         <button type="button" onClick={addManual}
           className="rounded border border-white/10 bg-white/5 px-2 py-1 text-[10px] text-white/40 hover:bg-white/10">
           +
@@ -258,18 +258,18 @@ function ServerProfileSelect({ servers, serverId, profileId, rootFolder, onServe
     <div className="space-y-1.5">
       {servers.length > 1 && (
         <select value={serverId ?? ""} onChange={(e) => onServerChange(e.target.value ? Number(e.target.value) : undefined)}
-          className="w-full rounded border border-white/10 bg-[#1a1a2e] px-2 py-1 text-[11px] text-white outline-none">
+          className="w-full rounded border border-white/10 bg-tentacle-surface-2 px-2 py-1 text-[11px] text-white outline-none">
           {servers.map((s) => <option key={s.id} value={s.id}>{s.name}{s.isDefault ? " (défaut)" : ""}</option>)}
         </select>
       )}
       <select value={profileId ?? ""} onChange={(e) => onProfileChange(e.target.value ? Number(e.target.value) : undefined)}
-        className="w-full rounded border border-white/10 bg-[#1a1a2e] px-2 py-1 text-[11px] text-white outline-none">
+        className="w-full rounded border border-white/10 bg-tentacle-surface-2 px-2 py-1 text-[11px] text-white outline-none">
         <option value="">— Profil par défaut —</option>
         {profiles.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
       </select>
       {rootFolders.length > 1 && (
         <select value={rootFolder ?? ""} onChange={(e) => onRootFolderChange(e.target.value || undefined)}
-          className="w-full rounded border border-white/10 bg-[#1a1a2e] px-2 py-1 text-[11px] text-white outline-none">
+          className="w-full rounded border border-white/10 bg-tentacle-surface-2 px-2 py-1 text-[11px] text-white outline-none">
           <option value="">— Dossier par défaut —</option>
           {rootFolders.map((f) => <option key={f.id} value={f.path}>{f.path}</option>)}
         </select>

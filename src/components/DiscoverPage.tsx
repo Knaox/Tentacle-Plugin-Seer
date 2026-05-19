@@ -6,6 +6,7 @@ import { useDiscoverFilters } from "../hooks/useDiscoverFilters";
 import { useSeerSearch } from "../hooks/useSearch";
 import { useRequestMedia } from "../hooks/useRequestMedia";
 import type { RequestMediaPayload } from "../hooks/useRequestMedia";
+import { formatSeerError } from "../api/seer-client";
 import { MediaCard } from "./MediaCard";
 import { MediaTabBar } from "./MediaTabBar";
 import { FilterPanel } from "./FilterPanel";
@@ -131,7 +132,7 @@ export function DiscoverPage() {
       };
       requestMedia.mutate(payload, {
         onSuccess: () => toast.show("success", t("requestAdded")),
-        onError: () => toast.show("error", t("requestError")),
+        onError: (err) => toast.show("error", formatSeerError(err, t, "seer:requestError")),
       });
     }
   }, [requestMedia, toast, t]);
@@ -165,7 +166,7 @@ export function DiscoverPage() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t("seer:searchPlaceholder")}
-          className="w-full rounded-xl border border-white/5 bg-transparent py-3 pl-12 pr-24 text-sm text-white placeholder-white/30 outline-none transition-all focus:border-purple-500/30 focus:ring-2 focus:ring-purple-500/50 focus:shadow-lg focus:shadow-purple-500/5"
+          className="w-full rounded-xl border border-white/5 bg-transparent py-3 pl-12 pr-24 text-sm text-white placeholder-white/30 outline-none transition-all focus:border-tentacle-brand/30 focus:ring-2 focus:ring-tentacle-brand/50 focus:shadow-lg focus:shadow-tentacle-brand/5"
         />
         {query && (
           <button
@@ -198,7 +199,7 @@ export function DiscoverPage() {
             </svg>
             {t("filterTitle")}
             {activeFilterCount > 0 && (
-              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[#8b5cf6] text-[9px] font-bold text-white">
+              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-tentacle-brand text-[9px] font-bold text-white">
                 {activeFilterCount}
               </span>
             )}
@@ -253,7 +254,7 @@ export function DiscoverPage() {
           )}
           <button
             onClick={() => { refetch(); }}
-            className="mt-2 rounded-lg bg-purple-600/80 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-purple-600"
+            className="mt-2 rounded-lg bg-tentacle-brand/80 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-tentacle-brand"
           >
             {t("seer:retry")}
           </button>

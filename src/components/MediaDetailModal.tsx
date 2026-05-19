@@ -6,6 +6,8 @@ import { useMediaSimilar } from "../hooks/useMediaSimilar";
 import { useWatchProviders } from "../hooks/useWatchProviders";
 import { useRequestMedia } from "../hooks/useRequestMedia";
 import { useToast } from "../hooks/useToast";
+import { formatSeerError } from "../api/seer-client";
+import { CTA_PRIMARY, CTA_PRIMARY_HALO } from "../styles/cta";
 import { ProfileSelector } from "./ProfileSelector";
 import { ModalDetailHeader } from "./ModalDetailHeader";
 import { SeriesSeasonPicker } from "./SeriesSeasonPicker";
@@ -73,7 +75,7 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting, lockedS
   // Enriched fields from detail
   const productionStatus = detail?.status;
   const originalLanguage = detail?.originalLanguage;
-  const productionCompanies = (detail as Record<string, unknown>)?.productionCompanies as
+  const productionCompanies = (detail as unknown as Record<string, unknown>)?.productionCompanies as
     { id: number; name: string; logoPath?: string }[] | undefined;
   const director = mediaType === "movie"
     ? movieDetail?.credits?.crew?.find((c) => c.job === "Director") : null;
@@ -119,7 +121,7 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting, lockedS
       overview: currentItem.overview, year, seasons, profileId,
     }, {
       onSuccess: () => { toast.show("success", t("requestAdded")); handleClose(); },
-      onError: () => toast.show("error", t("requestError")),
+      onError: (err) => toast.show("error", formatSeerError(err, t, "seer:requestError")),
     });
   };
 
@@ -135,7 +137,7 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting, lockedS
         toast.show("success", t("requestAdded"));
         setTimeout(() => handleClose(), 600);
       },
-      onError: () => toast.show("error", t("requestError")),
+      onError: (err) => toast.show("error", formatSeerError(err, t, "seer:requestError")),
     });
   };
 
@@ -167,12 +169,12 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting, lockedS
       <div className="absolute inset-0 bg-black/90 backdrop-blur-sm" />
       <div
         ref={scrollRef}
-        className="relative max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl bg-[#12121a] sm:max-h-[90vh] sm:rounded-2xl"
+        className="relative max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl bg-tentacle-surface-1 sm:max-h-[90vh] sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
         style={{
           animation: isClosing ? "fadeOut 200ms ease forwards" : "fadeSlideUp 300ms ease forwards",
           scrollbarWidth: "thin",
-          scrollbarColor: "#8b5cf6 transparent",
+          scrollbarColor: "var(--brand) transparent",
         }}
       >
         <ModalDetailHeader
@@ -230,7 +232,7 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting, lockedS
               {overview.length > 200 && (
                 <button
                   onClick={() => setSynopsisExpanded((v) => !v)}
-                  className="mt-1 rounded text-xs text-purple-400 hover:text-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                  className="mt-1 rounded text-xs text-tentacle-brand-light hover:text-tentacle-brand-light focus:outline-none focus:ring-2 focus:ring-tentacle-brand/50"
                 >
                   {synopsisExpanded ? t("showLess") : t("showMore")}
                 </button>
@@ -261,7 +263,8 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting, lockedS
               <button
                 onClick={handleMovieRequest}
                 disabled={requestMedia.isPending || requestSuccess}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-purple-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                style={CTA_PRIMARY_HALO}
+                className={`${CTA_PRIMARY} w-full gap-2 py-3 focus:outline-none focus:ring-2 focus:ring-tentacle-brand/50`}
               >
                 {requestMedia.isPending ? (
                   <>
@@ -309,7 +312,7 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting, lockedS
 
           {isLoading && currentItem.mediaType === "tv" && (
             <div className="flex justify-center py-4">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" />
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-tentacle-brand border-t-transparent" />
             </div>
           )}
 

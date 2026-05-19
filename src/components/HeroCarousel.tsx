@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { SeerrSearchResult } from "../api/types";
 import { backdropUrl, posterUrl, mediaTitle, mediaYear } from "../utils/media-helpers";
 import { navigateToMedia } from "../utils/navigate-media";
+import { CTA_PRIMARY, CTA_PRIMARY_HALO, CTA_SECONDARY } from "../styles/cta";
 
 interface HeroCarouselProps {
   items: SeerrSearchResult[];
@@ -120,25 +121,21 @@ export function HeroCarousel({ items, onSelect, onRequest }: HeroCarouselProps) 
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  // Séries/Anime → ouvrir le modal pour choisir les saisons
                   if (item.mediaType === "tv") {
                     onSelect(item);
                   } else {
                     onRequest(item);
                   }
                 }}
-                className="rounded-lg px-5 py-2 text-sm font-semibold text-white transition-all hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
-                style={{
-                  background: "linear-gradient(135deg, #8B5CF6, #7C3AED)",
-                  boxShadow: "0 8px 30px rgba(139,92,246,0.4)",
-                }}
+                style={CTA_PRIMARY_HALO}
+                className={`${CTA_PRIMARY} px-5 py-2 focus:outline-none focus:ring-2 focus:ring-tentacle-brand/50`}
               >
                 {item.mediaType === "tv" ? t("viewSeasons") : t("request")}
               </button>
             )}
             <button
               onClick={() => onSelect(item)}
-              className="rounded-lg border border-white/10 bg-white/5 px-5 py-2 text-sm font-medium text-white/80 backdrop-blur transition-colors hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+              className={`${CTA_SECONDARY} px-5 py-2 backdrop-blur focus:outline-none focus:ring-2 focus:ring-tentacle-brand/50`}
             >
               {t("moreInfo")}
             </button>
@@ -153,8 +150,8 @@ export function HeroCarousel({ items, onSelect, onRequest }: HeroCarouselProps) 
             <button
               key={i}
               onClick={() => setIndex(i)}
-              className={`h-1.5 rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-purple-500/50 ${
-                i === index ? "w-6 bg-purple-500" : "w-1.5 bg-white/20 hover:bg-white/40"
+              className={`h-1.5 rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-tentacle-brand/50 ${
+                i === index ? "w-6 bg-tentacle-brand" : "w-1.5 bg-white/20 hover:bg-white/40"
               }`}
             />
           ))}

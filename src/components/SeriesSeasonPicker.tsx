@@ -67,7 +67,7 @@ export function SeriesSeasonPicker({
             const all = new Set(lockedSeasons ?? []);
             selectableSeasons.forEach((s) => all.add(s.seasonNumber));
             setSelected(all);
-          }} className="text-[10px] font-medium text-purple-400 hover:text-purple-300">
+          }} className="text-[10px] font-medium text-tentacle-brand-light hover:text-tentacle-brand-light">
             {t("seer:selectAll")}
           </button>
           <button onClick={() => setSelected(new Set(lockedSeasons ?? []))}
@@ -94,13 +94,13 @@ export function SeriesSeasonPicker({
                   ? available ? "border-emerald-500/30 bg-emerald-600/10 text-emerald-300 cursor-default"
                     : "border-amber-500/30 bg-amber-600/10 text-amber-300 cursor-default"
                   : locked
-                    ? "border-purple-500/30 bg-purple-600/10 text-purple-300 cursor-default"
-                    : checked ? "border-purple-500 bg-purple-600/20 text-white"
+                    ? "border-tentacle-brand/30 bg-tentacle-brand/10 text-tentacle-brand-light cursor-default"
+                    : checked ? "border-tentacle-brand bg-tentacle-brand/20 text-white"
                       : "border-white/10 bg-white/5 text-white/50 hover:border-white/20 hover:bg-white/10"
               }`}>
               <div className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border transition-colors ${
                 requested ? (available ? "border-emerald-500 bg-emerald-600" : "border-amber-500 bg-amber-600")
-                  : (locked || checked) ? "border-purple-500 bg-purple-600" : "border-white/20"
+                  : (locked || checked) ? "border-tentacle-brand bg-tentacle-brand" : "border-white/20"
               }`}>
                 {(requested || locked || checked) && (
                   <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
@@ -111,11 +111,11 @@ export function SeriesSeasonPicker({
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium">
                   {season.name || t("seer:seasonFallback", { number: season.seasonNumber })}
-                  {locked && <span className="ml-1 text-[9px] text-purple-400/50">({t("seer:seasonLocked")})</span>}
+                  {locked && <span className="ml-1 text-[9px] text-tentacle-brand-light/50">({t("seer:seasonLocked")})</span>}
                 </p>
                 <p className={`text-[10px] ${
                   requested ? (available ? "text-emerald-400/60" : "text-amber-400/60")
-                    : locked ? "text-purple-400/50"
+                    : locked ? "text-tentacle-brand-light/50"
                       : "text-white/30"
                 }`}>
                   {requested ? seasonStatusLabel(status!, t)
@@ -142,7 +142,8 @@ export function SeriesSeasonPicker({
         <button
           onClick={() => onRequest(Array.from(selected).sort((a, b) => a - b), profileId)}
           disabled={!hasNewSelection || requesting}
-          className="w-full rounded-lg bg-purple-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-purple-500 disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{ boxShadow: "0 8px 22px rgba(var(--brand-rgb), 0.45)" }}
+          className="inline-flex w-full items-center justify-center rounded-lg bg-white py-2.5 text-sm font-bold text-black transition-all hover:-translate-y-0.5 hover:bg-white/95 active:translate-y-0 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0"
         >
           {requesting ? t("seer:sending")
             : !hasNewSelection ? t("seer:selectSeasonsPrompt")

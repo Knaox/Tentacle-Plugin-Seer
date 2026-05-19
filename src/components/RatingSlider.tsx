@@ -29,7 +29,7 @@ export function RatingSlider({ value, onChange }: RatingSliderProps) {
           const v = parseFloat(e.target.value);
           onChange(v > 0 ? v : null);
         }}
-        className="w-full accent-[#8b5cf6]"
+        className="w-full accent-tentacle-brand"
       />
       <div className="mt-1 flex justify-between text-[10px] text-white/20">
         <span>0</span>

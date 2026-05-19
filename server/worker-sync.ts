@@ -150,7 +150,15 @@ export async function retryFailedRequests(prisma: PrismaClient): Promise<void> {
 
 /* ── Helpers ──────────────────────────────────────────────────────── */
 
-function mapSeerrStatus(
+/**
+ * Mapping Jellyseerr → status local.
+ *
+ * Jellyseerr media.status (Overseerr) :
+ *   1 = UNKNOWN, 2 = PENDING, 3 = PROCESSING, 4 = PARTIALLY_AVAILABLE, 5 = AVAILABLE
+ * Jellyseerr request.status :
+ *   1 = PENDING_APPROVAL, 2 = APPROVED, 3 = DECLINED, 4 = FAILED
+ */
+export function mapSeerrStatus(
   requestStatus: number, mediaStatus?: number,
   downloadStatus?: Array<{ status: string }>,
 ): SeerRequest["status"] {
@@ -158,14 +166,11 @@ function mapSeerrStatus(
   if (requestStatus === 4) return "failed";
   if (downloadStatus?.some((d) => d.status === "failed" || d.status === "warning")) return "failed";
 
-  if (requestStatus === 1) {
-    if (mediaStatus === 5) return "available";
-    if (mediaStatus === 3 || mediaStatus === 4) return "downloading";
-    return "sent_to_seer";
-  }
-
   if (mediaStatus === 5) return "available";
-  if (mediaStatus === 3 || mediaStatus === 4) return "downloading";
+  if (mediaStatus === 4) return "partially_available";
+  if (mediaStatus === 3) return "downloading";
+
+  if (requestStatus === 1) return "sent_to_seer";
   return "approved";
 }
 

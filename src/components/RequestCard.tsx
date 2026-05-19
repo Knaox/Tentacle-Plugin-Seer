@@ -10,6 +10,8 @@ interface RequestCardProps {
   onRetryDelete?: (id: string) => void;
   onAddSeasons?: (request: LocalRequest) => void;
   onOpenModal?: (request: LocalRequest, action: "delete" | "retry") => void;
+  onMark?: (id: string, status: "available" | "partial" | "unknown") => void;
+  marking?: boolean;
   deleting?: boolean;
   retrying?: boolean;
   selectable?: boolean;
@@ -20,16 +22,20 @@ interface RequestCardProps {
 const STATUS_I18N: Record<RequestStatus, string> = {
   queued: "seer:statusQueued", processing: "seer:statusProcessing",
   sent_to_seer: "seer:statusSentToSeer", approved: "seer:statusApproved",
-  downloading: "seer:statusDownloading", available: "seer:statusAvailable",
+  downloading: "seer:statusDownloading",
+  partially_available: "seer:statusPartiallyAvailableBadge",
+  available: "seer:statusAvailable",
   retry_pending: "seer:statusRetryPending", failed: "seer:statusFailed",
   deleting: "seer:statusDeleting", delete_failed: "seer:statusDeleteFailed",
 };
 
 const STATUS_COLOR: Record<RequestStatus, string> = {
   queued: "bg-yellow-500/20 text-yellow-400", processing: "bg-blue-500/20 text-blue-400",
-  sent_to_seer: "bg-blue-500/20 text-blue-400", approved: "bg-purple-500/20 text-purple-400",
-  downloading: "bg-orange-500/20 text-orange-400", available: "bg-emerald-500/20 text-emerald-400",
-  retry_pending: "bg-yellow-500/20 text-yellow-400", failed: "bg-red-500/20 text-red-400",
+  sent_to_seer: "bg-blue-500/20 text-blue-400", approved: "bg-tentacle-brand/20 text-tentacle-brand-light",
+  downloading: "bg-orange-500/20 text-orange-400",
+  partially_available: "bg-amber-400/20 text-amber-300",
+  available: "bg-emerald-500/20 text-emerald-400",
+  retry_pending: "bg-orange-500/20 text-orange-300", failed: "bg-red-500/20 text-red-400",
   deleting: "bg-orange-500/20 text-orange-400", delete_failed: "bg-red-500/20 text-red-400",
 };
 
@@ -42,13 +48,16 @@ function getProgressIndex(status: RequestStatus): number {
 }
 
 export function RequestCard({
-  request, onDelete, onRetry, onRetryDelete, onAddSeasons, onOpenModal,
-  deleting, retrying, selectable, selected, onSelect,
+  request, onDelete, onRetry, onRetryDelete, onAddSeasons, onOpenModal, onMark,
+  marking, deleting, retrying, selectable, selected, onSelect,
 }: RequestCardProps) {
   const { t } = useTranslation("seer");
-  const [confirmAction, setConfirmAction] = useState<"delete" | "retry" | null>(null);
+  const [markMenuOpen, setMarkMenuOpen] = useState(false);
+  // Activé seulement quand on a un lien Jellyseerr (sinon /mark renverra 400)
+  const canMark = !!request.seerrMediaId && [
+    "downloading", "failed", "approved", "sent_to_seer", "partially_available",
+  ].includes(request.status);
 
-  const hasManySeasons = request.mediaType === "tv" && request.seasons && request.seasons.length > 1;
   const openModal = (action: "delete" | "retry") => onOpenModal?.(request, action);
   const isTvPartial = request.mediaType === "tv" && request.seasons && request.seasons.length > 0;
   const canAddSeasons = isTvPartial && !["deleting", "processing", "delete_failed"].includes(request.status);
@@ -74,14 +83,14 @@ export function RequestCard({
 
   return (
     <div className={`flex gap-3 rounded-xl bg-white/5 p-3 transition-colors hover:bg-white/8 ${
-      selected ? "ring-2 ring-purple-500/50" : ""
+      selected ? "ring-2 ring-tentacle-brand/50" : ""
     }`}>
       {selectable && (
         <button onClick={() => isSelectable && onSelect?.(request.id)} disabled={!isSelectable}
           className="flex flex-shrink-0 items-center">
           <div className={`flex h-5 w-5 items-center justify-center rounded border transition-colors ${
             !isSelectable ? "border-white/10 bg-white/5 cursor-not-allowed" :
-            selected ? "border-purple-500 bg-purple-600" : "border-white/20 hover:border-white/40"
+            selected ? "border-tentacle-brand bg-tentacle-brand" : "border-white/20 hover:border-white/40"
           }`}>
             {selected && (
               <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
@@ -116,8 +125,13 @@ export function RequestCard({
               )}
             </div>
           </div>
-          <span className={`flex-shrink-0 rounded-md px-2 py-0.5 text-[10px] font-medium ${STATUS_COLOR[request.status]}`}>
-            {t(STATUS_I18N[request.status])}
+          <span
+            className={`flex-shrink-0 rounded-md px-2 py-0.5 text-[10px] font-medium ${STATUS_COLOR[request.status]}`}
+            title={request.status === "retry_pending" && request.lastError ? request.lastError : undefined}
+          >
+            {request.status === "retry_pending"
+              ? t("seer:statusRetryPendingBadge", { count: request.retryCount, max: request.maxRetries })
+              : t(STATUS_I18N[request.status])}
           </span>
         </div>
 
@@ -126,7 +140,7 @@ export function RequestCard({
             {PROGRESS_STEPS.map((step, i) => (
               <div key={step} className="flex flex-1 items-center">
                 <div className={`h-1 w-full rounded-full transition-colors ${
-                  i <= progressIdx && progressIdx === 4 ? "bg-emerald-500" : i <= progressIdx ? "bg-[#8b5cf6]" : "bg-white/10"
+                  i <= progressIdx && progressIdx === 4 ? "bg-emerald-500" : i <= progressIdx ? "bg-tentacle-brand" : "bg-white/10"
                 } ${i === progressIdx && progressIdx < 4 ? "animate-pulse" : ""}`} />
               </div>
             ))}
@@ -149,25 +163,8 @@ export function RequestCard({
         <div className="mt-auto flex items-center justify-between pt-1">
           <span className="text-[10px] text-white/30" title={date}>{relativeTime}</span>
 
-          {selectable ? null : confirmAction ? (
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-white/50">
-                {confirmAction === "delete" ? t("seer:confirmDelete") : t("seer:confirmRetry")}
-              </span>
-              <button onClick={() => {
-                if (confirmAction === "delete") onDelete?.(request.id);
-                else onRetry?.(request.id);
-                setConfirmAction(null);
-              }} className="rounded bg-red-600/30 px-2 py-0.5 text-[10px] font-medium text-red-300 hover:bg-red-600/40">
-                {t("seer:confirm")}
-              </button>
-              <button onClick={() => setConfirmAction(null)}
-                className="rounded bg-white/10 px-2 py-0.5 text-[10px] text-white/50 hover:bg-white/15">
-                {t("seer:cancel")}
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5">
+          {selectable ? null : (
+            <div className="relative flex items-center gap-1.5">
               {(request.status === "delete_failed" || request.status === "deleting") && onRetryDelete && (
                 <button onClick={() => onRetryDelete(request.id)}
                   className="rounded-md bg-orange-600/20 px-2.5 py-1 text-[10px] font-medium text-orange-400 transition-colors hover:bg-orange-600/30">
@@ -180,17 +177,52 @@ export function RequestCard({
                   + {t("seer:addSeasons")}
                 </button>
               )}
+              {canMark && onMark && (
+                <>
+                  <button
+                    onClick={() => setMarkMenuOpen((v) => !v)}
+                    disabled={marking}
+                    className="rounded-md bg-white/[0.06] px-2.5 py-1 text-[10px] font-medium text-white/70 transition-colors hover:bg-white/[0.10] hover:text-white disabled:opacity-50"
+                  >
+                    {marking ? "..." : t("seer:markAs")} ▾
+                  </button>
+                  {markMenuOpen && (
+                    <div className="absolute right-0 top-full z-20 mt-1 flex min-w-[180px] flex-col overflow-hidden rounded-lg border border-white/10 bg-tentacle-surface-modal shadow-tentacle-dropdown backdrop-blur-tentacle-dropdown">
+                      <button
+                        onClick={() => { setMarkMenuOpen(false); onMark(request.id, "available"); }}
+                        className="px-3 py-2 text-left text-[11px] text-emerald-300 hover:bg-white/5"
+                      >
+                        {t("seer:markAsAvailable")}
+                      </button>
+                      {request.mediaType === "tv" && (
+                        <button
+                          onClick={() => { setMarkMenuOpen(false); onMark(request.id, "partial"); }}
+                          className="px-3 py-2 text-left text-[11px] text-amber-300 hover:bg-white/5"
+                        >
+                          {t("seer:markAsPartial")}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => { setMarkMenuOpen(false); onMark(request.id, "unknown"); }}
+                        className="px-3 py-2 text-left text-[11px] text-white/60 hover:bg-white/5"
+                      >
+                        {t("seer:markAsUnknown")}
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
               {canRetry && onRetry && request.status !== "delete_failed" && (
                 <button
                   onClick={() => openModal("retry")}
                   disabled={retrying}
-                  className="rounded-md bg-purple-600/20 px-2.5 py-1 text-[10px] font-medium text-purple-400 transition-colors hover:bg-purple-600/30 disabled:opacity-50">
-                  {retrying ? "..." : request.status === "delete_failed" ? t("seer:deleteFailedRetry") : t("seer:retry")}
+                  className="rounded-md bg-tentacle-brand/20 px-2.5 py-1 text-[10px] font-medium text-tentacle-brand-light transition-colors hover:bg-tentacle-brand/30 disabled:opacity-50">
+                  {retrying ? "..." : t("seer:retry")}
                 </button>
               )}
               {canDelete && onDelete && (
                 <button
-                  onClick={() => hasManySeasons ? openModal("delete") : setConfirmAction("delete")}
+                  onClick={() => openModal("delete")}
                   disabled={deleting}
                   className="rounded-md bg-red-600/20 px-2.5 py-1 text-[10px] font-medium text-red-400 transition-colors hover:bg-red-600/30 disabled:opacity-50">
                   {deleting ? "..." : t("seer:delete")}

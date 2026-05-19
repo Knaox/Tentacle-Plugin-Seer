@@ -50,9 +50,9 @@ export function ProgressBar({ status }: ProgressBarProps) {
               <div
                 className={`h-full rounded-full transition-all duration-500 ${
                   isCompleted
-                    ? "w-full bg-purple-500"
+                    ? "w-full bg-tentacle-brand"
                     : isCurrent
-                      ? "w-full bg-purple-500"
+                      ? "w-full bg-tentacle-brand"
                       : "w-0"
                 }`}
                 style={isCurrent ? { animation: "pulseGlow 2s ease-in-out infinite" } : undefined}

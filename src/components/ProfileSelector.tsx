@@ -38,13 +38,13 @@ export function ProfileSelector({ mediaType, isAnime, showAll, selectedId, onCha
             onClick={() => onChange(selectedId === profile.id ? null : profile.id)}
             className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
               selectedId === profile.id
-                ? "border-purple-500 bg-purple-600/20 text-white"
+                ? "border-tentacle-brand bg-tentacle-brand/20 text-white"
                 : "border-white/10 bg-white/5 text-white/50 hover:border-white/20 hover:bg-white/10"
             }`}
           >
             {profile.name}
             {profile.isDefault && (
-              <span className="ml-1 text-[9px] text-purple-400/60">({t("seer:profileDefault")})</span>
+              <span className="ml-1 text-[9px] text-tentacle-brand-light/60">({t("seer:profileDefault")})</span>
             )}
           </button>
         ))}

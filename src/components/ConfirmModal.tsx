@@ -61,17 +61,17 @@ export function ConfirmModal({
         <div className="mt-5 flex justify-end gap-3">
           <button
             onClick={handleClose}
-            className="rounded-lg bg-white/10 px-4 py-1.5 text-xs font-medium text-white/80 transition-colors hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+            className="rounded-lg bg-white/10 px-4 py-1.5 text-xs font-medium text-white/80 transition-colors hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-tentacle-brand/50"
           >
             {t("cancel")}
           </button>
           <button
             ref={confirmRef}
             onClick={onConfirm}
-            className={`rounded-lg px-4 py-1.5 text-xs font-semibold text-white transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500/50 ${
+            className={`rounded-lg px-4 py-1.5 text-xs font-semibold text-white transition-colors focus:outline-none focus:ring-2 focus:ring-tentacle-brand/50 ${
               danger
                 ? "bg-red-600/80 hover:bg-red-600"
-                : "bg-purple-600 hover:bg-purple-500"
+                : "bg-white text-black hover:bg-white/95"
             }`}
           >
             {confirmLabel ?? t("confirm")}

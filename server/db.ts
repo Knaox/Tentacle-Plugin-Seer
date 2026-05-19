@@ -3,13 +3,13 @@
 /* ------------------------------------------------------------------ */
 
 import type { PrismaClient } from "@prisma/client";
-import type { SeerRequest, RequestStatus } from "./types";
-import { uuid, rowToRequest } from "./db-helpers";
+import type { SeerRequest, RequestStatus, SeerUserSettings, AdminUserRow } from "./types";
+import { uuid, rowToRequest, rowToUserSettings } from "./db-helpers";
 
 type Prisma = PrismaClient;
 
 // Re-export everything from sub-modules for backward compatibility
-export { rowToRequest, toIso, uuid } from "./db-helpers";
+export { rowToRequest, rowToUserSettings, toIso, uuid } from "./db-helpers";
 export { getUserRequests, getAllRequests, getQueueStatus, getUserStats, getGlobalStats } from "./db-queries";
 export {
   enqueueCleanup, getPendingCleanups, updateCleanupJob,
@@ -105,6 +105,25 @@ export async function ensureTables(prisma: Prisma): Promise<void> {
   await addColumn("seer_cleanup_queue", "request_id", "VARCHAR(36) DEFAULT NULL");
   await addColumn("seer_requests", "pending_cleanup_id", "VARCHAR(36) DEFAULT NULL");
   await addColumn("seer_requests", "profile_id", "VARCHAR(36) DEFAULT NULL");
+  await addColumn("seer_requests", "is_anime", "TINYINT(1) NOT NULL DEFAULT 0");
+
+  // Table seer_user_settings : permissions et quotas par utilisateur Jellyfin
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS seer_user_settings (
+      jellyfin_user_id     VARCHAR(255) NOT NULL PRIMARY KEY,
+      username             VARCHAR(255) NOT NULL,
+      blocked              TINYINT(1)   NOT NULL DEFAULT 0,
+      daily_limit          INT          DEFAULT NULL,
+      allow_movies         TINYINT(1)   NOT NULL DEFAULT 1,
+      allow_tv             TINYINT(1)   NOT NULL DEFAULT 1,
+      allow_anime          TINYINT(1)   NOT NULL DEFAULT 1,
+      jellyseerr_user_id   INT          DEFAULT NULL,
+      jellyseerr_last_sync DATETIME     DEFAULT NULL,
+      created_at           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_seer_user_seerrid (jellyseerr_user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
 
   const rows = await prisma.$queryRawUnsafe<[{ cnt: bigint }]>(
     `SELECT COUNT(*) as cnt FROM seer_requests`,
@@ -124,24 +143,171 @@ export async function createRequest(
     tmdbId: number; title: string; posterPath?: string | null;
     backdropPath?: string | null; overview?: string | null;
     year?: string | null; seasons?: number[] | null; priority?: number;
-    profileId?: string | null;
+    profileId?: string | null; isAnime?: boolean;
   },
 ): Promise<SeerRequest> {
   const id = uuid();
   await prisma.$executeRawUnsafe(
     `INSERT INTO seer_requests
       (id, jellyfin_user_id, username, media_type, tmdb_id, title, poster_path,
-       backdrop_path, overview, year, seasons, status, priority, profile_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?)`,
+       backdrop_path, overview, year, seasons, status, priority, profile_id, is_anime)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?)`,
     id, data.jellyfinUserId, data.username, data.mediaType, data.tmdbId, data.title,
     data.posterPath || null, data.backdropPath || null, data.overview || null,
     data.year || null, data.seasons ? JSON.stringify(data.seasons) : null, data.priority || 0,
-    data.profileId || null,
+    data.profileId || null, data.isAnime ? 1 : 0,
   );
   const rows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
     `SELECT * FROM seer_requests WHERE id = ?`, id,
   );
   return rowToRequest(rows[0]);
+}
+
+/* ── User settings CRUD ───────────────────────────────────────────── */
+
+export async function getOrCreateUserSettings(
+  prisma: Prisma,
+  jellyfinUserId: string,
+  username: string,
+): Promise<SeerUserSettings> {
+  const rows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
+    `SELECT * FROM seer_user_settings WHERE jellyfin_user_id = ?`,
+    jellyfinUserId,
+  );
+  if (rows.length > 0) {
+    if (username && rows[0].username !== username) {
+      await prisma.$executeRawUnsafe(
+        `UPDATE seer_user_settings SET username = ? WHERE jellyfin_user_id = ?`,
+        username, jellyfinUserId,
+      );
+      rows[0].username = username;
+    }
+    return rowToUserSettings(rows[0]);
+  }
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO seer_user_settings
+      (jellyfin_user_id, username, blocked, daily_limit, allow_movies, allow_tv, allow_anime)
+     VALUES (?, ?, 0, NULL, 1, 1, 1)`,
+    jellyfinUserId, username || jellyfinUserId,
+  );
+  const created = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
+    `SELECT * FROM seer_user_settings WHERE jellyfin_user_id = ?`,
+    jellyfinUserId,
+  );
+  return rowToUserSettings(created[0]);
+}
+
+export async function getUserSettings(
+  prisma: Prisma,
+  jellyfinUserId: string,
+): Promise<SeerUserSettings | null> {
+  const rows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
+    `SELECT * FROM seer_user_settings WHERE jellyfin_user_id = ?`,
+    jellyfinUserId,
+  );
+  return rows.length > 0 ? rowToUserSettings(rows[0]) : null;
+}
+
+export async function updateUserSettings(
+  prisma: Prisma,
+  jellyfinUserId: string,
+  patch: Partial<{
+    blocked: boolean;
+    dailyLimit: number | null;
+    allowMovies: boolean;
+    allowTv: boolean;
+    allowAnime: boolean;
+    jellyseerrUserId: number | null;
+    jellyseerrLastSync: Date | null;
+    username: string;
+  }>,
+): Promise<void> {
+  const sets: string[] = [];
+  const params: unknown[] = [];
+  if (patch.blocked !== undefined) { sets.push("blocked = ?"); params.push(patch.blocked ? 1 : 0); }
+  if (patch.dailyLimit !== undefined) { sets.push("daily_limit = ?"); params.push(patch.dailyLimit); }
+  if (patch.allowMovies !== undefined) { sets.push("allow_movies = ?"); params.push(patch.allowMovies ? 1 : 0); }
+  if (patch.allowTv !== undefined) { sets.push("allow_tv = ?"); params.push(patch.allowTv ? 1 : 0); }
+  if (patch.allowAnime !== undefined) { sets.push("allow_anime = ?"); params.push(patch.allowAnime ? 1 : 0); }
+  if (patch.jellyseerrUserId !== undefined) { sets.push("jellyseerr_user_id = ?"); params.push(patch.jellyseerrUserId); }
+  if (patch.jellyseerrLastSync !== undefined) { sets.push("jellyseerr_last_sync = ?"); params.push(patch.jellyseerrLastSync); }
+  if (patch.username !== undefined) { sets.push("username = ?"); params.push(patch.username); }
+  if (sets.length === 0) return;
+  params.push(jellyfinUserId);
+  await prisma.$executeRawUnsafe(
+    `UPDATE seer_user_settings SET ${sets.join(", ")} WHERE jellyfin_user_id = ?`,
+    ...params,
+  );
+}
+
+export async function countRequestsToday(
+  prisma: Prisma,
+  jellyfinUserId: string,
+): Promise<number> {
+  const rows = await prisma.$queryRawUnsafe<[{ cnt: bigint }]>(
+    `SELECT COUNT(*) as cnt FROM seer_requests
+     WHERE jellyfin_user_id = ?
+       AND created_at >= CURDATE()
+       AND status NOT IN ('failed', 'deleted')`,
+    jellyfinUserId,
+  );
+  return Number(rows[0].cnt);
+}
+
+export async function listUsersWithStats(prisma: Prisma): Promise<AdminUserRow[]> {
+  // Union de seer_user_settings + users distincts de seer_requests qui n'ont pas encore de settings
+  const settingsRows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
+    `SELECT s.*,
+       (SELECT COUNT(*) FROM seer_requests r
+          WHERE r.jellyfin_user_id = s.jellyfin_user_id
+            AND r.created_at >= CURDATE()
+            AND r.status NOT IN ('failed', 'deleted')) AS requests_today,
+       (SELECT COUNT(*) FROM seer_requests r
+          WHERE r.jellyfin_user_id = s.jellyfin_user_id
+            AND r.status != 'deleted') AS requests_total
+     FROM seer_user_settings s
+     ORDER BY s.username ASC`,
+  );
+
+  const known = new Set(settingsRows.map((r) => r.jellyfin_user_id));
+  const orphanRows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
+    `SELECT
+       r.jellyfin_user_id,
+       MAX(r.username) AS username,
+       SUM(CASE WHEN r.created_at >= CURDATE() AND r.status NOT IN ('failed','deleted') THEN 1 ELSE 0 END) AS requests_today,
+       SUM(CASE WHEN r.status != 'deleted' THEN 1 ELSE 0 END) AS requests_total
+     FROM seer_requests r
+     GROUP BY r.jellyfin_user_id`,
+  );
+
+  const result: AdminUserRow[] = settingsRows.map((r) => ({
+    ...rowToUserSettings(r),
+    requestsToday: Number(r.requests_today) || 0,
+    requestsTotal: Number(r.requests_total) || 0,
+  }));
+
+  for (const o of orphanRows) {
+    if (known.has(o.jellyfin_user_id)) continue;
+    const userId = o.jellyfin_user_id as string;
+    const username = (o.username as string) || userId;
+    result.push({
+      jellyfinUserId: userId,
+      username,
+      blocked: false,
+      dailyLimit: null,
+      allowMovies: true,
+      allowTv: true,
+      allowAnime: true,
+      jellyseerrUserId: null,
+      jellyseerrLastSync: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      requestsToday: Number(o.requests_today) || 0,
+      requestsTotal: Number(o.requests_total) || 0,
+    });
+  }
+
+  return result.sort((a, b) => a.username.localeCompare(b.username));
 }
 
 export async function getRequestById(prisma: Prisma, id: string): Promise<SeerRequest | null> {

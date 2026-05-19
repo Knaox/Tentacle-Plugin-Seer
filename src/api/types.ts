@@ -173,6 +173,7 @@ export type RequestStatus =
   | "sent_to_seer"
   | "approved"
   | "downloading"
+  | "partially_available"
   | "available"
   | "retry_pending"
   | "failed"
@@ -203,8 +204,42 @@ export interface LocalRequest {
   updatedAt: string;
   sentAt: string | null;
   completedAt: string | null;
-  pendingCleanupId: string | null;
+  pendingCleanupId?: string | null;
   profileId: string | null;
+  isAnime?: boolean;
+  /** "local" si la demande est encore en queue côté plugin Tentacle, "seerr" si elle vient de Jellyseerr (source de vérité) */
+  source?: "local" | "seerr";
+}
+
+export interface AdminUserRow {
+  jellyfinUserId: string;
+  username: string;
+  blocked: boolean;
+  dailyLimit: number | null;
+  allowMovies: boolean;
+  allowTv: boolean;
+  allowAnime: boolean;
+  jellyseerrUserId: number | null;
+  jellyseerrLastSync: string | null;
+  createdAt: string;
+  updatedAt: string;
+  requestsToday: number;
+  requestsTotal: number;
+}
+
+export interface UpdateAdminUserBody {
+  blocked?: boolean;
+  dailyLimit?: number | null;
+  allowMovies?: boolean;
+  allowTv?: boolean;
+  allowAnime?: boolean;
+}
+
+/** Erreur métier renvoyée par le backend (clé i18n + paramètres) */
+export interface SeerBackendError {
+  message?: string;
+  errorKey?: string;
+  limit?: number;
 }
 
 export type ProfileTargetMedia = "all" | "movie" | "tv" | "anime";

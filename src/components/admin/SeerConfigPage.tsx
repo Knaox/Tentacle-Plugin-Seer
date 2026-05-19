@@ -2,7 +2,10 @@ import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { getSeerBackendUrl } from "../../api/endpoints";
 import { ProfilesConfig } from "./ProfilesConfig";
+import { SeerUsersConfig } from "./SeerUsersConfig";
 import type { SeerProfile } from "../../api/types";
+
+type Tab = "config" | "users";
 
 interface SeerConfig {
   url: string;
@@ -27,6 +30,7 @@ export function SeerConfigPage() {
   const [seerrVersion, setSeerrVersion] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [tab, setTab] = useState<Tab>("config");
 
   const backendBase = getSeerBackendUrl();
   const token = localStorage.getItem("tentacle_token") ?? "";
@@ -123,6 +127,62 @@ export function SeerConfigPage() {
         </div>
       </div>
 
+      {/* Tabs */}
+      <div className="flex items-center gap-2 border-b border-white/10">
+        <button
+          onClick={() => setTab("config")}
+          className={`px-4 py-2 text-sm font-medium transition-colors ${
+            tab === "config"
+              ? "border-b-2 border-tentacle-brand text-white"
+              : "text-white/40 hover:text-white/60"
+          }`}
+        >
+          {t("seer:configTitle")}
+        </button>
+        <button
+          onClick={() => setTab("users")}
+          className={`px-4 py-2 text-sm font-medium transition-colors ${
+            tab === "users"
+              ? "border-b-2 border-tentacle-brand text-white"
+              : "text-white/40 hover:text-white/60"
+          }`}
+        >
+          {t("seer:adminUsersTab")}
+        </button>
+      </div>
+
+      {tab === "users" ? (
+        <SeerUsersConfig seerrConfigured={!!(config.url && config.apiKey)} />
+      ) : (
+        <ConfigSection
+          config={config}
+          setConfig={setConfig}
+          testConnection={testConnection}
+          saveConfig={saveConfig}
+          saving={saving}
+          message={message}
+          status={status}
+          t={t}
+        />
+      )}
+    </div>
+  );
+}
+
+function ConfigSection({
+  config, setConfig, testConnection, saveConfig, saving, message, status, t,
+}: {
+  config: SeerConfig;
+  setConfig: React.Dispatch<React.SetStateAction<SeerConfig>>;
+  testConnection: () => Promise<void>;
+  saveConfig: () => Promise<void>;
+  saving: boolean;
+  message: string;
+  status: "idle" | "testing" | "connected" | "error";
+  t: (key: string, opts?: Record<string, unknown>) => string;
+}) {
+  return (
+    <div className="space-y-6">
       {/* URL */}
       <div>
         <label className="mb-1 block text-sm font-medium text-white/70">{t("seer:urlLabel")}</label>
@@ -132,7 +192,7 @@ export function SeerConfigPage() {
             value={config.url}
             onChange={(e) => setConfig((c) => ({ ...c, url: e.target.value }))}
             placeholder={t("seer:urlPlaceholder")}
-            className="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-purple-500"
+            className="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-tentacle-brand"
           />
           <button
             onClick={testConnection}
@@ -152,7 +212,7 @@ export function SeerConfigPage() {
           value={config.apiKey}
           onChange={(e) => setConfig((c) => ({ ...c, apiKey: e.target.value }))}
           placeholder={t("seer:apiKeyPlaceholder")}
-          className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-purple-500"
+          className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-tentacle-brand"
         />
       </div>
 
@@ -182,7 +242,7 @@ export function SeerConfigPage() {
           min={0}
           value={config.userLimit}
           onChange={(e) => setConfig((c) => ({ ...c, userLimit: parseInt(e.target.value) || 0 }))}
-          className="w-24 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-purple-500"
+          className="w-24 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-tentacle-brand"
         />
       </div>
 
@@ -199,7 +259,7 @@ export function SeerConfigPage() {
         <button
           onClick={saveConfig}
           disabled={saving}
-          className="rounded-lg bg-purple-600 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-purple-500 disabled:opacity-50"
+          style={{ boxShadow: "0 8px 22px rgba(var(--brand-rgb), 0.45)" }} className="inline-flex items-center justify-center rounded-lg bg-white px-6 py-2.5 text-sm font-bold text-black transition-all hover:-translate-y-0.5 hover:bg-white/95 disabled:opacity-50 disabled:hover:translate-y-0"
         >
           {saving ? t("seer:saving") : t("seer:save")}
         </button>
@@ -230,7 +290,7 @@ function ToggleRow({
         type="button"
         onClick={() => onChange(!checked)}
         className={`relative h-6 w-11 rounded-full transition-colors ${
-          checked ? "bg-purple-600" : "bg-white/10"
+          checked ? "bg-tentacle-brand" : "bg-white/10"
         }`}
       >
         <span

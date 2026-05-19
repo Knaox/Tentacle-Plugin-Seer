@@ -13,6 +13,7 @@ import { startWorker, stopWorker, isWorkerRunning } from "./worker";
 import { registerRequestRoutes } from "./routes-requests";
 import { registerBulkRoutes } from "./routes-bulk";
 import { registerProfileRoutes } from "./routes-profiles";
+import { registerUsersRoutes } from "./routes-users";
 
 const __pluginDir = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -179,6 +180,7 @@ export default async function seerBackend(
     if (!url || !apiKey) return null;
     return { seerrUrl: url.replace(/\/$/, ""), seerrApiKey: apiKey };
   });
+  registerUsersRoutes(app, prisma, gwc, ctx.requireAdmin);
 
   /* ── Watch providers, queue, stats, worker control ─────────────── */
 

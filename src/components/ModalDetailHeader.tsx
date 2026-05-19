@@ -34,7 +34,7 @@ export function ModalDetailHeader({ item, detail, mediaType, navStack, onBack, o
   const voteCount = detail?.voteCount;
   const certification = mediaType === "movie"
     ? movieDetail?.certification
-    : (tvDetail as Record<string, unknown>)?.certification as string | undefined;
+    : (tvDetail as unknown as Record<string, unknown>)?.certification as string | undefined;
 
   return (
     <>
@@ -49,15 +49,15 @@ export function ModalDetailHeader({ item, detail, mediaType, navStack, onBack, o
             onLoad={() => setBackdropLoaded(true)}
           />
         ) : (
-          <div className="h-full w-full" style={{ background: "linear-gradient(135deg, #1a1a2e 0%, #12121a 100%)" }} />
+          <div className="h-full w-full" style={{ background: "linear-gradient(135deg, var(--surface-2) 0%, var(--surface-1) 100%)" }} />
         )}
-        <div className="absolute inset-0" style={{ background: "linear-gradient(to top, #12121a 0%, rgba(18,18,26,0.85) 30%, rgba(18,18,26,0.4) 60%, transparent 100%)" }} />
+        <div className="absolute inset-0" style={{ background: "linear-gradient(to top, var(--surface-1) 0%, rgba(0,0,0,0.85) 30%, rgba(0,0,0,0.4) 60%, transparent 100%)" }} />
       </div>
 
       {/* Back button */}
       <button
         onClick={onBack}
-        className="absolute left-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white/60 transition-colors hover:text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+        className="absolute left-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white/60 transition-colors hover:text-white focus:outline-none focus:ring-2 focus:ring-tentacle-brand/50"
         title={navStack.length > 0 ? mediaTitle(navStack[navStack.length - 1]) || "" : ""}
       >
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -68,7 +68,7 @@ export function ModalDetailHeader({ item, detail, mediaType, navStack, onBack, o
       {/* Close button */}
       <button
         onClick={onClose}
-        className="absolute right-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white/60 transition-colors hover:text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+        className="absolute right-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white/60 transition-colors hover:text-white focus:outline-none focus:ring-2 focus:ring-tentacle-brand/50"
       >
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
@@ -101,7 +101,7 @@ export function ModalDetailHeader({ item, detail, mediaType, navStack, onBack, o
             onLoad={() => setPosterLoaded(true)}
           />
         ) : (
-          <div className="relative flex h-[225px] w-[150px] flex-shrink-0 items-center justify-center rounded-xl bg-[#1a1a2e] shadow-xl">
+          <div className="relative flex h-[225px] w-[150px] flex-shrink-0 items-center justify-center rounded-xl bg-tentacle-surface-2 shadow-xl">
             <svg className="h-12 w-12 text-white/20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={0.8}>
               {mediaType === "tv" ? (
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 20.25h12m-7.5-3v3m3-3v3m-10.125-3h17.25c.621 0 1.125-.504 1.125-1.125V4.875c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125Z" />

@@ -7,6 +7,7 @@ import { getNextQueued, updateRequestStatus, getRequestById } from "./db";
 import { fetchMediaDetail, isAnimeFromKeywords, fetchAnimeOverrides } from "./anime";
 import { syncStatuses, retryFailedRequests, type WorkerConfig } from "./worker-sync";
 import { processCleanupQueue } from "./worker-cleanup";
+import { resolveJellyseerrUserId } from "./jellyseerr-user";
 import type { SeerProfile } from "./types";
 
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -127,6 +128,13 @@ async function processNextRequest(prisma: PrismaClient, config: WorkerConfig): P
       }
     }
 
+    // Résolution du user Jellyseerr (lookup ou import) — la demande doit
+    // apparaître au nom de l'utilisateur Jellyfin qui l'a déclenchée.
+    const seerUserId = await resolveJellyseerrUserId(
+      config, prisma, request.jellyfinUserId, request.username,
+    );
+    seerrBody.userId = seerUserId;
+
     // Send to Seerr
     const res = await fetch(`${config.seerrUrl}/api/v1/request`, {
       method: "POST",
@@ -180,6 +188,17 @@ async function processNextRequest(prisma: PrismaClient, config: WorkerConfig): P
       await updateRequestStatus(prisma, request.id, "retry_pending", {
         lastError: errMsg, retryCount: newRetryCount,
       });
+      // Notification une seule fois, au premier échec, pour ne pas spammer l'utilisateur
+      if (request.retryCount === 0) {
+        await prisma.notification.create({
+          data: {
+            jellyfinUserId: request.jellyfinUserId, type: "request_status",
+            title: request.title,
+            body: `Votre demande pour « ${request.title} » a rencontré une erreur, elle sera réessayée automatiquement`,
+            refId: request.id,
+          },
+        });
+      }
       console.warn(`[SeerWorker] Request for "${request.title}" retry ${newRetryCount}/${request.maxRetries}: ${errMsg}`);
     }
   }

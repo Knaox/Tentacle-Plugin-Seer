@@ -16,15 +16,15 @@ export function MediaTabBar({ value, onChange }: MediaTabBarProps) {
   ];
 
   return (
-    <div className="flex gap-1 rounded-lg bg-[#1a1a2e]/60 p-1">
+    <div className="flex gap-1 rounded-lg bg-tentacle-surface-2/60 p-1">
       {TABS.map((tab) => (
         <button
           key={tab.value}
           onClick={() => onChange(tab.value)}
           className={`rounded-md px-4 py-1.5 text-sm font-medium transition-all ${
             value === tab.value
-              ? "bg-[#8b5cf6] text-white shadow-lg shadow-purple-500/20"
-              : "text-white/50 hover:text-white/70"
+              ? "bg-white text-black shadow-sm"
+              : "text-white/50 hover:text-white/80"
           }`}
         >
           {t(tab.key)}

@@ -29,7 +29,7 @@ export function YearRangeFilter({ yearFrom, yearTo, onYearFromChange, onYearToCh
           placeholder={t("filterYearFrom")}
           value={yearFrom ?? ""}
           onChange={(e) => onYearFromChange(parseYear(e.target.value))}
-          className="w-24 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white placeholder-white/30 outline-none focus:border-purple-500/40"
+          className="w-24 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white placeholder-white/30 outline-none focus:border-tentacle-brand/40"
         />
         <span className="text-xs text-white/30">&mdash;</span>
         <input
@@ -39,7 +39,7 @@ export function YearRangeFilter({ yearFrom, yearTo, onYearFromChange, onYearToCh
           placeholder={t("filterYearTo")}
           value={yearTo ?? ""}
           onChange={(e) => onYearToChange(parseYear(e.target.value))}
-          className="w-24 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white placeholder-white/30 outline-none focus:border-purple-500/40"
+          className="w-24 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white placeholder-white/30 outline-none focus:border-tentacle-brand/40"
         />
       </div>
     </div>

@@ -107,14 +107,14 @@ export function FilterPanel({
           <div className="flex items-center gap-2">
             <h3 className="text-base font-semibold text-white">{t("filterTitle")}</h3>
             {activeFilterCount > 0 && (
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#8b5cf6] text-[10px] font-bold text-white">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-tentacle-brand text-[10px] font-bold text-white">
                 {activeFilterCount}
               </span>
             )}
           </div>
           <div className="flex items-center gap-3">
             {activeFilterCount > 0 && (
-              <button onClick={onReset} className="text-xs text-[#8b5cf6] hover:text-purple-300">
+              <button onClick={onReset} className="text-xs text-tentacle-brand hover:text-tentacle-brand-light">
                 {t("resetFilters")}
               </button>
             )}
@@ -130,7 +130,7 @@ export function FilterPanel({
         </div>
 
         {/* Scrollable content */}
-        <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5" style={{ scrollbarWidth: "thin", scrollbarColor: "#8b5cf6 transparent" }}>
+        <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5" style={{ scrollbarWidth: "thin", scrollbarColor: "var(--brand) transparent" }}>
           {/* Sort */}
           <div>
             <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-white/40">
@@ -143,7 +143,7 @@ export function FilterPanel({
                   onClick={() => onSortByChange(opt.value)}
                   className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
                     filters.sortBy === opt.value
-                      ? "bg-[#8b5cf6] text-white"
+                      ? "bg-white text-black shadow-sm"
                       : "bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/70"
                   }`}
                 >
@@ -191,11 +191,11 @@ export function FilterPanel({
             <select
               value={filters.originalLanguage ?? ""}
               onChange={(e) => onLanguageChange(e.target.value || null)}
-              className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white outline-none focus:border-purple-500/40 focus:ring-2 focus:ring-purple-500/50"
+              className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white outline-none focus:border-tentacle-brand/40 focus:ring-2 focus:ring-tentacle-brand/50"
             >
-              <option value="" className="bg-[#12121a]">{t("filterLanguageAll")}</option>
+              <option value="" className="bg-tentacle-surface-1">{t("filterLanguageAll")}</option>
               {LANGUAGES.map((l) => (
-                <option key={l.code} value={l.code} className="bg-[#12121a]">
+                <option key={l.code} value={l.code} className="bg-tentacle-surface-1">
                   {t(l.key)}
                 </option>
               ))}
@@ -217,7 +217,7 @@ export function FilterPanel({
                       onClick={() => onToggleTvStatus(s.value as TvStatus)}
                       className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                         active
-                          ? "bg-[#8b5cf6]/20 text-[#8b5cf6] ring-1 ring-[#8b5cf6]/50"
+                          ? "bg-tentacle-brand/20 text-tentacle-brand ring-1 ring-tentacle-brand/50"
                           : "bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/70"
                       }`}
                     >

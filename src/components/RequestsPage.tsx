@@ -2,7 +2,7 @@ import { useState, useCallback, lazy, Suspense } from "react";
 import { useTranslation } from "react-i18next";
 import {
   useMyRequests, useDeleteRequest, useRetryRequest, useRetryDeleteRequest,
-  useQueueStatus, useBulkDeleteRequests, useBulkRetryRequests,
+  useQueueStatus, useBulkDeleteRequests, useBulkRetryRequests, useMarkRequestStatus,
 } from "../hooks/useRequests";
 import { useRequestMedia } from "../hooks/useRequestMedia";
 import { useToast } from "../hooks/useToast";
@@ -10,6 +10,7 @@ import { RequestCard } from "./RequestCard";
 import { EmptyState } from "./EmptyState";
 import { ProfileSelector } from "./ProfileSelector";
 import { SeasonActionModal } from "./SeasonActionModal";
+import { RequestsStatsBar } from "./RequestsStatsBar";
 import type { LocalRequest, SeerrSearchResult } from "../api/types";
 
 const MediaDetailModal = lazy(() =>
@@ -49,6 +50,7 @@ export function RequestsPage() {
   const deleteMutation = useDeleteRequest();
   const retryMutation = useRetryRequest();
   const retryDeleteMutation = useRetryDeleteRequest();
+  const markMutation = useMarkRequestStatus();
   const requestMedia = useRequestMedia();
   const bulkDeleteMutation = useBulkDeleteRequests();
   const bulkRetryMutation = useBulkRetryRequests();
@@ -57,15 +59,15 @@ export function RequestsPage() {
   const requests = data?.results ?? [];
   const totalPages = data?.pages ?? 1;
 
-  const handleDelete = (id: string, seasons?: number[]) => {
-    deleteMutation.mutate({ id, seasons }, {
+  const handleDelete = (id: string, seasons?: number[], deleteFiles?: boolean) => {
+    deleteMutation.mutate({ id, seasons, deleteFiles }, {
       onSuccess: () => toast.show("success", t("requestDeleting")),
       onError: () => toast.show("error", t("requestDeleteError")),
     });
   };
 
-  const handleRetry = (id: string, seasons?: number[], profileId?: string | null) => {
-    retryMutation.mutate({ id, seasons, profileId }, {
+  const handleRetry = (id: string, seasons?: number[], profileId?: string | null, forceRedownload?: boolean) => {
+    retryMutation.mutate({ id, seasons, profileId, forceRedownload }, {
       onSuccess: () => toast.show("success", t("requestRetried")),
       onError: () => toast.show("error", t("requestRetryError")),
     });
@@ -75,6 +77,13 @@ export function RequestsPage() {
     retryDeleteMutation.mutate(id, {
       onSuccess: () => toast.show("success", t("requestDeleting")),
       onError: () => toast.show("error", t("requestDeleteError")),
+    });
+  };
+
+  const handleMark = (id: string, status: "available" | "partial" | "unknown") => {
+    markMutation.mutate({ id, status }, {
+      onSuccess: () => toast.show("success", t("seer:markedSuccess")),
+      onError: () => toast.show("error", t("seer:markedError")),
     });
   };
 
@@ -130,16 +139,19 @@ export function RequestsPage() {
     <div className="px-4 pt-4 md:px-8">
       <h1 className="mb-4 text-2xl font-bold text-white">{t("seer:myRequestsTitle")}</h1>
 
+      {/* Stats — remplace l'ancienne page Statistiques */}
+      <RequestsStatsBar />
+
       {/* Queue status banner */}
       {queueData && (queueData.queued > 0 || queueData.processing || queueData.deleting > 0) && (
-        <div className="mb-4 flex items-center gap-3 rounded-xl border border-purple-500/20 bg-purple-500/10 px-4 py-3">
-          <div className="h-2 w-2 animate-pulse rounded-full bg-purple-400" />
-          <div className="text-sm text-purple-300">
+        <div className="mb-4 flex items-center gap-3 rounded-xl border border-tentacle-brand/20 bg-tentacle-brand/10 px-4 py-3">
+          <div className="h-2 w-2 animate-pulse rounded-full bg-tentacle-brand-light" />
+          <div className="text-sm text-tentacle-brand-light">
             {queueData.processing ? (
               <span>
                 {t("seer:queueProcessing", { title: queueData.processing.title })}
                 {queueData.queued > 0 && (
-                  <span className="ml-2 text-purple-400/60">
+                  <span className="ml-2 text-tentacle-brand-light/60">
                     {t("seer:queuePending", { count: queueData.queued })}
                   </span>
                 )}
@@ -164,8 +176,8 @@ export function RequestsPage() {
             onClick={() => { setStatusFilter(tab.value); setPage(1); }}
             className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
               statusFilter === tab.value
-                ? "bg-[#8b5cf6] text-white"
-                : "bg-[#1a1a2e] text-white/50 hover:bg-[#1a1a2e]/80"
+                ? "bg-white text-black shadow-sm"
+                : "bg-white/[0.06] text-white/60 hover:bg-white/[0.10] hover:text-white"
             }`}
           >
             {t(tab.key)}
@@ -179,8 +191,8 @@ export function RequestsPage() {
             onClick={() => { setTypeFilter(v); setPage(1); }}
             className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
               typeFilter === v
-                ? "bg-[#8b5cf6] text-white"
-                : "bg-[#1a1a2e] text-white/50 hover:bg-[#1a1a2e]/80"
+                ? "bg-white text-black shadow-sm"
+                : "bg-white/[0.06] text-white/60 hover:bg-white/[0.10] hover:text-white"
             }`}
           >
             {v === "all" ? t("filterAllType") : v === "movie" ? t("filterMovies") : t("filterSeries")}
@@ -191,7 +203,7 @@ export function RequestsPage() {
             onClick={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}
             className={`ml-auto rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
               selectionMode
-                ? "bg-purple-600/30 text-purple-300"
+                ? "bg-tentacle-brand/30 text-tentacle-brand-light"
                 : "bg-white/10 text-white/60 hover:bg-white/15"
             }`}
           >
@@ -231,6 +243,8 @@ export function RequestsPage() {
                 onRetryDelete={handleRetryDelete}
                 onAddSeasons={handleAddSeasons}
                 onOpenModal={(req, action) => setActionModal({ request: req, action })}
+                onMark={handleMark}
+                marking={markMutation.isPending}
                 deleting={deleteMutation.isPending}
                 retrying={retryMutation.isPending}
                 selectable={selectionMode}
@@ -253,7 +267,8 @@ export function RequestsPage() {
                   window.parent.postMessage({ type: "NAVIGATE", path: "/plugins/seer/discover" }, "*");
                 }
               }}
-              className="rounded-lg bg-[#8b5cf6] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#7c3aed]"
+              style={{ boxShadow: "0 8px 22px rgba(var(--brand-rgb), 0.45)" }}
+              className="inline-flex items-center justify-center rounded-lg bg-white px-5 py-2.5 text-sm font-bold text-black transition-all hover:-translate-y-0.5 hover:bg-white/95"
             >
               {t("discoverButton")}
             </button>
@@ -284,7 +299,7 @@ export function RequestsPage() {
 
       {/* Bulk action bar */}
       {selectionMode && selectedIds.size > 0 && (
-        <div className="fixed bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-xl border border-white/10 bg-[#12121a]/95 px-5 py-3 shadow-2xl backdrop-blur-sm">
+        <div className="fixed bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-xl border border-white/10 bg-tentacle-surface-1/95 px-5 py-3 shadow-2xl backdrop-blur-sm">
           <button
             onClick={handleBulkDelete}
             disabled={bulkDeleteMutation.isPending}
@@ -295,7 +310,7 @@ export function RequestsPage() {
           <button
             onClick={() => setBulkRetryModal(true)}
             disabled={bulkRetryMutation.isPending}
-            className="rounded-lg bg-purple-600/20 px-4 py-2 text-xs font-semibold text-purple-400 transition-colors hover:bg-purple-600/30 disabled:opacity-50"
+            className="rounded-lg bg-tentacle-brand/20 px-4 py-2 text-xs font-semibold text-tentacle-brand-light transition-colors hover:bg-tentacle-brand/30 disabled:opacity-50"
           >
             {bulkRetryMutation.isPending ? "..." : t("seer:bulkRetry", { count: selectedIds.size })}
           </button>
@@ -327,9 +342,12 @@ export function RequestsPage() {
         <SeasonActionModal
           request={actionModal.request}
           action={actionModal.action}
-          onConfirm={(seasons, profileId) => {
-            if (actionModal.action === "delete") handleDelete(actionModal.request.id, seasons);
-            else handleRetry(actionModal.request.id, seasons, profileId);
+          onConfirm={(seasons, profileId, options) => {
+            if (actionModal.action === "delete") {
+              handleDelete(actionModal.request.id, seasons, options?.deleteFiles);
+            } else {
+              handleRetry(actionModal.request.id, seasons, profileId, options?.forceRedownload);
+            }
             setActionModal(null);
           }}
           onClose={() => setActionModal(null)}
@@ -340,7 +358,7 @@ export function RequestsPage() {
       {bulkRetryModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
           onClick={() => setBulkRetryModal(false)}>
-          <div className="mx-4 w-full max-w-sm rounded-xl bg-[#1a1a2e] p-5 shadow-2xl"
+          <div className="mx-4 w-full max-w-sm rounded-xl bg-tentacle-surface-2 p-5 shadow-2xl"
             onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-4 text-sm font-semibold text-white">
               {t("seer:bulkRetry", { count: selectedIds.size })}
@@ -354,7 +372,8 @@ export function RequestsPage() {
               <button
                 onClick={() => handleBulkRetry(bulkProfileId)}
                 disabled={bulkRetryMutation.isPending}
-                className="rounded-lg bg-[#8b5cf6] px-4 py-1.5 text-xs font-medium text-white hover:bg-[#7c3aed] disabled:opacity-40">
+                style={{ boxShadow: "0 8px 22px rgba(var(--brand-rgb), 0.45)" }}
+                className="inline-flex items-center justify-center rounded-lg bg-white px-4 py-1.5 text-xs font-bold text-black transition-all hover:bg-white/95 disabled:opacity-40">
                 {bulkRetryMutation.isPending ? "..." : t("seer:seasonActionConfirm")}
               </button>
             </div>

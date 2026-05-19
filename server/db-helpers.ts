@@ -35,6 +35,23 @@ export function rowToRequest(r: Record<string, unknown>): SeerRequest {
     completedAt: r.completed_at ? toIso(r.completed_at) : null,
     pendingCleanupId: (r.pending_cleanup_id as string) || null,
     profileId: (r.profile_id as string) || null,
+    isAnime: Boolean(r.is_anime),
+  };
+}
+
+export function rowToUserSettings(r: Record<string, unknown>): import("./types").SeerUserSettings {
+  return {
+    jellyfinUserId: r.jellyfin_user_id as string,
+    username: r.username as string,
+    blocked: Boolean(r.blocked),
+    dailyLimit: r.daily_limit === null || r.daily_limit === undefined ? null : Number(r.daily_limit),
+    allowMovies: Boolean(r.allow_movies),
+    allowTv: Boolean(r.allow_tv),
+    allowAnime: Boolean(r.allow_anime),
+    jellyseerrUserId: r.jellyseerr_user_id === null || r.jellyseerr_user_id === undefined ? null : Number(r.jellyseerr_user_id),
+    jellyseerrLastSync: r.jellyseerr_last_sync ? toIso(r.jellyseerr_last_sync) : null,
+    createdAt: toIso(r.created_at),
+    updatedAt: toIso(r.updated_at),
   };
 }
 
