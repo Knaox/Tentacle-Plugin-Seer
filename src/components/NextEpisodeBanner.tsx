@@ -1,0 +1,67 @@
+import { useTranslation } from "react-i18next";
+import type { SeerrEpisode } from "../api/types";
+import { formatAirDateLong, relativeAirLabel, daysUntil } from "../utils/episode-dates";
+import { backdropUrl } from "../utils/media-helpers";
+
+/**
+ * Bannière « Prochain épisode » : SxEy + titre + date complète localisée
+ * + badge countdown. Affichée pour les séries en cours (nextEpisodeToAir TMDB).
+ */
+export function NextEpisodeBanner({ episode }: { episode: SeerrEpisode }) {
+  const { t } = useTranslation("seer");
+  if (!episode.airDate) return null;
+
+  const days = daysUntil(episode.airDate);
+  const relative = relativeAirLabel(episode.airDate, t);
+  const still = backdropUrl(episode.stillPath, "w300");
+  const code = `S${episode.seasonNumber}E${episode.episodeNumber}`;
+
+  return (
+    <div className="relative overflow-hidden rounded-xl border border-tentacle-brand/25 bg-gradient-to-r from-tentacle-brand/15 via-tentacle-brand/5 to-transparent">
+      <div className="flex items-center gap-4 p-4">
+        {/* Vignette épisode */}
+        {still ? (
+          <img
+            src={still}
+            alt=""
+            loading="lazy"
+            className="hidden h-16 w-28 flex-shrink-0 rounded-lg object-cover sm:block"
+          />
+        ) : (
+          <div className="hidden h-16 w-28 flex-shrink-0 items-center justify-center rounded-lg bg-white/5 sm:flex">
+            <svg className="h-6 w-6 text-white/20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.375 19.5h17.25c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v12.75c0 .621.504 1.125 1.125 1.125Z" />
+            </svg>
+          </div>
+        )}
+
+        <div className="min-w-0 flex-1">
+          <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-tentacle-brand-light">
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
+            </svg>
+            {t("seer:nextEpisodeTitle")}
+          </p>
+          <p className="mt-1 truncate text-sm font-semibold text-white">
+            <span className="text-white/50">{code}</span>
+            {episode.name && <span> · {episode.name}</span>}
+          </p>
+          <p className="mt-0.5 text-xs capitalize text-white/55">{formatAirDateLong(episode.airDate)}</p>
+        </div>
+
+        {/* Countdown */}
+        {relative && (
+          <span
+            className={`flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-bold ${
+              days != null && days <= 1
+                ? "bg-emerald-500/20 text-emerald-300"
+                : "bg-tentacle-brand/20 text-tentacle-brand-light"
+            }`}
+          >
+            {relative}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}

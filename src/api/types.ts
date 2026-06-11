@@ -129,6 +129,10 @@ export interface SeerrTvDetail {
   status?: string;
   originalLanguage?: string;
   certification?: string;
+  /** Prochain épisode à diffuser (TMDB) — date de sortie à venir. */
+  nextEpisodeToAir?: SeerrEpisode;
+  /** Dernier épisode diffusé (TMDB). */
+  lastEpisodeToAir?: SeerrEpisode;
   seasons?: SeerrSeason[];
   genres?: { id: number; name: string }[];
   productionCompanies?: SeerrProductionCompany[];
@@ -152,6 +156,18 @@ export interface SeerrSeason {
   episodeCount: number;
   airDate?: string;
   posterPath?: string;
+}
+
+/** Épisode TMDB (via Seerr /tv/{id} ou /tv/{id}/season/{n}). */
+export interface SeerrEpisode {
+  id: number;
+  episodeNumber: number;
+  seasonNumber: number;
+  name?: string;
+  overview?: string;
+  airDate?: string;
+  stillPath?: string;
+  runtime?: number;
 }
 
 export interface SeerrCastMember {

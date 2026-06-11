@@ -52,7 +52,7 @@ function ConfigIcon({ className }: { className?: string }) {
 export const seerPlugin: TentaclePlugin = {
   id: "seer",
   name: "seer:pluginName",
-  version: "1.8.3",
+  version: "1.9.0",
   description: "seer:pluginDescription",
 
   routes: [

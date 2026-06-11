@@ -2,8 +2,11 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SeerrSeason } from "../api/types";
 import { ProfileSelector } from "./ProfileSelector";
+import { SeasonRow } from "./SeasonRow";
+import { CTA_PRIMARY, CTA_PRIMARY_HALO } from "../styles/cta";
 
 interface SeriesSeasonPickerProps {
+  tvId: number;
   seasons: SeerrSeason[];
   requestedSeasons?: Map<number, number>;
   onRequest: (selectedSeasons: number[], profileId?: string | null) => void;
@@ -15,21 +18,19 @@ interface SeriesSeasonPickerProps {
   defaultProfileId?: string | null;
 }
 
-function seasonStatusLabel(status: number, t: (k: string) => string): string {
-  if (status === 5) return t("seer:seasonAvailable");
-  if (status === 4) return t("seer:seasonPartial");
-  if (status === 3) return t("seer:seasonDownloading");
-  return t("seer:seasonRequested");
-}
-
+/**
+ * Sélecteur de saisons (mode demande) : rangées accordéon avec checkbox,
+ * statut, et épisodes + dates de diffusion dépliables.
+ */
 export function SeriesSeasonPicker({
-  seasons, requestedSeasons, onRequest, requesting, isAnime,
+  tvId, seasons, requestedSeasons, onRequest, requesting, isAnime,
   lockedSeasons, defaultProfileId,
 }: SeriesSeasonPickerProps) {
   const { t } = useTranslation("seer");
   const lockedSet = new Set(lockedSeasons ?? []);
   const [selected, setSelected] = useState<Set<number>>(new Set(lockedSeasons ?? []));
   const [profileId, setProfileId] = useState<string | null>(defaultProfileId ?? null);
+  const [expandedSeason, setExpandedSeason] = useState<number | null>(null);
 
   const displaySeasons = seasons.filter((s) => s.seasonNumber > 0);
 
@@ -37,7 +38,6 @@ export function SeriesSeasonPicker({
     const status = requestedSeasons?.get(sn);
     return status !== undefined && status >= 2;
   };
-  const isAvailable = (sn: number) => requestedSeasons?.get(sn) === 5;
   const isLocked = (sn: number) => lockedSet.has(sn);
 
   // Saisons sélectionnables = ni demandées via Seerr, ni verrouillées
@@ -61,76 +61,46 @@ export function SeriesSeasonPicker({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h4 className="text-sm font-semibold text-white">{t("seer:seasonsTitle")}</h4>
-        <div className="flex gap-2">
-          <button onClick={() => {
-            const all = new Set(lockedSeasons ?? []);
-            selectableSeasons.forEach((s) => all.add(s.seasonNumber));
-            setSelected(all);
-          }} className="text-[10px] font-medium text-tentacle-brand-light hover:text-tentacle-brand-light">
-            {t("seer:selectAll")}
-          </button>
-          <button onClick={() => setSelected(new Set(lockedSeasons ?? []))}
-            className="text-[10px] font-medium text-white/40 hover:text-white/60">
-            {t("seer:selectNone")}
-          </button>
-        </div>
+        <h4 className="text-xs font-semibold uppercase tracking-wider text-white/40">{t("seer:seasonsTitle")}</h4>
+        {selectableSeasons.length > 0 && (
+          <div className="flex gap-1">
+            <button
+              onClick={() => {
+                const all = new Set(lockedSeasons ?? []);
+                selectableSeasons.forEach((s) => all.add(s.seasonNumber));
+                setSelected(all);
+              }}
+              className="min-h-[32px] rounded-md px-2 text-[11px] font-medium text-tentacle-brand-light transition-colors hover:bg-white/[0.06]"
+            >
+              {t("seer:selectAll")}
+            </button>
+            <button
+              onClick={() => setSelected(new Set(lockedSeasons ?? []))}
+              className="min-h-[32px] rounded-md px-2 text-[11px] font-medium text-white/40 transition-colors hover:bg-white/[0.06] hover:text-white/60"
+            >
+              {t("seer:selectNone")}
+            </button>
+          </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {displaySeasons.map((season) => {
-          const requested = isRequested(season.seasonNumber);
-          const available = isAvailable(season.seasonNumber);
-          const locked = isLocked(season.seasonNumber);
-          const checked = selected.has(season.seasonNumber);
-          const status = requestedSeasons?.get(season.seasonNumber);
-
-          return (
-            <button key={season.seasonNumber}
-              onClick={() => toggle(season.seasonNumber)}
-              disabled={requested || locked}
-              className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs transition-all ${
-                requested
-                  ? available ? "border-emerald-500/30 bg-emerald-600/10 text-emerald-300 cursor-default"
-                    : "border-amber-500/30 bg-amber-600/10 text-amber-300 cursor-default"
-                  : locked
-                    ? "border-tentacle-brand/30 bg-tentacle-brand/10 text-tentacle-brand-light cursor-default"
-                    : checked ? "border-tentacle-brand bg-tentacle-brand/20 text-white"
-                      : "border-white/10 bg-white/5 text-white/50 hover:border-white/20 hover:bg-white/10"
-              }`}>
-              <div className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border transition-colors ${
-                requested ? (available ? "border-emerald-500 bg-emerald-600" : "border-amber-500 bg-amber-600")
-                  : (locked || checked) ? "border-tentacle-brand bg-tentacle-brand" : "border-white/20"
-              }`}>
-                {(requested || locked || checked) && (
-                  <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-medium">
-                  {season.name || t("seer:seasonFallback", { number: season.seasonNumber })}
-                  {locked && <span className="ml-1 text-[9px] text-tentacle-brand-light/50">({t("seer:seasonLocked")})</span>}
-                </p>
-                <p className={`text-[10px] ${
-                  requested ? (available ? "text-emerald-400/60" : "text-amber-400/60")
-                    : locked ? "text-tentacle-brand-light/50"
-                      : "text-white/30"
-                }`}>
-                  {requested ? seasonStatusLabel(status!, t)
-                    : locked ? t("seer:seasonRequested")
-                      : (
-                        <>
-                          {t("seer:episodeCount", { count: season.episodeCount })}
-                          {season.airDate && <span className="ml-1">· {season.airDate.slice(0, 4)}</span>}
-                        </>
-                      )}
-                </p>
-              </div>
-            </button>
-          );
-        })}
+      <div className="space-y-2">
+        {displaySeasons.map((season) => (
+          <SeasonRow
+            key={season.seasonNumber}
+            tvId={tvId}
+            season={season}
+            status={requestedSeasons?.get(season.seasonNumber)}
+            locked={isLocked(season.seasonNumber)}
+            selectable
+            checked={selected.has(season.seasonNumber)}
+            onToggle={() => toggle(season.seasonNumber)}
+            expanded={expandedSeason === season.seasonNumber}
+            onExpandToggle={() =>
+              setExpandedSeason((cur) => (cur === season.seasonNumber ? null : season.seasonNumber))
+            }
+          />
+        ))}
       </div>
 
       {/* Profil de qualité */}
@@ -142,15 +112,18 @@ export function SeriesSeasonPicker({
         <button
           onClick={() => onRequest(Array.from(selected).sort((a, b) => a - b), profileId)}
           disabled={!hasNewSelection || requesting}
-          style={{ boxShadow: "0 8px 22px rgba(var(--brand-rgb), 0.45)" }}
-          className="inline-flex w-full items-center justify-center rounded-lg bg-white py-2.5 text-sm font-bold text-black transition-all hover:-translate-y-0.5 hover:bg-white/95 active:translate-y-0 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+          style={CTA_PRIMARY_HALO}
+          className={`${CTA_PRIMARY} min-h-[48px] w-full py-3 focus:outline-none focus:ring-2 focus:ring-tentacle-brand/50`}
         >
           {requesting ? t("seer:sending")
             : !hasNewSelection ? t("seer:selectSeasonsPrompt")
               : t("seer:requestSeasons", { count: newSelectedCount })}
         </button>
       ) : (
-        <div className="w-full rounded-lg bg-emerald-600/20 py-2.5 text-center text-sm font-semibold text-emerald-400">
+        <div className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-lg bg-emerald-600/15 text-sm font-semibold text-emerald-400">
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+          </svg>
           {t("seer:allSeasonsRequested")}
         </div>
       )}

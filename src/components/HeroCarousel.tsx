@@ -58,13 +58,9 @@ export function HeroCarousel({ items, onSelect, onRequest }: HeroCarouselProps) 
         className="relative flex h-full cursor-pointer items-end gap-5 px-6 pb-8 sm:px-10"
         style={{ animation: "fadeSlideUp 600ms ease forwards" }}
         key={index}
-        onClick={() => {
-          if (isAvailable) {
-            navigateToMedia(item.id, item.mediaType);
-          } else {
-            onSelect(item);
-          }
-        }}
+        // Toujours la fiche détail — même disponible (saisons, épisodes, dates).
+        // Le bouton « Disponible » ci-dessous garde la navigation directe.
+        onClick={() => onSelect(item)}
       >
         {/* Poster */}
         {poster && (

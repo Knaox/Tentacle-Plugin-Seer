@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SeerrSearchResult } from "../api/types";
 import { posterUrl, mediaTitle, mediaYear, mediaTypeKey } from "../utils/media-helpers";
-import { navigateToMedia } from "../utils/navigate-media";
 
 interface MediaCardProps {
   item: SeerrSearchResult;
@@ -62,13 +61,9 @@ export function MediaCard({ item, onRequest, onClick, requesting, style }: Media
         ...style,
         willChange: "transform",
       }}
-      onClick={() => {
-        if (mediaStatus === 5) {
-          navigateToMedia(item.id, item.mediaType);
-          return;
-        }
-        onClick?.(item);
-      }}
+      // Média disponible inclus : on ouvre la fiche détail (saisons, épisodes,
+      // dates de sortie) — le bouton « Regarder » y mène vers la bibliothèque.
+      onClick={() => onClick?.(item)}
       onMouseEnter={(e) => {
         const el = e.currentTarget;
         el.style.transform = "scale(1.05) translateY(-6px)";
@@ -131,6 +126,10 @@ export function MediaCard({ item, onRequest, onClick, requesting, style }: Media
             ) : item.mediaType === "tv" && !hasMediaInfo ? (
               <div className="w-full rounded-lg bg-tentacle-brand/80 py-2 text-center text-xs font-semibold text-white">
                 {t("seer:viewSeasons")}
+              </div>
+            ) : mediaStatus === 5 ? (
+              <div className="w-full rounded-lg bg-emerald-500/25 py-2 text-center text-xs font-semibold text-emerald-300 backdrop-blur-sm">
+                {item.mediaType === "tv" ? t("seer:viewEpisodes") : t("seer:moreInfo")}
               </div>
             ) : null}
           </div>

@@ -39,7 +39,7 @@ export function ModalDetailHeader({ item, detail, mediaType, navStack, onBack, o
   return (
     <>
       {/* Backdrop */}
-      <div className="relative h-64 w-full overflow-hidden rounded-t-2xl sm:h-80">
+      <div className="relative h-48 w-full overflow-hidden rounded-t-2xl sm:h-72">
         {backdrop ? (
           <img
             src={backdrop}
@@ -51,57 +51,59 @@ export function ModalDetailHeader({ item, detail, mediaType, navStack, onBack, o
         ) : (
           <div className="h-full w-full" style={{ background: "linear-gradient(135deg, var(--surface-2) 0%, var(--surface-1) 100%)" }} />
         )}
-        <div className="absolute inset-0" style={{ background: "linear-gradient(to top, var(--surface-1) 0%, rgba(0,0,0,0.85) 30%, rgba(0,0,0,0.4) 60%, transparent 100%)" }} />
+        <div className="absolute inset-0" style={{ background: "linear-gradient(to top, var(--surface-1) 0%, rgba(0,0,0,0.7) 35%, rgba(0,0,0,0.25) 65%, transparent 100%)" }} />
+        {/* Poignée bottom-sheet (mobile) */}
+        <div className="absolute left-1/2 top-2 h-1 w-9 -translate-x-1/2 rounded-full bg-white/30 sm:hidden" />
       </div>
 
-      {/* Back button */}
+      {/* Back / breadcrumb / close — touch targets 44px */}
       <button
         onClick={onBack}
-        className="absolute left-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white/60 transition-colors hover:text-white focus:outline-none focus:ring-2 focus:ring-tentacle-brand/50"
+        aria-label={t("seer:cancel")}
         title={navStack.length > 0 ? mediaTitle(navStack[navStack.length - 1]) || "" : ""}
+        className="absolute left-3 top-3 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-white/70 backdrop-blur-sm transition-colors hover:text-white focus:outline-none focus:ring-2 focus:ring-tentacle-brand/50"
       >
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
         </svg>
       </button>
-
-      {/* Close button */}
       <button
         onClick={onClose}
-        className="absolute right-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white/60 transition-colors hover:text-white focus:outline-none focus:ring-2 focus:ring-tentacle-brand/50"
+        aria-label={t("seer:cancel")}
+        className="absolute right-3 top-3 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-white/70 backdrop-blur-sm transition-colors hover:text-white focus:outline-none focus:ring-2 focus:ring-tentacle-brand/50"
       >
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
         </svg>
       </button>
-
-      {/* Nav breadcrumb */}
       {navStack.length > 0 && (
         <div className="absolute left-14 top-4 z-10">
           <button
             onClick={onBack}
-            className="flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-[10px] text-white/50 backdrop-blur-sm transition-colors hover:text-white/80"
+            className="flex max-w-[50vw] items-center gap-1 truncate rounded-full bg-black/60 px-2.5 py-1.5 text-[10px] text-white/50 backdrop-blur-sm transition-colors hover:text-white/80"
           >
-            <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <svg className="h-2.5 w-2.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
             </svg>
-            {mediaTitle(navStack[navStack.length - 1])}
+            <span className="truncate">{mediaTitle(navStack[navStack.length - 1])}</span>
           </button>
         </div>
       )}
 
-      {/* Header: poster + info */}
-      <div className="flex gap-4 px-5 pb-4" style={{ marginTop: -80 }}>
+      {/* Header: poster + info — `relative` obligatoire : le backdrop est positionné
+          et peindrait par-dessus ce bloc statique remonté en marge négative
+          (titre masqué/coupé par le dégradé sinon). */}
+      <div className="relative flex gap-4 px-4 pb-5 sm:px-6" style={{ marginTop: -64 }}>
         {poster ? (
           <img
             src={poster}
             alt={title}
-            className="relative h-[225px] w-[150px] flex-shrink-0 rounded-xl object-cover shadow-xl"
+            className="relative h-[156px] w-[104px] flex-shrink-0 rounded-xl object-cover shadow-xl ring-1 ring-white/10 sm:h-[204px] sm:w-[136px]"
             style={{ opacity: posterLoaded ? 1 : 0, transition: "opacity 300ms ease" }}
             onLoad={() => setPosterLoaded(true)}
           />
         ) : (
-          <div className="relative flex h-[225px] w-[150px] flex-shrink-0 items-center justify-center rounded-xl bg-tentacle-surface-2 shadow-xl">
+          <div className="relative flex h-[156px] w-[104px] flex-shrink-0 items-center justify-center rounded-xl bg-tentacle-surface-2 shadow-xl ring-1 ring-white/10 sm:h-[204px] sm:w-[136px]">
             <svg className="h-12 w-12 text-white/20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={0.8}>
               {mediaType === "tv" ? (
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 20.25h12m-7.5-3v3m3-3v3m-10.125-3h17.25c.621 0 1.125-.504 1.125-1.125V4.875c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125Z" />
@@ -111,15 +113,15 @@ export function ModalDetailHeader({ item, detail, mediaType, navStack, onBack, o
             </svg>
           </div>
         )}
-        <div className="min-w-0 flex-1 pt-2">
-          <h2 className="text-3xl font-bold text-white">{title}</h2>
+        <div className="min-w-0 flex-1 self-end pb-1">
+          <h2 id="seer-detail-title" className="text-xl font-bold leading-tight text-white sm:text-3xl">{title}</h2>
           {showOriginalTitle && (
-            <p className="mt-0.5 text-xs text-white/30">{originalTitle}</p>
+            <p className="mt-0.5 truncate text-xs text-white/30">{originalTitle}</p>
           )}
           {tagline && (
-            <p className="mt-1 text-sm italic text-white/50">{tagline}</p>
+            <p className="mt-1 line-clamp-1 text-sm italic text-white/50">{tagline}</p>
           )}
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-white/50">
+          <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm text-white/50">
             {year && <span>{year}</span>}
             {detail && "runtime" in detail && (detail as SeerrMovieDetail).runtime ? (
               <span>{formatRuntime((detail as SeerrMovieDetail).runtime!)}</span>
@@ -138,7 +140,7 @@ export function ModalDetailHeader({ item, detail, mediaType, navStack, onBack, o
                 </svg>
                 {rating.toFixed(1)}
                 {voteCount != null && voteCount > 0 && (
-                  <span className="font-normal text-white/30">
+                  <span className="hidden font-normal text-white/30 sm:inline">
                     ({voteCount.toLocaleString()})
                   </span>
                 )}
@@ -147,8 +149,8 @@ export function ModalDetailHeader({ item, detail, mediaType, navStack, onBack, o
           </div>
           {detail?.genres && detail.genres.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1">
-              {detail.genres.map((g) => (
-                <span key={g.id} className="rounded-full bg-white/10 px-3 py-1 text-xs text-white/60">{g.name}</span>
+              {detail.genres.slice(0, 4).map((g) => (
+                <span key={g.id} className="rounded-full bg-white/[0.08] px-2.5 py-0.5 text-[11px] text-white/60">{g.name}</span>
               ))}
             </div>
           )}

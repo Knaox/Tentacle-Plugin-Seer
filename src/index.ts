@@ -32,6 +32,7 @@ export { useInfiniteDiscover } from "./hooks/useInfiniteDiscover";
 export { useMyRequests, useDeleteRequest } from "./hooks/useRequests";
 export { useRequestMedia } from "./hooks/useRequestMedia";
 export { useMediaDetail } from "./hooks/useMediaDetail";
-export { useMediaVideos } from "./hooks/useMediaVideos";
+export { useRichTrailers } from "./hooks/useRichTrailers";
+export { useTvSeasonEpisodes } from "./hooks/useTvSeasonEpisodes";
 export { useMediaSimilar } from "./hooks/useMediaSimilar";
 export { useWatchProviders } from "./hooks/useWatchProviders";

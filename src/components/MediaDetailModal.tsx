@@ -1,23 +1,26 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useMediaDetail } from "../hooks/useMediaDetail";
-import { useMediaVideos } from "../hooks/useMediaVideos";
 import { useMediaSimilar } from "../hooks/useMediaSimilar";
 import { useWatchProviders } from "../hooks/useWatchProviders";
+import { useRichTrailers } from "../hooks/useRichTrailers";
 import { useRequestMedia } from "../hooks/useRequestMedia";
 import { useToast } from "../hooks/useToast";
 import { formatSeerError } from "../api/seer-client";
-import { CTA_PRIMARY, CTA_PRIMARY_HALO } from "../styles/cta";
-import { ProfileSelector } from "./ProfileSelector";
 import { ModalDetailHeader } from "./ModalDetailHeader";
+import { DetailActionBar } from "./DetailActionBar";
+import { TrailerModal } from "./TrailerModal";
+import { ExtrasRow } from "./ExtrasRow";
+import { NextEpisodeBanner } from "./NextEpisodeBanner";
+import { SeasonRow } from "./SeasonRow";
 import { SeriesSeasonPicker } from "./SeriesSeasonPicker";
+import { MovieRequestSection } from "./MovieRequestSection";
+import { DetailMetaGrid } from "./DetailMetaGrid";
 import { CastRow } from "./CastRow";
-import { TrailerPlayer } from "./TrailerPlayer";
 import { WatchProviders } from "./WatchProviders";
 import { SimilarMedia } from "./SimilarMedia";
 import { mediaTitle, mediaYear } from "../utils/media-helpers";
 import type { SeerrSearchResult, SeerrTvDetail, SeerrMovieDetail } from "../api/types";
-import { navigateToMedia } from "../utils/navigate-media";
 
 interface MediaDetailModalProps {
   item: SeerrSearchResult;
@@ -30,13 +33,7 @@ interface MediaDetailModalProps {
   defaultProfileId?: string | null;
 }
 
-function formatCurrency(amount: number): string {
-  if (amount >= 1_000_000) return `$${(amount / 1_000_000).toFixed(1)}M`;
-  if (amount >= 1_000) return `$${(amount / 1_000).toFixed(0)}K`;
-  return `$${amount}`;
-}
-
-export function MediaDetailModal({ item, onClose, onRequest, requesting, lockedSeasons, defaultProfileId }: MediaDetailModalProps) {
+export function MediaDetailModal({ item, onClose, lockedSeasons, defaultProfileId }: MediaDetailModalProps) {
   const { t } = useTranslation("seer");
   const toast = useToast();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -47,42 +44,32 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting, lockedS
   const [requestSuccess, setRequestSuccess] = useState(false);
   const [synopsisExpanded, setSynopsisExpanded] = useState(false);
   const [movieProfileId, setMovieProfileId] = useState<string | null>(null);
+  const [trailerOpen, setTrailerOpen] = useState(false);
+  const [trailerIndex, setTrailerIndex] = useState(0);
+  const [expandedSeason, setExpandedSeason] = useState<number | null>(null);
 
   const mediaType = currentItem.mediaType === "movie" ? "movie" as const : "tv" as const;
   const { data: detail, isLoading } = useMediaDetail(mediaType, currentItem.id);
-  const { data: trailer } = useMediaVideos(mediaType, currentItem.id);
   const { data: similar } = useMediaSimilar(mediaType, currentItem.id);
   const { data: providers } = useWatchProviders(mediaType, currentItem.id);
+  const mediaStatus = detail?.mediaInfo?.status ?? currentItem.mediaInfo?.status ?? 0;
+  const { data: trailers } = useRichTrailers(mediaType, currentItem.id, mediaStatus);
   const requestMedia = useRequestMedia();
 
   const title = mediaTitle(currentItem) || t("seer:untitled");
   const year = mediaYear(currentItem);
   const tvDetail = detail as SeerrTvDetail | undefined;
-  const movieDetail = detail as SeerrMovieDetail | undefined;
 
-  // Détection anime : genre Animation (16) + origine JP
+  // Détection anime : genre Animation (16) + origine JP/KR, ou keyword TMDB anime
   const isAnime = useMemo(() => {
     const genres = detail?.genres?.map((g) => g.id) ?? currentItem.genreIds ?? [];
     const origins = (currentItem as any).originCountry ?? [];
     const hasAnimation = genres.includes(16);
     const isJapanese = origins.includes("JP") || origins.includes("KR") || detail?.originalLanguage === "ja";
-    // Keywords-based detection via the detail object
     const keywords = ((detail as any)?.keywords as Array<{ id: number }>) ?? [];
     const hasAnimeKeyword = keywords.some((k) => k.id === 210024);
     return hasAnimeKeyword || (hasAnimation && isJapanese);
   }, [detail, currentItem]);
-
-  // Enriched fields from detail
-  const productionStatus = detail?.status;
-  const originalLanguage = detail?.originalLanguage;
-  const productionCompanies = (detail as unknown as Record<string, unknown>)?.productionCompanies as
-    { id: number; name: string; logoPath?: string }[] | undefined;
-  const director = mediaType === "movie"
-    ? movieDetail?.credits?.crew?.find((c) => c.job === "Director") : null;
-  const creators = mediaType === "tv" ? tvDetail?.createdBy : null;
-  const networks = mediaType === "tv" ? tvDetail?.networks : null;
-  const budget = mediaType === "movie" ? movieDetail?.budget : undefined;
-  const revenue = mediaType === "movie" ? movieDetail?.revenue : undefined;
 
   const handleClose = useCallback(() => {
     setIsClosing(true);
@@ -101,10 +88,10 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting, lockedS
   }, []);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") handleClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !trailerOpen) handleClose(); };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [handleClose]);
+  }, [handleClose, trailerOpen]);
 
   const requestedSeasonMap = useMemo(() => {
     const map = new Map<number, number>();
@@ -145,6 +132,7 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting, lockedS
     setNavStack((prev) => [...prev, currentItem]);
     setCurrentItem(newItem);
     setSynopsisExpanded(false);
+    setExpandedSeason(null);
     scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -154,11 +142,17 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting, lockedS
     setNavStack((s) => s.slice(0, -1));
     setCurrentItem(prev);
     setSynopsisExpanded(false);
+    setExpandedSeason(null);
     scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const overview = detail?.overview ?? currentItem.overview;
   const cast = detail?.credits?.cast;
+  const isTv = currentItem.mediaType === "tv";
+  const tvSeasons = (tvDetail?.seasons ?? []).filter((s) => s.seasonNumber > 0);
+  // Série entièrement disponible → mode consultation (saisons/épisodes/dates),
+  // le picker de demande n'apparaît que s'il reste des saisons à demander.
+  const tvFullyAvailable = isTv && mediaStatus === 5;
 
   return (
     <div
@@ -169,8 +163,11 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting, lockedS
       <div className="absolute inset-0 bg-black/90 backdrop-blur-sm" />
       <div
         ref={scrollRef}
-        className="relative max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl bg-tentacle-surface-1 sm:max-h-[90vh] sm:rounded-2xl"
+        className="relative max-h-[94dvh] w-full max-w-3xl overflow-y-auto overscroll-contain rounded-t-2xl bg-tentacle-surface-1 pb-[env(safe-area-inset-bottom)] sm:max-h-[90vh] sm:rounded-2xl lg:max-w-4xl"
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
         style={{
           animation: isClosing ? "fadeOut 200ms ease forwards" : "fadeSlideUp 300ms ease forwards",
           scrollbarWidth: "thin",
@@ -186,53 +183,29 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting, lockedS
           onClose={handleClose}
         />
 
-        <div className="space-y-7 px-5 pb-6">
-          {/* Meta info grid */}
-          <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm text-white/50">
-            {director && (
-              <span><span className="text-white/30">{t("detailDirector")}:</span> {director.name}</span>
-            )}
-            {creators && creators.length > 0 && (
-              <span><span className="text-white/30">{t("detailCreator")}:</span> {creators.map((c) => c.name).join(", ")}</span>
-            )}
-            {productionStatus && (
-              <span><span className="text-white/30">{t("detailStatus")}:</span> {productionStatus}</span>
-            )}
-            {originalLanguage && (
-              <span><span className="text-white/30">{t("detailLanguage")}:</span> {originalLanguage.toUpperCase()}</span>
-            )}
-            {networks && networks.length > 0 && (
-              <span><span className="text-white/30">{t("detailNetwork")}:</span> {networks.map((n) => n.name).join(", ")}</span>
-            )}
-            {budget != null && budget > 0 && (
-              <span><span className="text-white/30">{t("detailBudget")}:</span> {formatCurrency(budget)}</span>
-            )}
-            {revenue != null && revenue > 0 && (
-              <span><span className="text-white/30">{t("detailRevenue")}:</span> {formatCurrency(revenue)}</span>
-            )}
-          </div>
+        <div className="space-y-6 px-4 pb-6 sm:px-6">
+          <DetailActionBar
+            mediaType={mediaType}
+            tmdbId={currentItem.id}
+            mediaStatus={mediaStatus}
+            trailers={trailers ?? []}
+            onOpenTrailer={() => { setTrailerIndex(0); setTrailerOpen(true); }}
+          />
 
-          {/* Production companies */}
-          {productionCompanies && productionCompanies.length > 0 && (
-            <div>
-              <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-white/40">{t("detailStudios")}</h4>
-              <div className="flex flex-wrap gap-2">
-                {productionCompanies.map((co) => (
-                  <span key={co.id} className="rounded-lg bg-white/5 px-2.5 py-1 text-xs text-white/50">{co.name}</span>
-                ))}
-              </div>
-            </div>
+          {/* Prochain épisode (séries en cours) */}
+          {isTv && tvDetail?.nextEpisodeToAir?.airDate && (
+            <NextEpisodeBanner episode={tvDetail.nextEpisodeToAir} />
           )}
 
           {/* Synopsis */}
           {overview && (
             <div>
               <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-white/40">{t("synopsisTitle")}</h4>
-              <p className={`text-base leading-relaxed text-white/60 ${synopsisExpanded ? "" : "line-clamp-3"}`}>{overview}</p>
+              <p className={`text-sm leading-relaxed text-white/65 sm:text-base ${synopsisExpanded ? "" : "line-clamp-3"}`}>{overview}</p>
               {overview.length > 200 && (
                 <button
                   onClick={() => setSynopsisExpanded((v) => !v)}
-                  className="mt-1 rounded text-xs text-tentacle-brand-light hover:text-tentacle-brand-light focus:outline-none focus:ring-2 focus:ring-tentacle-brand/50"
+                  className="mt-1 min-h-[32px] rounded text-xs font-medium text-tentacle-brand-light focus:outline-none focus:ring-2 focus:ring-tentacle-brand/50"
                 >
                   {synopsisExpanded ? t("showLess") : t("showMore")}
                 </button>
@@ -240,67 +213,38 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting, lockedS
             </div>
           )}
 
-          {providers && providers.length > 0 && <WatchProviders providers={providers} />}
-          {trailer && <TrailerPlayer videoKey={trailer.key} />}
-          {cast && cast.length > 0 && <CastRow cast={cast} />}
-
-          {/* Movie request action */}
-          {currentItem.mediaType === "movie" && (
-            detail?.mediaInfo?.status === 5 ? (
-              <button
-                onClick={() => navigateToMedia(currentItem.id, "movie")}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500/20 py-3 text-sm font-semibold text-emerald-400 transition-colors hover:bg-emerald-500/30"
-              >
-                ▶ {t("heroAvailable")}
-              </button>
-            ) : (detail?.mediaInfo?.status ?? 0) >= 2 ? (
-              <div className="w-full rounded-lg bg-amber-500/20 py-3 text-center text-sm font-semibold text-amber-400">
-                {t("alreadyRequested")}
-              </div>
-            ) : (
-              <div>
-              <ProfileSelector mediaType="movie" isAnime={isAnime} selectedId={movieProfileId} onChange={setMovieProfileId} />
-              <button
-                onClick={handleMovieRequest}
-                disabled={requestMedia.isPending || requestSuccess}
-                style={CTA_PRIMARY_HALO}
-                className={`${CTA_PRIMARY} w-full gap-2 py-3 focus:outline-none focus:ring-2 focus:ring-tentacle-brand/50`}
-              >
-                {requestMedia.isPending ? (
-                  <>
-                    <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    {t("seer:requestingMovie")}
-                  </>
-                ) : requestSuccess ? (
-                  <>
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                    </svg>
-                    {t("requestAdded")}
-                  </>
-                ) : t("seer:requestMovie")}
-              </button>
-              </div>
-            )
+          {/* Extras (trailers + teasers) AU-DESSUS des saisons, comme MediaDetail (core) */}
+          {(trailers?.length ?? 0) > 0 && (
+            <ExtrasRow
+              trailers={trailers ?? []}
+              onSelect={(i) => { setTrailerIndex(i); setTrailerOpen(true); }}
+            />
           )}
 
-          {/* TV — 100% disponible → bouton pour regarder dans Tentacle */}
-          {currentItem.mediaType === "tv" && detail?.mediaInfo?.status === 5 && (
-            <button
-              onClick={() => navigateToMedia(currentItem.id, "tv")}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500/20 py-3 text-sm font-semibold text-emerald-400 transition-colors hover:bg-emerald-500/30"
-            >
-              ▶ {t("heroAvailable")}
-            </button>
+          {/* Série 100% dispo → consultation : saisons + épisodes + dates */}
+          {tvFullyAvailable && tvSeasons.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-white/40">{t("seer:seasonsTitle")}</h4>
+              {tvSeasons.map((season) => (
+                <SeasonRow
+                  key={season.seasonNumber}
+                  tvId={currentItem.id}
+                  season={season}
+                  status={requestedSeasonMap.get(season.seasonNumber)}
+                  expanded={expandedSeason === season.seasonNumber}
+                  onExpandToggle={() =>
+                    setExpandedSeason((cur) => (cur === season.seasonNumber ? null : season.seasonNumber))
+                  }
+                />
+              ))}
+            </div>
           )}
 
-          {/* TV season picker (pas affiché si 100% dispo) */}
-          {currentItem.mediaType === "tv" && detail?.mediaInfo?.status !== 5 && !isLoading && detail && (detail as SeerrTvDetail).seasons && (
+          {/* Série incomplète → sélection de saisons à demander */}
+          {isTv && !tvFullyAvailable && !isLoading && tvSeasons.length > 0 && (
             <SeriesSeasonPicker
-              seasons={(detail as SeerrTvDetail).seasons ?? []}
+              tvId={currentItem.id}
+              seasons={tvSeasons}
               requestedSeasons={requestedSeasonMap}
               onRequest={handleSeasonRequest}
               requesting={requestMedia.isPending}
@@ -310,17 +254,40 @@ export function MediaDetailModal({ item, onClose, onRequest, requesting, lockedS
             />
           )}
 
-          {isLoading && currentItem.mediaType === "tv" && (
+          {isLoading && isTv && (
             <div className="flex justify-center py-4">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-tentacle-brand border-t-transparent" />
             </div>
           )}
 
+          {/* Film → demande (profil + CTA) ou badge déjà demandé */}
+          {currentItem.mediaType === "movie" && (
+            <MovieRequestSection
+              mediaStatus={mediaStatus}
+              isAnime={isAnime}
+              requesting={requestMedia.isPending}
+              requestSuccess={requestSuccess}
+              profileId={movieProfileId}
+              onProfileChange={setMovieProfileId}
+              onRequest={handleMovieRequest}
+            />
+          )}
+
+          {providers && providers.length > 0 && <WatchProviders providers={providers} />}
+          {cast && cast.length > 0 && <CastRow cast={cast} />}
+          <DetailMetaGrid detail={detail as SeerrMovieDetail | SeerrTvDetail | undefined} mediaType={mediaType} />
           {similar && similar.length > 0 && (
             <SimilarMedia items={similar} onSelect={handleSelectSimilar} />
           )}
         </div>
       </div>
+
+      <TrailerModal
+        open={trailerOpen}
+        onClose={() => setTrailerOpen(false)}
+        trailers={trailers ?? []}
+        initialIndex={trailerIndex}
+      />
     </div>
   );
 }
