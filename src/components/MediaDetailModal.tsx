@@ -20,6 +20,7 @@ import { CastRow } from "./CastRow";
 import { WatchProviders } from "./WatchProviders";
 import { SimilarMedia } from "./SimilarMedia";
 import { mediaTitle, mediaYear } from "../utils/media-helpers";
+import { openTrailersViaHost } from "../utils/external";
 import type { SeerrSearchResult, SeerrTvDetail, SeerrMovieDetail } from "../api/types";
 
 interface MediaDetailModalProps {
@@ -75,6 +76,15 @@ export function MediaDetailModal({ item, onClose, lockedSeasons, defaultProfileI
     setIsClosing(true);
     setTimeout(onClose, 200);
   }, [onClose]);
+
+  // Lecture trailer : via le TrailerModal du HOST (l'embed YouTube ne
+  // fonctionne pas dans l'iframe sandboxée), repli modale locale (mobile).
+  const openTrailerAt = useCallback((index: number) => {
+    const list = trailers ?? [];
+    if (openTrailersViaHost(list, index)) return;
+    setTrailerIndex(index);
+    setTrailerOpen(true);
+  }, [trailers]);
 
   useEffect(() => {
     document.body.style.overflow = "hidden";
@@ -189,7 +199,7 @@ export function MediaDetailModal({ item, onClose, lockedSeasons, defaultProfileI
             tmdbId={currentItem.id}
             mediaStatus={mediaStatus}
             trailers={trailers ?? []}
-            onOpenTrailer={() => { setTrailerIndex(0); setTrailerOpen(true); }}
+            onOpenTrailer={() => openTrailerAt(0)}
           />
 
           {/* Prochain épisode (séries en cours) */}
@@ -217,7 +227,7 @@ export function MediaDetailModal({ item, onClose, lockedSeasons, defaultProfileI
           {(trailers?.length ?? 0) > 0 && (
             <ExtrasRow
               trailers={trailers ?? []}
-              onSelect={(i) => { setTrailerIndex(i); setTrailerOpen(true); }}
+              onSelect={openTrailerAt}
             />
           )}
 

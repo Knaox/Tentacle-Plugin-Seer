@@ -69,3 +69,21 @@ export function externalLinkHandler(url: string) {
     openExternal(url);
   };
 }
+
+/**
+ * Joue les bandes-annonces via le TrailerModal du HOST quand le bridge le
+ * permet. Un embed YouTube imbriqué dans l'iframe sandboxée du plugin hérite
+ * de la sandbox (pas d'allow-same-origin) → le player YouTube plante
+ * (SecurityError caches / writeEmbed). Retourne false si le bridge est absent
+ * (mobile WebView) — l'appelant retombe sur la modale locale.
+ */
+export function openTrailersViaHost(
+  trailers: Array<{ Url: string; Name?: string }>,
+  index = 0,
+): boolean {
+  const bridge = (window as unknown as Record<string, unknown>).__tentacle_bridge as
+    { openTrailer?: (trailers: Array<{ Url: string; Name?: string }>, index: number) => void } | undefined;
+  if (!bridge?.openTrailer || trailers.length === 0) return false;
+  bridge.openTrailer(trailers.map((t) => ({ Url: t.Url, Name: t.Name })), index);
+  return true;
+}
