@@ -50,15 +50,24 @@ async function getWorkerConfig(ctx: PluginBackendContext) {
 /* ── Blocage par tags (Jellyseerr « Bloquer le contenu avec des tags ») ──
  *
  * Jellyseerr stocke les keywords TMDB bloqués dans `settings.main.blocklistedTags`
- * (IDs séparés par des virgules). Deux mécanismes en découlent :
- *   1. Discover : on les passe en `excludeKeywords` → TMDB `without_keywords`,
- *      ce qui exclut le contenu directement à la source (pagination propre).
- *   2. Search / trending / discover : Jellyseerr marque les médias correspondants
- *      au statut BLOCKLISTED (6) via son job `process-blocklisted-tags`. On retire
- *      donc tout résultat dont `mediaInfo.status === 6`.
- * `settings.main` n'est lisible qu'avec la clé d'API admin (déjà côté plugin).
+ * (IDs séparés par des virgules). On applique ce blocage sur 3 surfaces :
+ *   1. Discover (movies/tv/anime) : on passe les tags en `excludeKeywords`
+ *      → TMDB `without_keywords`, exclusion native à la source (pagination propre).
+ *   2. Search / trending : TMDB multi-search n'accepte PAS `without_keywords`, et
+ *      le job `process-blocklisted-tags` de Jellyseerr ne couvre qu'une fraction du
+ *      catalogue. On filtre donc en lisant les keywords de chaque résultat
+ *      (`/api/v1/{movie|tv}/{id}` → champ `keywords`), avec cache 7 j.
+ *   3. Toutes surfaces : on retire aussi les médias déjà au statut BLOCKLISTED (6).
+ *
+ * Le filtrage est désactivable par requête via `?_showBlocked=1` (bouton
+ * « Afficher quand même »). On renvoie alors `blockedCount`/`blockedActive` pour
+ * que l'UI sache combien d'éléments sont masqués.
+ *
+ * `settings.main` et le détail ne sont lisibles qu'avec la clé d'API admin
+ * (déjà détenue côté plugin).
  */
 const MEDIA_STATUS_BLOCKLISTED = 6;
+const KEYWORD_FETCH_CONCURRENCY = 8;
 
 async function getBlocklistedTags(seerrUrl: string, apiKey: string): Promise<string> {
   return cached(`seerr:blocklistedTags:${seerrUrl}`, 5 * 60_000, async () => {
@@ -74,6 +83,88 @@ async function getBlocklistedTags(seerrUrl: string, apiKey: string): Promise<str
       return "";
     }
   });
+}
+
+/** Convertit la CSV `blocklistedTags` en Set d'IDs numériques. */
+function parseTagSet(csv: string): Set<number> {
+  const set = new Set<number>();
+  for (const part of csv.split(",")) {
+    const id = Number(part.trim());
+    if (Number.isFinite(id) && id > 0) set.add(id);
+  }
+  return set;
+}
+
+/** IDs de keywords TMDB d'un média (cache 7 j — les keywords bougent très peu). */
+async function getItemKeywordIds(
+  seerrUrl: string,
+  apiKey: string,
+  mediaType: "movie" | "tv",
+  id: number,
+): Promise<number[]> {
+  return cached(`seerr:kw:${mediaType}:${id}`, 7 * 86_400_000, async () => {
+    try {
+      const res = await fetch(`${seerrUrl}/api/v1/${mediaType}/${id}`, {
+        headers: { "X-Api-Key": apiKey },
+        signal: AbortSignal.timeout(8_000),
+      });
+      if (!res.ok) return [];
+      const data = (await res.json()) as { keywords?: Array<{ id?: number }> };
+      return Array.isArray(data.keywords)
+        ? data.keywords.map((k) => k?.id).filter((x): x is number => typeof x === "number")
+        : [];
+    } catch {
+      return [];
+    }
+  });
+}
+
+interface ResultItem {
+  id?: number;
+  mediaType?: string;
+  mediaInfo?: { status?: number };
+}
+
+/**
+ * Filtre une page de résultats (search/trending) en récupérant les keywords de
+ * chaque film/série et en retirant ceux qui intersectent les tags bloqués.
+ * Les `person` sont conservées (pas de keywords). Retourne la liste filtrée et
+ * le nombre d'éléments masqués.
+ */
+async function filterResultsByTags(
+  seerrUrl: string,
+  apiKey: string,
+  results: ResultItem[],
+  blockedSet: Set<number>,
+): Promise<{ kept: ResultItem[]; blockedCount: number }> {
+  // 1) Retrait immédiat des éléments déjà marqués BLOCKLISTED par Jellyseerr.
+  const afterStatus = results.filter((r) => r?.mediaInfo?.status !== MEDIA_STATUS_BLOCKLISTED);
+  let blockedCount = results.length - afterStatus.length;
+
+  // 2) Vérification par keywords (films/séries uniquement), bornée en concurrence.
+  const blockedFlags = new Array<boolean>(afterStatus.length).fill(false);
+  const checkable = afterStatus
+    .map((item, idx) => ({ item, idx }))
+    .filter(({ item }) => (item.mediaType === "movie" || item.mediaType === "tv") && typeof item.id === "number");
+
+  for (let i = 0; i < checkable.length; i += KEYWORD_FETCH_CONCURRENCY) {
+    const batch = checkable.slice(i, i + KEYWORD_FETCH_CONCURRENCY);
+    await Promise.all(
+      batch.map(async ({ item, idx }) => {
+        const kwIds = await getItemKeywordIds(
+          seerrUrl,
+          apiKey,
+          item.mediaType as "movie" | "tv",
+          item.id as number,
+        );
+        if (kwIds.some((id) => blockedSet.has(id))) blockedFlags[idx] = true;
+      }),
+    );
+  }
+
+  const kept = afterStatus.filter((_, idx) => !blockedFlags[idx]);
+  blockedCount += afterStatus.length - kept.length;
+  return { kept, blockedCount };
 }
 
 /* ── Main plugin registration ────────────────────────────────────── */
@@ -165,30 +256,35 @@ export default async function seerBackend(
 
     const query = request.query as Record<string, string>;
 
-    // Endpoints de découverte/recherche soumis au blocage par tags Jellyseerr.
+    // Surfaces soumises au blocage par tags Jellyseerr.
     const isDiscoverMovies = /^api\/v1\/discover\/movies(\/|$)/.test(wildcard);
     const isDiscoverTv = /^api\/v1\/discover\/tv(\/|$)/.test(wildcard);
-    const isFilterable =
-      isDiscoverMovies ||
-      isDiscoverTv ||
-      /^api\/v1\/discover\/trending/.test(wildcard) ||
-      /^api\/v1\/search/.test(wildcard);
+    const isDiscover = isDiscoverMovies || isDiscoverTv;
+    // search + trending : pas de without_keywords TMDB → filtrage par keywords.
+    const isSearchLike =
+      /^api\/v1\/discover\/trending/.test(wildcard) || /^api\/v1\/search/.test(wildcard);
+    const isFilterable = isDiscover || isSearchLike;
+
+    // Bouton « Afficher quand même » → on n'applique aucun filtrage.
+    const showBlocked = query._showBlocked === "1" || query._showBlocked === "true";
 
     // On ne charge les tags bloqués que pour les GET filtrables (cache 5 min).
     const blocklistedTags =
       isFilterable && request.method === "GET"
         ? await getBlocklistedTags(seerrUrl, apiKey)
         : "";
+    const blockedSet = parseTagSet(blocklistedTags);
+    const blockedActive = blockedSet.size > 0;
 
     const qsParts: string[] = [];
     let hasExcludeKeywords = false;
     for (const [k, v] of Object.entries(query)) {
-      if (k === "_lang") continue;
+      if (k === "_lang" || k === "_showBlocked") continue;
       if (k === "excludeKeywords") hasExcludeKeywords = true;
       qsParts.push(`${encodeURIComponent(k)}=${encodeURIComponent(v)}`);
     }
-    // Discover : exclusion native côté TMDB (without_keywords) si non déjà fournie.
-    if ((isDiscoverMovies || isDiscoverTv) && blocklistedTags && !hasExcludeKeywords) {
+    // Discover : exclusion native côté TMDB (without_keywords), sauf si « afficher quand même ».
+    if (isDiscover && blockedActive && !showBlocked && !hasExcludeKeywords) {
       qsParts.push(`excludeKeywords=${encodeURIComponent(blocklistedTags)}`);
     }
     const qs = qsParts.join("&");
@@ -209,25 +305,52 @@ export default async function seerBackend(
         signal: AbortSignal.timeout(15_000),
       });
 
-      // Filtrage JSON : retire les médias marqués BLOCKLISTED par Jellyseerr.
-      // Couvre la recherche (TMDB n'a pas de without_keywords) et complète le
-      // discover. Uniquement si des tags sont bloqués (sinon stream transparent).
+      // On bufferise + filtre uniquement les réponses JSON des surfaces concernées
+      // quand un blocage par tags est actif. Sinon : stream transparent (historique).
       const ct = response.headers.get("content-type");
-      const shouldFilter =
+      const shouldHandleJson =
         isFilterable &&
-        blocklistedTags !== "" &&
+        blockedActive &&
         response.ok &&
         (ct ?? "").includes("application/json");
 
-      if (shouldFilter) {
+      if (shouldHandleJson) {
         const data = (await response.json().catch(() => null)) as
-          | { results?: Array<{ mediaInfo?: { status?: number } }> }
+          | (Record<string, unknown> & { results?: ResultItem[] })
           | null;
+
         if (data && Array.isArray(data.results)) {
-          data.results = data.results.filter(
-            (item) => item?.mediaInfo?.status !== MEDIA_STATUS_BLOCKLISTED,
-          );
+          if (showBlocked) {
+            // On affiche tout, mais on indique combien d'éléments seraient masqués.
+            const { blockedCount } = await filterResultsByTags(
+              seerrUrl,
+              apiKey,
+              isDiscover ? [] : data.results, // discover déjà non-filtré ici → compteur via search-like
+              blockedSet,
+            );
+            data.blockedCount = isDiscover ? 0 : blockedCount;
+          } else if (isSearchLike) {
+            // search/trending : filtrage par keywords (TMDB n'a pas without_keywords).
+            const { kept, blockedCount } = await filterResultsByTags(
+              seerrUrl,
+              apiKey,
+              data.results,
+              blockedSet,
+            );
+            data.results = kept;
+            data.blockedCount = blockedCount;
+          } else {
+            // discover : déjà filtré via excludeKeywords ; on retire en plus les
+            // éventuels BLOCKLISTED résiduels. Compteur non significatif ici.
+            const before = data.results.length;
+            data.results = data.results.filter(
+              (item) => item?.mediaInfo?.status !== MEDIA_STATUS_BLOCKLISTED,
+            );
+            data.blockedCount = before - data.results.length;
+          }
+          data.blockedActive = blockedActive;
         }
+
         reply.status(response.status);
         reply.header("content-type", "application/json");
         return reply.send(data ?? {});

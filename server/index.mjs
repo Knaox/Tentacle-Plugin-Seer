@@ -2524,6 +2524,7 @@ async function getWorkerConfig(ctx) {
   return { seerrUrl: url.replace(/\/$/, ""), seerrApiKey: apiKey, interval: 6e4, syncEvery: 2, profiles };
 }
 var MEDIA_STATUS_BLOCKLISTED = 6;
+var KEYWORD_FETCH_CONCURRENCY = 8;
 async function getBlocklistedTags(seerrUrl, apiKey) {
   return cached(`seerr:blocklistedTags:${seerrUrl}`, 5 * 6e4, async () => {
     try {
@@ -2538,6 +2539,52 @@ async function getBlocklistedTags(seerrUrl, apiKey) {
       return "";
     }
   });
+}
+function parseTagSet(csv) {
+  const set = /* @__PURE__ */ new Set();
+  for (const part of csv.split(",")) {
+    const id = Number(part.trim());
+    if (Number.isFinite(id) && id > 0) set.add(id);
+  }
+  return set;
+}
+async function getItemKeywordIds(seerrUrl, apiKey, mediaType, id) {
+  return cached(`seerr:kw:${mediaType}:${id}`, 7 * 864e5, async () => {
+    try {
+      const res = await fetch(`${seerrUrl}/api/v1/${mediaType}/${id}`, {
+        headers: { "X-Api-Key": apiKey },
+        signal: AbortSignal.timeout(8e3)
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data.keywords) ? data.keywords.map((k) => k?.id).filter((x) => typeof x === "number") : [];
+    } catch {
+      return [];
+    }
+  });
+}
+async function filterResultsByTags(seerrUrl, apiKey, results, blockedSet) {
+  const afterStatus = results.filter((r) => r?.mediaInfo?.status !== MEDIA_STATUS_BLOCKLISTED);
+  let blockedCount = results.length - afterStatus.length;
+  const blockedFlags = new Array(afterStatus.length).fill(false);
+  const checkable = afterStatus.map((item, idx) => ({ item, idx })).filter(({ item }) => (item.mediaType === "movie" || item.mediaType === "tv") && typeof item.id === "number");
+  for (let i = 0; i < checkable.length; i += KEYWORD_FETCH_CONCURRENCY) {
+    const batch = checkable.slice(i, i + KEYWORD_FETCH_CONCURRENCY);
+    await Promise.all(
+      batch.map(async ({ item, idx }) => {
+        const kwIds = await getItemKeywordIds(
+          seerrUrl,
+          apiKey,
+          item.mediaType,
+          item.id
+        );
+        if (kwIds.some((id) => blockedSet.has(id))) blockedFlags[idx] = true;
+      })
+    );
+  }
+  const kept = afterStatus.filter((_, idx) => !blockedFlags[idx]);
+  blockedCount += afterStatus.length - kept.length;
+  return { kept, blockedCount };
 }
 async function seerBackend(app, ctx) {
   const prisma = ctx.getPrisma();
@@ -2614,16 +2661,21 @@ async function seerBackend(app, ctx) {
     const query = request.query;
     const isDiscoverMovies = /^api\/v1\/discover\/movies(\/|$)/.test(wildcard);
     const isDiscoverTv = /^api\/v1\/discover\/tv(\/|$)/.test(wildcard);
-    const isFilterable = isDiscoverMovies || isDiscoverTv || /^api\/v1\/discover\/trending/.test(wildcard) || /^api\/v1\/search/.test(wildcard);
+    const isDiscover = isDiscoverMovies || isDiscoverTv;
+    const isSearchLike = /^api\/v1\/discover\/trending/.test(wildcard) || /^api\/v1\/search/.test(wildcard);
+    const isFilterable = isDiscover || isSearchLike;
+    const showBlocked = query._showBlocked === "1" || query._showBlocked === "true";
     const blocklistedTags = isFilterable && request.method === "GET" ? await getBlocklistedTags(seerrUrl, apiKey) : "";
+    const blockedSet = parseTagSet(blocklistedTags);
+    const blockedActive = blockedSet.size > 0;
     const qsParts = [];
     let hasExcludeKeywords = false;
     for (const [k, v] of Object.entries(query)) {
-      if (k === "_lang") continue;
+      if (k === "_lang" || k === "_showBlocked") continue;
       if (k === "excludeKeywords") hasExcludeKeywords = true;
       qsParts.push(`${encodeURIComponent(k)}=${encodeURIComponent(v)}`);
     }
-    if ((isDiscoverMovies || isDiscoverTv) && blocklistedTags && !hasExcludeKeywords) {
+    if (isDiscover && blockedActive && !showBlocked && !hasExcludeKeywords) {
       qsParts.push(`excludeKeywords=${encodeURIComponent(blocklistedTags)}`);
     }
     const qs = qsParts.join("&");
@@ -2643,13 +2695,36 @@ async function seerBackend(app, ctx) {
         signal: AbortSignal.timeout(15e3)
       });
       const ct = response.headers.get("content-type");
-      const shouldFilter = isFilterable && blocklistedTags !== "" && response.ok && (ct ?? "").includes("application/json");
-      if (shouldFilter) {
+      const shouldHandleJson = isFilterable && blockedActive && response.ok && (ct ?? "").includes("application/json");
+      if (shouldHandleJson) {
         const data = await response.json().catch(() => null);
         if (data && Array.isArray(data.results)) {
-          data.results = data.results.filter(
-            (item) => item?.mediaInfo?.status !== MEDIA_STATUS_BLOCKLISTED
-          );
+          if (showBlocked) {
+            const { blockedCount } = await filterResultsByTags(
+              seerrUrl,
+              apiKey,
+              isDiscover ? [] : data.results,
+              // discover déjà non-filtré ici → compteur via search-like
+              blockedSet
+            );
+            data.blockedCount = isDiscover ? 0 : blockedCount;
+          } else if (isSearchLike) {
+            const { kept, blockedCount } = await filterResultsByTags(
+              seerrUrl,
+              apiKey,
+              data.results,
+              blockedSet
+            );
+            data.results = kept;
+            data.blockedCount = blockedCount;
+          } else {
+            const before = data.results.length;
+            data.results = data.results.filter(
+              (item) => item?.mediaInfo?.status !== MEDIA_STATUS_BLOCKLISTED
+            );
+            data.blockedCount = before - data.results.length;
+          }
+          data.blockedActive = blockedActive;
         }
         reply.status(response.status);
         reply.header("content-type", "application/json");

@@ -82,8 +82,13 @@ function getWatchRegion(): string {
 
 /* ── Search (Seerr proxy) ────────────────────────────────────────── */
 
-export async function searchMedia(query: string, page = 1): Promise<SeerrPagedResponse> {
-  return proxyFetch(`/api/v1/search?query=${encodeURIComponent(query)}&page=${page}`);
+export async function searchMedia(
+  query: string,
+  page = 1,
+  showBlocked = false,
+): Promise<SeerrPagedResponse> {
+  const sb = showBlocked ? "&_showBlocked=1" : "";
+  return proxyFetch(`/api/v1/search?query=${encodeURIComponent(query)}&page=${page}${sb}`);
 }
 
 /* ── Discover (Seerr proxy) ──────────────────────────────────────── */
@@ -103,6 +108,7 @@ export async function discoverMedia(
   mediaType: DiscoverMediaType,
   page: number,
   filters: DiscoverFilters,
+  showBlocked = false,
 ): Promise<SeerrPagedResponse> {
   // Anime utilise l'endpoint TV avec le keyword TMDB "anime" (210024)
   const seerrType = mediaType === "anime" ? "tv" : mediaType;
@@ -163,6 +169,11 @@ export async function discoverMedia(
     params.keywords = "210024";
   }
 
+  // Bouton « Afficher quand même » : désactive le blocage par tags côté proxy.
+  if (showBlocked) {
+    params._showBlocked = "1";
+  }
+
   const qs = Object.entries(params)
     .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
     .join("&");
@@ -172,8 +183,9 @@ export async function discoverMedia(
 }
 
 /** Fetch trending for HeroCarousel */
-export async function discoverTrending(page = 1): Promise<SeerrPagedResponse> {
-  return proxyFetch(`/api/v1/discover/trending?page=${page}`);
+export async function discoverTrending(page = 1, showBlocked = false): Promise<SeerrPagedResponse> {
+  const sb = showBlocked ? "&_showBlocked=1" : "";
+  return proxyFetch(`/api/v1/discover/trending?page=${page}${sb}`);
 }
 
 /* ── Media details (Seerr proxy) ─────────────────────────────────── */

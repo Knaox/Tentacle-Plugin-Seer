@@ -25,6 +25,14 @@ export default {
   resultCount_one: "{{count}} result",
   resultCount_other: "{{count}} results",
 
+  // Tag blocking (Jellyseerr "Block content with tags")
+  blockedHidden_one: "{{count}} result hidden by the content filter.",
+  blockedHidden_other: "{{count}} results hidden by the content filter.",
+  blockedFilterActive: "Sensitive content is hidden by the content filter.",
+  blockedShown: "Sensitive content is currently shown.",
+  blockedShowAnyway: "Show anyway",
+  blockedHideAgain: "Hide again",
+
   // Media types
   typeMovie: "Movie",
   typeSeries: "Series",

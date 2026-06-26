@@ -15,11 +15,15 @@ const STALE_TIME = 5 * 60_000;
  * - keepPreviousData to avoid flash when filters change
  * - Aggressive caching (5 min staleTime)
  */
-export function useInfiniteDiscover(mediaType: DiscoverMediaType, filters: DiscoverFilters) {
+export function useInfiniteDiscover(
+  mediaType: DiscoverMediaType,
+  filters: DiscoverFilters,
+  showBlocked = false,
+) {
   const queryClient = useQueryClient();
   const prefetchedRef = useRef(new Set<string>());
 
-  const queryKey = ["seer-discover", mediaType, filters];
+  const queryKey = ["seer-discover", mediaType, filters, showBlocked];
 
   const query = useInfiniteQuery({
     queryKey,
@@ -28,7 +32,7 @@ export function useInfiniteDiscover(mediaType: DiscoverMediaType, filters: Disco
       if (pageParam === 1) {
         const pages = await Promise.all(
           Array.from({ length: INITIAL_PAGES }, (_, i) =>
-            discoverMedia(mediaType, i + 1, filters),
+            discoverMedia(mediaType, i + 1, filters, showBlocked),
           ),
         );
         // Return a merged response for the initial batch
@@ -41,7 +45,7 @@ export function useInfiniteDiscover(mediaType: DiscoverMediaType, filters: Disco
           _batchedPages: INITIAL_PAGES,
         } as SeerrPagedResponse & { _batchedPages?: number };
       }
-      return discoverMedia(mediaType, pageParam, filters);
+      return discoverMedia(mediaType, pageParam, filters, showBlocked);
     },
     initialPageParam: 1,
     getNextPageParam: (lastPage) => {
@@ -67,22 +71,22 @@ export function useInfiniteDiscover(mediaType: DiscoverMediaType, filters: Disco
       const nextPage = lastFetchedPage + i;
       if (nextPage > totalPages) break;
 
-      const cacheKey = `${mediaType}-${JSON.stringify(filters)}-${nextPage}`;
+      const cacheKey = `${mediaType}-${JSON.stringify(filters)}-${showBlocked}-${nextPage}`;
       if (prefetchedRef.current.has(cacheKey)) continue;
       prefetchedRef.current.add(cacheKey);
 
       queryClient.prefetchQuery({
-        queryKey: ["seer-discover-page", mediaType, filters, nextPage],
-        queryFn: () => discoverMedia(mediaType, nextPage, filters),
+        queryKey: ["seer-discover-page", mediaType, filters, showBlocked, nextPage],
+        queryFn: () => discoverMedia(mediaType, nextPage, filters, showBlocked),
         staleTime: STALE_TIME,
       });
     }
-  }, [query.data, mediaType, filters, queryClient]);
+  }, [query.data, mediaType, filters, showBlocked, queryClient]);
 
   // Reset prefetch cache when filters change
   useEffect(() => {
     prefetchedRef.current.clear();
-  }, [mediaType, filters]);
+  }, [mediaType, filters, showBlocked]);
 
   // Deduplicate results across pages (like Seerr's Set<number>)
   const titles = useMemo(() => {
@@ -105,6 +109,8 @@ export function useInfiniteDiscover(mediaType: DiscoverMediaType, filters: Disco
   const isLoadingInitialData = query.isLoading;
   const isLoadingMore = query.isFetchingNextPage;
   const totalResults = query.data?.pages[0]?.totalResults;
+  // Vrai si un blocage par tags est configuré côté Jellyseerr.
+  const blockedActive = query.data?.pages.some((p) => p.blockedActive) ?? false;
 
   const isEmpty = !isLoadingInitialData && titles.length === 0;
 
@@ -134,6 +140,7 @@ export function useInfiniteDiscover(mediaType: DiscoverMediaType, filters: Disco
     isReachingEnd,
     fetchMore,
     totalResults,
+    blockedActive,
     error: query.error,
     isError: query.isError,
     refetch: query.refetch,

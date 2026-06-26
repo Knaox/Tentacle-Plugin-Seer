@@ -44,6 +44,10 @@ export interface SeerrPagedResponse {
   totalPages: number;
   totalResults: number;
   results: SeerrSearchResult[];
+  /** Nombre d'éléments masqués par le blocage par tags Jellyseerr (search/trending). */
+  blockedCount?: number;
+  /** True si un blocage par tags est configuré côté Jellyseerr. */
+  blockedActive?: boolean;
 }
 
 export interface SeerrMediaRequest {

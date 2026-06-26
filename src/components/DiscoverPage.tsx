@@ -11,6 +11,7 @@ import { MediaCard } from "./MediaCard";
 import { MediaTabBar } from "./MediaTabBar";
 import { FilterPanel } from "./FilterPanel";
 import { ActiveFilterPills } from "./ActiveFilterPills";
+import { BlockedResultsBanner } from "./BlockedResultsBanner";
 import { HeroCarousel } from "./HeroCarousel";
 import { MediaDetailModal } from "./MediaDetailModal";
 import { SkeletonList } from "./SkeletonList";
@@ -26,6 +27,17 @@ export function DiscoverPage() {
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [mediaType, setMediaType] = useState<DiscoverMediaType>("movies");
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+  // « Afficher quand même » le contenu masqué par le blocage par tags Jellyseerr.
+  const [showBlocked, setShowBlocked] = useState<boolean>(() => {
+    try { return localStorage.getItem("seer_show_blocked") === "1"; } catch { return false; }
+  });
+  const toggleShowBlocked = useCallback(() => {
+    setShowBlocked((prev) => {
+      const next = !prev;
+      try { localStorage.setItem("seer_show_blocked", next ? "1" : "0"); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
   const [selectedItem, setSelectedItem] = useState<SeerrSearchResult | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -60,7 +72,7 @@ export function DiscoverPage() {
   }, []);
 
   // Hero uses trending
-  const { data: trendingData, isError: trendingError } = useTrending(1);
+  const { data: trendingData, isError: trendingError } = useTrending(1, showBlocked);
 
   // Seerr-style infinite discover
   const {
@@ -71,12 +83,13 @@ export function DiscoverPage() {
     isReachingEnd,
     fetchMore,
     totalResults,
+    blockedActive,
     isError,
     error,
     refetch,
-  } = useInfiniteDiscover(mediaType, filters);
+  } = useInfiniteDiscover(mediaType, filters, showBlocked);
 
-  const { data: searchData, isLoading: searchLoading } = useSeerSearch(debouncedQuery, 1);
+  const { data: searchData, isLoading: searchLoading } = useSeerSearch(debouncedQuery, 1, showBlocked);
   const requestMedia = useRequestMedia();
 
   const isSearching = debouncedQuery.length >= 2;
@@ -238,6 +251,23 @@ export function DiscoverPage() {
           hasActiveFilters={hasActiveFilters}
         />
       )}
+
+      {/* Bandeau « contenu masqué · afficher quand même » */}
+      {(() => {
+        const searchBlockedActive = !!searchData?.blockedActive;
+        const searchBlockedCount = searchData?.blockedCount ?? 0;
+        const bannerVisible = isSearching
+          ? searchBlockedActive && (showBlocked || searchBlockedCount > 0)
+          : blockedActive;
+        if (!bannerVisible || isLoading) return null;
+        return (
+          <BlockedResultsBanner
+            blockedCount={isSearching ? searchBlockedCount : 0}
+            showBlocked={showBlocked}
+            onToggle={toggleShowBlocked}
+          />
+        );
+      })()}
 
       {/* Results */}
       <div key={viewKey} style={{ animation: "viewCrossfade 200ms ease" }}>
