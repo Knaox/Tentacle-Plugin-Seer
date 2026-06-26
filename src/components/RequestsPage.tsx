@@ -1,4 +1,4 @@
-import { useState, useCallback, lazy, Suspense } from "react";
+import { useState, useCallback, useEffect, useRef, lazy, Suspense } from "react";
 import { useTranslation } from "react-i18next";
 import {
   useMyRequests, useDeleteRequest, useRetryRequest, useRetryDeleteRequest,
@@ -36,6 +36,9 @@ export function RequestsPage() {
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [typeFilter, setTypeFilter] = useState<"all" | "movie" | "tv">("all");
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [addSeasonsItem, setAddSeasonsItem] = useState<SeerrSearchResult | null>(null);
@@ -46,7 +49,17 @@ export function RequestsPage() {
 
   const backendStatus = statusFilter === "all" ? undefined : statusFilter;
   const backendType = typeFilter === "all" ? undefined : typeFilter;
-  const { data, isLoading } = useMyRequests(page, 20, backendStatus, backendType);
+  const { data, isLoading } = useMyRequests(page, 20, backendStatus, backendType, debouncedSearch || undefined);
+
+  // Debounce de la recherche (revient page 1 à chaque nouvelle requête).
+  useEffect(() => {
+    clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(searchDebounceRef.current);
+  }, [search]);
   const deleteMutation = useDeleteRequest();
   const retryMutation = useRetryRequest();
   const retryDeleteMutation = useRetryDeleteRequest();
@@ -168,6 +181,32 @@ export function RequestsPage() {
         </div>
       )}
 
+      {/* Barre de recherche */}
+      <div className="relative mb-4 rounded-xl bg-white/5 backdrop-blur-xl">
+        <svg className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+        </svg>
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={t("seer:searchRequestsPlaceholder")}
+          aria-label={t("seer:searchRequestsPlaceholder")}
+          className="w-full rounded-xl border border-white/5 bg-transparent py-3 pl-12 pr-12 text-sm text-white placeholder-white/30 outline-none transition-all focus:border-tentacle-brand/30 focus:ring-2 focus:ring-tentacle-brand/50"
+        />
+        {search && (
+          <button
+            onClick={() => setSearch("")}
+            aria-label={t("seer:cancel")}
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 transition-colors hover:text-white/60"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
+      </div>
+
       {/* Filters */}
       <div className="mb-4 flex flex-wrap gap-2">
         {STATUS_TABS.map((tab) => (
@@ -256,9 +295,9 @@ export function RequestsPage() {
         </div>
       ) : (
         <EmptyState
-          title={statusFilter === "all" ? t("seer:noRequestsAll") : t("seer:noRequestsFiltered")}
-          subtitle={statusFilter === "all" ? t("seer:noRequestsHint") : undefined}
-          action={statusFilter === "all" ? (
+          title={statusFilter === "all" && !debouncedSearch ? t("seer:noRequestsAll") : t("seer:noRequestsFiltered")}
+          subtitle={statusFilter === "all" && !debouncedSearch ? t("seer:noRequestsHint") : undefined}
+          action={statusFilter === "all" && !debouncedSearch ? (
             <button
               onClick={() => {
                 if ((window as any).ReactNativeWebView?.postMessage) {

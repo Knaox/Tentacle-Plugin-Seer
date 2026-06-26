@@ -1803,6 +1803,10 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
       const wanted = new Set(query.status.split(",").map((s) => s.trim()));
       filtered = filtered.filter((r) => wanted.has(r.status));
     }
+    if (query.q) {
+      const q = query.q.trim().toLowerCase();
+      if (q) filtered = filtered.filter((r) => (r.title ?? "").toLowerCase().includes(q));
+    }
     const total = filtered.length;
     const offset = (page - 1) * limit;
     const sliced = filtered.slice(offset, offset + limit);

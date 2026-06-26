@@ -10,10 +10,11 @@ export function useMyRequests(
   limit = 20,
   status?: string,
   mediaType?: string,
+  q?: string,
 ) {
   const query = useQuery({
-    queryKey: ["seer-my-requests", page, limit, status, mediaType],
-    queryFn: () => getMyRequests(page, limit, status, mediaType),
+    queryKey: ["seer-my-requests", page, limit, status, mediaType, q],
+    queryFn: () => getMyRequests(page, limit, status, mediaType, q),
     staleTime: 60_000,        // 1 min — backend cache de toute façon la liste 60s par user
     gcTime: 30 * 60_000,      // 30 min en mémoire après dernière utilisation
     refetchInterval: 60_000,

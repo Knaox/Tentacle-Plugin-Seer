@@ -222,10 +222,12 @@ export async function getMyRequests(
   limit = 20,
   status?: string,
   mediaType?: string,
+  q?: string,
 ): Promise<LocalRequestsResponse> {
   const params = new URLSearchParams({ page: String(page), limit: String(limit) });
   if (status) params.set("status", status);
   if (mediaType) params.set("type", mediaType);
+  if (q && q.trim()) params.set("q", q.trim());
   return backendFetch(`/requests?${params}`);
 }
 

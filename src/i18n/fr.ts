@@ -14,6 +14,7 @@ export default {
   // Discover
   discoverTitle: "Découvrir",
   searchPlaceholder: "Rechercher un film, une série...",
+  searchRequestsPlaceholder: "Rechercher dans mes demandes...",
   previousPage: "Précédent",
   nextPage: "Suivant",
   noResults: "Aucun résultat",

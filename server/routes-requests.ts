@@ -258,7 +258,7 @@ export function registerRequestRoutes(
   /* ── GET /requests — fusion Jellyseerr (source de vérité) + locales en attente ── */
   app.get("/requests", async (request, reply) => {
     const user = getUser(request);
-    const query = request.query as { page?: string; limit?: string; status?: string; type?: string };
+    const query = request.query as { page?: string; limit?: string; status?: string; type?: string; q?: string };
 
     if (user.isAdmin && query.status === "all_users") {
       const list = await getAllRequests(prisma, {
@@ -350,6 +350,11 @@ export function registerRequestRoutes(
     if (query.status) {
       const wanted = new Set(query.status.split(",").map((s) => s.trim() as RequestStatus));
       filtered = filtered.filter((r) => wanted.has(r.status));
+    }
+    // Recherche par titre (sur toute la liste fusionnée, avant pagination).
+    if (query.q) {
+      const q = query.q.trim().toLowerCase();
+      if (q) filtered = filtered.filter((r) => (r.title ?? "").toLowerCase().includes(q));
     }
     const total = filtered.length;
     const offset = (page - 1) * limit;
