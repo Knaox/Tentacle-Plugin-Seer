@@ -103,6 +103,7 @@ export async function ensureTables(prisma: Prisma): Promise<void> {
   };
 
   await addColumn("seer_cleanup_queue", "request_id", "VARCHAR(36) DEFAULT NULL");
+  await addColumn("seer_cleanup_queue", "seasons", "TEXT DEFAULT NULL");
   await addColumn("seer_requests", "pending_cleanup_id", "VARCHAR(36) DEFAULT NULL");
   await addColumn("seer_requests", "profile_id", "VARCHAR(36) DEFAULT NULL");
   await addColumn("seer_requests", "is_anime", "TINYINT(1) NOT NULL DEFAULT 0");

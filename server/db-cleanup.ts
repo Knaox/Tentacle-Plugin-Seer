@@ -18,12 +18,27 @@ export interface CleanupJob {
   seerrRequestId: number | null;
   seerrMediaId: number | null;
   deleteFiles: boolean;
+  /** Saisons ciblées (TV). null/[] = série entière / film. */
+  seasons: number[] | null;
   retryCount: number;
   maxRetries: number;
   lastError: string | null;
   status: string;
   nextRetryAt: string;
   requestId: string | null;
+}
+
+/** Parse défensif de la colonne JSON `seasons`. */
+function parseSeasons(raw: unknown): number[] | null {
+  if (raw == null) return null;
+  try {
+    const arr = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (Array.isArray(arr)) {
+      const nums = arr.map(Number).filter((n) => Number.isFinite(n));
+      return nums.length > 0 ? nums : null;
+    }
+  } catch { /* ignore */ }
+  return null;
 }
 
 /* ── CRUD ─────────────────────────────────────────────────────────── */
@@ -38,15 +53,17 @@ export async function enqueueCleanup(
     seerrRequestId?: number | null;
     seerrMediaId?: number | null;
     deleteFiles?: boolean;
+    seasons?: number[] | null;
     requestId?: string | null;
   },
 ): Promise<string> {
   const id = uuid();
   await prisma.$executeRawUnsafe(
-    `INSERT INTO seer_cleanup_queue (id, action, media_type, tmdb_id, title, seerr_request_id, seerr_media_id, delete_files, request_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO seer_cleanup_queue (id, action, media_type, tmdb_id, title, seerr_request_id, seerr_media_id, delete_files, seasons, request_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     id, job.action, job.mediaType, job.tmdbId, job.title,
     job.seerrRequestId ?? null, job.seerrMediaId ?? null, job.deleteFiles ? 1 : 0,
+    job.seasons && job.seasons.length > 0 ? JSON.stringify(job.seasons) : null,
     job.requestId ?? null,
   );
   return id;
@@ -67,6 +84,7 @@ export async function getPendingCleanups(prisma: Prisma): Promise<CleanupJob[]> 
     seerrRequestId: (r.seerr_request_id as number) || null,
     seerrMediaId: (r.seerr_media_id as number) || null,
     deleteFiles: Boolean(r.delete_files),
+    seasons: parseSeasons(r.seasons),
     retryCount: (r.retry_count as number) || 0,
     maxRetries: (r.max_retries as number) || 20,
     lastError: (r.last_error as string) || null,

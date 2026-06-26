@@ -217,11 +217,23 @@ async function getGlobalStats(prisma) {
 
 // server/db-cleanup.ts
 init_db_helpers();
+function parseSeasons(raw) {
+  if (raw == null) return null;
+  try {
+    const arr = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (Array.isArray(arr)) {
+      const nums = arr.map(Number).filter((n) => Number.isFinite(n));
+      return nums.length > 0 ? nums : null;
+    }
+  } catch {
+  }
+  return null;
+}
 async function enqueueCleanup(prisma, job) {
   const id = uuid();
   await prisma.$executeRawUnsafe(
-    `INSERT INTO seer_cleanup_queue (id, action, media_type, tmdb_id, title, seerr_request_id, seerr_media_id, delete_files, request_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO seer_cleanup_queue (id, action, media_type, tmdb_id, title, seerr_request_id, seerr_media_id, delete_files, seasons, request_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     id,
     job.action,
     job.mediaType,
@@ -230,6 +242,7 @@ async function enqueueCleanup(prisma, job) {
     job.seerrRequestId ?? null,
     job.seerrMediaId ?? null,
     job.deleteFiles ? 1 : 0,
+    job.seasons && job.seasons.length > 0 ? JSON.stringify(job.seasons) : null,
     job.requestId ?? null
   );
   return id;
@@ -249,6 +262,7 @@ async function getPendingCleanups(prisma) {
     seerrRequestId: r.seerr_request_id || null,
     seerrMediaId: r.seerr_media_id || null,
     deleteFiles: Boolean(r.delete_files),
+    seasons: parseSeasons(r.seasons),
     retryCount: r.retry_count || 0,
     maxRetries: r.max_retries || 20,
     lastError: r.last_error || null,
@@ -361,6 +375,7 @@ async function ensureTables(prisma) {
     }
   };
   await addColumn("seer_cleanup_queue", "request_id", "VARCHAR(36) DEFAULT NULL");
+  await addColumn("seer_cleanup_queue", "seasons", "TEXT DEFAULT NULL");
   await addColumn("seer_requests", "pending_cleanup_id", "VARCHAR(36) DEFAULT NULL");
   await addColumn("seer_requests", "profile_id", "VARCHAR(36) DEFAULT NULL");
   await addColumn("seer_requests", "is_anime", "TINYINT(1) NOT NULL DEFAULT 0");
@@ -933,6 +948,196 @@ function statusNotification(request, newStatus) {
   }
 }
 
+// server/arr-service.ts
+var sonarrCache = null;
+var radarrCache = null;
+async function getArrServerConfig(seerrUrl, apiKey, type) {
+  const cache = type === "sonarr" ? sonarrCache : radarrCache;
+  if (cache && Date.now() < cache.expires) return cache.data;
+  try {
+    const res = await fetch(`${seerrUrl}/api/v1/settings/${type}`, {
+      headers: { "X-Api-Key": apiKey },
+      signal: AbortSignal.timeout(1e4)
+    });
+    if (!res.ok) {
+      setCacheForType(type, null);
+      return null;
+    }
+    const servers = await res.json();
+    const defaultServer = servers.find((s) => s.isDefault);
+    if (!defaultServer) {
+      setCacheForType(type, null);
+      return null;
+    }
+    const data = {
+      hostname: defaultServer.hostname,
+      port: defaultServer.port,
+      apiKey: defaultServer.apiKey,
+      useSsl: !!defaultServer.useSsl,
+      baseUrl: defaultServer.baseUrl || ""
+    };
+    setCacheForType(type, data);
+    return data;
+  } catch {
+    setCacheForType(type, null);
+    return null;
+  }
+}
+function setCacheForType(type, data) {
+  const entry = { data, expires: Date.now() + 6e5 };
+  if (type === "sonarr") sonarrCache = entry;
+  else radarrCache = entry;
+}
+function buildArrUrl(server) {
+  const protocol = server.useSsl ? "https" : "http";
+  const base = server.baseUrl ? `/${server.baseUrl.replace(/^\/|\/$/g, "")}` : "";
+  return `${protocol}://${server.hostname}:${server.port}${base}`;
+}
+async function getMediaExternalId(seerrUrl, apiKey, mediaType, tmdbId) {
+  try {
+    const res = await fetch(`${seerrUrl}/api/v1/${mediaType}/${tmdbId}`, {
+      headers: { "X-Api-Key": apiKey },
+      signal: AbortSignal.timeout(1e4)
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data.mediaInfo?.externalServiceId) return null;
+    return {
+      externalServiceId: data.mediaInfo.externalServiceId,
+      serviceId: data.mediaInfo.serviceId ?? 0
+    };
+  } catch {
+    return null;
+  }
+}
+async function arrFetch(server, path, init) {
+  return fetch(`${buildArrUrl(server)}${path}`, {
+    ...init,
+    headers: { "X-Api-Key": server.apiKey, ...init?.headers ?? {} },
+    signal: AbortSignal.timeout(15e3)
+  });
+}
+function isTargetedSeason(seasonNumber, seasons) {
+  if (!seasons || seasons.length === 0) return true;
+  return seasons.includes(seasonNumber);
+}
+async function unmonitorSonarrSeasons(server, seriesId, seasons) {
+  try {
+    const getRes = await arrFetch(server, `/api/v3/series/${seriesId}`);
+    if (getRes.status === 404) return true;
+    if (!getRes.ok) return false;
+    const series = await getRes.json();
+    for (const s of series.seasons ?? []) {
+      if (isTargetedSeason(s.seasonNumber, seasons)) s.monitored = false;
+    }
+    if ((series.seasons ?? []).every((s) => !s.monitored)) series.monitored = false;
+    const putRes = await arrFetch(server, `/api/v3/series/${seriesId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(series)
+    });
+    return putRes.ok || putRes.status === 404;
+  } catch (err) {
+    console.warn(`[ArrService] unmonitorSonarrSeasons #${seriesId} failed:`, err);
+    return false;
+  }
+}
+async function deleteSonarrSeasonFiles(server, seriesId, seasons) {
+  try {
+    const res = await arrFetch(server, `/api/v3/episodefile?seriesId=${seriesId}`);
+    if (res.status === 404) return true;
+    if (!res.ok) return false;
+    const files = await res.json();
+    const targets = files.filter((f) => isTargetedSeason(f.seasonNumber, seasons));
+    if (targets.length === 0) return true;
+    const bulk = await arrFetch(server, `/api/v3/episodefile/bulk`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ episodeFileIds: targets.map((f) => f.id) })
+    });
+    if (bulk.ok) return true;
+    let ok = true;
+    for (const f of targets) {
+      const del = await arrFetch(server, `/api/v3/episodefile/${f.id}`, { method: "DELETE" });
+      if (!del.ok && del.status !== 404) ok = false;
+    }
+    return ok;
+  } catch (err) {
+    console.warn(`[ArrService] deleteSonarrSeasonFiles #${seriesId} failed:`, err);
+    return false;
+  }
+}
+async function cancelSonarrQueue(server, seriesId, seasons) {
+  try {
+    const res = await arrFetch(server, `/api/v3/queue?pageSize=1000&includeSeries=false`);
+    if (!res.ok) return;
+    const data = await res.json();
+    const records = data.records ?? [];
+    for (const r of records) {
+      if (r.seriesId !== seriesId) continue;
+      if (r.seasonNumber !== void 0 && !isTargetedSeason(r.seasonNumber, seasons)) continue;
+      await arrFetch(server, `/api/v3/queue/${r.id}?removeFromClient=true&blocklist=false`, {
+        method: "DELETE"
+      }).catch(() => {
+      });
+    }
+  } catch (err) {
+    console.warn(`[ArrService] cancelSonarrQueue #${seriesId} failed:`, err);
+  }
+}
+async function unmonitorRadarrMovie(server, movieId) {
+  try {
+    const getRes = await arrFetch(server, `/api/v3/movie/${movieId}`);
+    if (getRes.status === 404) return true;
+    if (!getRes.ok) return false;
+    const movie = await getRes.json();
+    movie.monitored = false;
+    const putRes = await arrFetch(server, `/api/v3/movie/${movieId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(movie)
+    });
+    return putRes.ok || putRes.status === 404;
+  } catch (err) {
+    console.warn(`[ArrService] unmonitorRadarrMovie #${movieId} failed:`, err);
+    return false;
+  }
+}
+async function deleteRadarrMovieFile(server, movieId) {
+  try {
+    const res = await arrFetch(server, `/api/v3/moviefile?movieId=${movieId}`);
+    if (res.status === 404) return true;
+    if (!res.ok) return false;
+    const files = await res.json();
+    if (files.length === 0) return true;
+    let ok = true;
+    for (const f of files) {
+      const del = await arrFetch(server, `/api/v3/moviefile/${f.id}`, { method: "DELETE" });
+      if (!del.ok && del.status !== 404) ok = false;
+    }
+    return ok;
+  } catch (err) {
+    console.warn(`[ArrService] deleteRadarrMovieFile #${movieId} failed:`, err);
+    return false;
+  }
+}
+async function cancelRadarrQueue(server, movieId) {
+  try {
+    const res = await arrFetch(server, `/api/v3/queue?pageSize=1000&includeMovie=false`);
+    if (!res.ok) return;
+    const data = await res.json();
+    for (const r of data.records ?? []) {
+      if (r.movieId !== movieId) continue;
+      await arrFetch(server, `/api/v3/queue/${r.id}?removeFromClient=true&blocklist=false`, {
+        method: "DELETE"
+      }).catch(() => {
+      });
+    }
+  } catch (err) {
+    console.warn(`[ArrService] cancelRadarrQueue #${movieId} failed:`, err);
+  }
+}
+
 // server/worker-cleanup.ts
 async function processCleanupQueue(prisma, config) {
   const jobs = await getPendingCleanups(prisma);
@@ -940,25 +1145,35 @@ async function processCleanupQueue(prisma, config) {
   const job = jobs[0];
   const headers = { "X-Api-Key": config.seerrApiKey };
   try {
-    if (job.deleteFiles && job.seerrMediaId) {
-      const fileRes = await fetch(
-        `${config.seerrUrl}/api/v1/media/${job.seerrMediaId}/file?is4k=false`,
-        { method: "DELETE", headers, signal: AbortSignal.timeout(3e4) }
-      );
-      if (!fileRes.ok && fileRes.status !== 404) {
-        const body = await fileRes.text().catch(() => "");
-        throw new Error(`Jellyseerr /media/file returned ${fileRes.status}: ${body.slice(0, 200)}`);
+    const arrType = job.mediaType === "movie" ? "radarr" : "sonarr";
+    const [server, ext] = await Promise.all([
+      getArrServerConfig(config.seerrUrl, config.seerrApiKey, arrType),
+      getMediaExternalId(config.seerrUrl, config.seerrApiKey, job.mediaType, job.tmdbId)
+    ]);
+    if (server && ext?.externalServiceId) {
+      const arrId = ext.externalServiceId;
+      if (job.mediaType === "movie") {
+        await cancelRadarrQueue(server, arrId);
+        const unmon = await unmonitorRadarrMovie(server, arrId);
+        if (!unmon) throw new Error("Radarr unmonitor failed");
+        if (job.deleteFiles) {
+          const del = await deleteRadarrMovieFile(server, arrId);
+          if (!del) throw new Error("Radarr delete file failed");
+        }
+      } else {
+        await cancelSonarrQueue(server, arrId, job.seasons);
+        const unmon = await unmonitorSonarrSeasons(server, arrId, job.seasons);
+        if (!unmon) throw new Error("Sonarr unmonitor failed");
+        if (job.deleteFiles) {
+          const del = await deleteSonarrSeasonFiles(server, arrId, job.seasons);
+          if (!del) throw new Error("Sonarr delete season files failed");
+        }
       }
-      console.log(`[SeerWorker] Deleted files via Jellyseerr for "${job.title}" (status=${fileRes.status})`);
-    }
-    if (job.deleteFiles && job.seerrMediaId) {
-      const mediaRes = await fetch(
-        `${config.seerrUrl}/api/v1/media/${job.seerrMediaId}`,
-        { method: "DELETE", headers, signal: AbortSignal.timeout(15e3) }
+      console.log(
+        `[SeerWorker] *arr cleanup for "${job.title}" (${arrType} #${arrId}, seasons=${job.seasons ? JSON.stringify(job.seasons) : "all"}, deleteFiles=${job.deleteFiles})`
       );
-      if (!mediaRes.ok && mediaRes.status !== 404) {
-        console.warn(`[SeerWorker] Seerr media delete returned ${mediaRes.status} for "${job.title}"`);
-      }
+    } else {
+      console.log(`[SeerWorker] "${job.title}" : pas de cible *arr (jamais grab\xE9) \u2014 skip ops *arr`);
     }
     if (job.seerrRequestId) {
       await fetch(
@@ -1681,25 +1896,31 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
       if (req.jellyfinUserId !== user.userId && !user.isAdmin) {
         return reply.status(403).send({ message: "Not your request" });
       }
-      const isSeasonSpecific = req.mediaType === "tv" && body.seasons && body.seasons.length > 0;
-      const isFullSeries = req.mediaType === "tv" && !isSeasonSpecific;
-      if (req.mediaType === "movie" || isFullSeries) {
-        await updateRequestStatus(prisma, parsed.id, "deleting");
-        await enqueueCleanup(prisma, {
-          action: "delete",
-          mediaType: req.mediaType,
-          tmdbId: req.tmdbId,
-          title: req.title,
-          seerrRequestId: req.seerrRequestId,
-          seerrMediaId: req.seerrMediaId,
-          deleteFiles,
-          requestId: parsed.id
-        });
+      const reqSeasons = req.seasons ?? [];
+      const isSeasonSpecific = req.mediaType === "tv" && !!body.seasons && body.seasons.length > 0;
+      const removing = isSeasonSpecific ? body.seasons : null;
+      const remaining = isSeasonSpecific ? reqSeasons.filter((s) => !removing.includes(s)) : [];
+      const partial = isSeasonSpecific && remaining.length > 0;
+      await enqueueCleanup(prisma, {
+        action: "delete",
+        mediaType: req.mediaType,
+        tmdbId: req.tmdbId,
+        title: req.title,
+        // En partiel on préserve la demande Jellyseerr et la ligne locale
+        // (les saisons conservées restent suivies) ; on agit uniquement sur *arr.
+        seerrRequestId: partial ? null : req.seerrRequestId,
+        seerrMediaId: req.seerrMediaId,
+        deleteFiles,
+        seasons: removing,
+        requestId: partial ? null : parsed.id
+      });
+      if (partial) {
+        await addSeasonsToRequest(prisma, parsed.id, remaining);
       } else {
-        await deleteRequestById(prisma, parsed.id);
+        await updateRequestStatus(prisma, parsed.id, "deleting");
       }
       invalidate(`seer-cache:${user.userId}`);
-      return { success: true, status: "deleting" };
+      return { success: true, status: partial ? "updated" : "deleting" };
     }
     const config = await getWorkerConfig2();
     if (!config) return reply.status(503).send({ message: "Seerr not configured" });
@@ -1723,6 +1944,7 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
       seerrRequestId: seerrReq.id,
       seerrMediaId: seerrReq.media?.id ?? null,
       deleteFiles,
+      seasons: body.seasons && body.seasons.length > 0 ? body.seasons : null,
       requestId: null
     });
     invalidate(`seer-cache:${user.userId}`);

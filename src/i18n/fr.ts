@@ -325,7 +325,7 @@ export default {
   seasonActionAll: "Toute la série",
   seasonActionSelected: "Saisons sélectionnées",
   seasonActionConfirm: "Confirmer",
-  seasonActionDeleteWarn: "La série sera supprimée de Sonarr",
+  seasonActionDeleteWarn: "Les fichiers téléchargés seront supprimés (pour tous les utilisateurs). La série/le film reste dans Sonarr/Radarr.",
   seasonActionRetryWarn: "Les données Sonarr/Radarr seront supprimées",
 
   // Permissions / quotas (erreurs métier renvoyées par le backend)
@@ -378,7 +378,7 @@ export default {
 
   // Options destructives sur delete/retry
   deleteAlsoFiles: "Supprimer aussi le contenu (Sonarr/Radarr)",
-  deleteAlsoFilesHint: "Décoché : seule la demande Jellyseerr est supprimée. Coché : les fichiers téléchargés le sont aussi.",
+  deleteAlsoFilesHint: "Décoché : on arrête le suivi (Sonarr/Radarr ne re-télécharge plus), le contenu déjà téléchargé est conservé. Coché : les fichiers sont aussi supprimés. La série/le film n'est jamais retiré de Sonarr/Radarr.",
   forceRedownload: "Forcer le re-téléchargement",
   forceRedownloadHint: "Décoché : on relance simplement la demande dans Jellyseerr. Coché : on supprime le média existant et on redemande.",
 

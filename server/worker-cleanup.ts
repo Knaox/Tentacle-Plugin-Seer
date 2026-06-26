@@ -7,6 +7,11 @@ import {
   getPendingCleanups, updateCleanupJob,
   clearPendingCleanup, deleteRequestById, updateRequestStatus,
 } from "./db";
+import {
+  getArrServerConfig, getMediaExternalId,
+  unmonitorSonarrSeasons, deleteSonarrSeasonFiles, cancelSonarrQueue,
+  unmonitorRadarrMovie, deleteRadarrMovieFile, cancelRadarrQueue,
+} from "./arr-service";
 import type { WorkerConfig } from "./worker-sync";
 
 export async function processCleanupQueue(prisma: PrismaClient, config: WorkerConfig): Promise<void> {
@@ -17,37 +22,47 @@ export async function processCleanupQueue(prisma: PrismaClient, config: WorkerCo
   const headers = { "X-Api-Key": config.seerrApiKey };
 
   try {
-    // === ÉTAPE 1 : Supprimer de Sonarr/Radarr via Jellyseerr ===
-    // L'endpoint /media/{id}/file appelle Sonarr/Radarr pour nous
-    // Skipée si deleteFiles=false (par défaut UI) — on ne touche pas aux fichiers téléchargés.
-    if (job.deleteFiles && job.seerrMediaId) {
-      const fileRes = await fetch(
-        `${config.seerrUrl}/api/v1/media/${job.seerrMediaId}/file?is4k=false`,
-        { method: "DELETE", headers, signal: AbortSignal.timeout(30_000) },
-      );
+    // === ÉTAPES *arr : on ne retire JAMAIS la série/le film de Sonarr/Radarr. ===
+    // On agit en direct sur *arr : annuler la file → désactiver la surveillance
+    // (toujours, empêche le re-téléchargement) → supprimer les fichiers (si demandé).
+    // Best-effort : si le média n'a jamais été grabé (pas d'externalServiceId) ou
+    // si *arr est injoignable, on saute proprement sans bloquer le reste.
+    const arrType = job.mediaType === "movie" ? "radarr" : "sonarr";
+    const [server, ext] = await Promise.all([
+      getArrServerConfig(config.seerrUrl, config.seerrApiKey, arrType),
+      getMediaExternalId(config.seerrUrl, config.seerrApiKey, job.mediaType, job.tmdbId),
+    ]);
 
-      if (!fileRes.ok && fileRes.status !== 404) {
-        const body = await fileRes.text().catch(() => "");
-        throw new Error(`Jellyseerr /media/file returned ${fileRes.status}: ${body.slice(0, 200)}`);
+    if (server && ext?.externalServiceId) {
+      const arrId = ext.externalServiceId;
+      if (job.mediaType === "movie") {
+        await cancelRadarrQueue(server, arrId);
+        const unmon = await unmonitorRadarrMovie(server, arrId);
+        if (!unmon) throw new Error("Radarr unmonitor failed");
+        if (job.deleteFiles) {
+          const del = await deleteRadarrMovieFile(server, arrId);
+          if (!del) throw new Error("Radarr delete file failed");
+        }
+      } else {
+        await cancelSonarrQueue(server, arrId, job.seasons);
+        const unmon = await unmonitorSonarrSeasons(server, arrId, job.seasons);
+        if (!unmon) throw new Error("Sonarr unmonitor failed");
+        if (job.deleteFiles) {
+          const del = await deleteSonarrSeasonFiles(server, arrId, job.seasons);
+          if (!del) throw new Error("Sonarr delete season files failed");
+        }
       }
-
-      console.log(`[SeerWorker] Deleted files via Jellyseerr for "${job.title}" (status=${fileRes.status})`);
+      console.log(
+        `[SeerWorker] *arr cleanup for "${job.title}" (${arrType} #${arrId}, ` +
+        `seasons=${job.seasons ? JSON.stringify(job.seasons) : "all"}, deleteFiles=${job.deleteFiles})`,
+      );
+    } else {
+      console.log(`[SeerWorker] "${job.title}" : pas de cible *arr (jamais grabé) — skip ops *arr`);
     }
 
-    // === ÉTAPE 2 : Supprimer le media de Jellyseerr (cascade les requests) ===
-    // Skipée si deleteFiles=false : on conserve le media et on supprime juste la request.
-    if (job.deleteFiles && job.seerrMediaId) {
-      const mediaRes = await fetch(
-        `${config.seerrUrl}/api/v1/media/${job.seerrMediaId}`,
-        { method: "DELETE", headers, signal: AbortSignal.timeout(15_000) },
-      );
-
-      if (!mediaRes.ok && mediaRes.status !== 404) {
-        console.warn(`[SeerWorker] Seerr media delete returned ${mediaRes.status} for "${job.title}"`);
-      }
-    }
-
-    // === ÉTAPE 3 : Supprimer la request Seerr (toujours faite) ===
+    // === Supprimer la demande Jellyseerr (toujours, pour la retirer des listes). ===
+    // On ne touche PAS au média Jellyseerr (pas de removeSeries/deleteMovie ni
+    // /media/file) : la disponibilité se re-synchronise seule côté Jellyseerr.
     if (job.seerrRequestId) {
       await fetch(
         `${config.seerrUrl}/api/v1/request/${job.seerrRequestId}`,
@@ -55,7 +70,7 @@ export async function processCleanupQueue(prisma: PrismaClient, config: WorkerCo
       ).catch(() => {});
     }
 
-    // === ÉTAPE 4 : Cleanup local ===
+    // === Cleanup local ===
     await updateCleanupJob(prisma, job.id, "completed");
 
     if (job.requestId) {

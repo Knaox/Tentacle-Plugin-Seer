@@ -473,21 +473,34 @@ export function registerRequestRoutes(
         return reply.status(403).send({ message: "Not your request" });
       }
 
-      const isSeasonSpecific = req.mediaType === "tv" && body.seasons && body.seasons.length > 0;
-      const isFullSeries = req.mediaType === "tv" && !isSeasonSpecific;
+      // Suppression « douce » : on route TOUT (film, série entière, saison) via la
+      // cleanup queue. Le worker désactive la surveillance *arr (+ supprime les
+      // fichiers si deleteFiles) sans jamais retirer la série/le film.
+      const reqSeasons = req.seasons ?? [];
+      const isSeasonSpecific = req.mediaType === "tv" && !!body.seasons && body.seasons.length > 0;
+      const removing = isSeasonSpecific ? body.seasons! : null;
+      const remaining = isSeasonSpecific ? reqSeasons.filter((s) => !removing!.includes(s)) : [];
+      // Partiel = on retire certaines saisons mais d'autres restent suivies.
+      const partial = isSeasonSpecific && remaining.length > 0;
 
-      if (req.mediaType === "movie" || isFullSeries) {
-        await updateRequestStatus(prisma, parsed.id, "deleting");
-        await enqueueCleanup(prisma, {
-          action: "delete", mediaType: req.mediaType, tmdbId: req.tmdbId, title: req.title,
-          seerrRequestId: req.seerrRequestId, seerrMediaId: req.seerrMediaId,
-          deleteFiles, requestId: parsed.id,
-        });
+      await enqueueCleanup(prisma, {
+        action: "delete", mediaType: req.mediaType, tmdbId: req.tmdbId, title: req.title,
+        // En partiel on préserve la demande Jellyseerr et la ligne locale
+        // (les saisons conservées restent suivies) ; on agit uniquement sur *arr.
+        seerrRequestId: partial ? null : req.seerrRequestId,
+        seerrMediaId: req.seerrMediaId,
+        deleteFiles,
+        seasons: removing,
+        requestId: partial ? null : parsed.id,
+      });
+
+      if (partial) {
+        await addSeasonsToRequest(prisma, parsed.id, remaining);
       } else {
-        await deleteRequestById(prisma, parsed.id);
+        await updateRequestStatus(prisma, parsed.id, "deleting");
       }
       invalidate(`seer-cache:${user.userId}`);
-      return { success: true, status: "deleting" };
+      return { success: true, status: partial ? "updated" : "deleting" };
     }
 
     // ── Demande venant directement de Jellyseerr (pas de pendant local) ──
@@ -517,6 +530,7 @@ export function registerRequestRoutes(
       seerrRequestId: seerrReq.id,
       seerrMediaId: seerrReq.media?.id ?? null,
       deleteFiles,
+      seasons: body.seasons && body.seasons.length > 0 ? body.seasons : null,
       requestId: null,
     });
 

@@ -324,7 +324,7 @@ export default {
   seasonActionAll: "Entire series",
   seasonActionSelected: "Selected seasons",
   seasonActionConfirm: "Confirm",
-  seasonActionDeleteWarn: "Series will be removed from Sonarr",
+  seasonActionDeleteWarn: "Downloaded files will be deleted (for all users). The series/movie stays in Sonarr/Radarr.",
   seasonActionRetryWarn: "Sonarr/Radarr data will be deleted",
 
   // Permissions / quotas (business errors returned by the backend)
@@ -377,7 +377,7 @@ export default {
 
   // Destructive options on delete/retry
   deleteAlsoFiles: "Also delete content (Sonarr/Radarr)",
-  deleteAlsoFilesHint: "Unchecked: only the Jellyseerr request is removed. Checked: downloaded files are removed too.",
+  deleteAlsoFilesHint: "Unchecked: monitoring is turned off (Sonarr/Radarr won't re-download), downloaded content is kept. Checked: files are deleted too. The series/movie is never removed from Sonarr/Radarr.",
   forceRedownload: "Force re-download",
   forceRedownloadHint: "Unchecked: simply re-trigger the request in Jellyseerr. Checked: delete existing media and re-request.",
 
