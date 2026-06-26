@@ -61,14 +61,20 @@ export async function processCleanupQueue(prisma: PrismaClient, config: WorkerCo
       console.log(`[SeerWorker] "${job.title}" : pas de cible *arr (jamais grabé) — skip ops *arr`);
     }
 
-    // === Supprimer la demande Jellyseerr (toujours, pour la retirer des listes). ===
+    // === Supprimer la demande Jellyseerr (obligatoire — retry si échec). ===
     // On ne touche PAS au média Jellyseerr (pas de removeSeries/deleteMovie ni
     // /media/file) : la disponibilité se re-synchronise seule côté Jellyseerr.
+    // 404 = déjà supprimée → OK. Tout autre échec → throw pour relancer le job
+    // (les ops *arr sont idempotentes), afin de ne jamais laisser une demande
+    // orpheline dans Jellyseerr.
     if (job.seerrRequestId) {
-      await fetch(
+      const delRes = await fetch(
         `${config.seerrUrl}/api/v1/request/${job.seerrRequestId}`,
         { method: "DELETE", headers, signal: AbortSignal.timeout(10_000) },
-      ).catch(() => {});
+      );
+      if (!delRes.ok && delRes.status !== 404) {
+        throw new Error(`Jellyseerr request delete returned ${delRes.status}`);
+      }
     }
 
     // === Cleanup local ===

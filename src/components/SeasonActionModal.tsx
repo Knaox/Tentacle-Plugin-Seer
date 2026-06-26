@@ -21,8 +21,9 @@ export function SeasonActionModal({ request, action, onConfirm, onClose }: Seaso
   const hasSeasons = seasons.length > 0;
   const [selected, setSelected] = useState<Set<number>>(new Set(seasons));
   const [profileId, setProfileId] = useState<string | null>(request.profileId ?? null);
-  // Toggles destructifs — décochés par défaut (1 clic = action peu invasive)
-  const [deleteFiles, setDeleteFiles] = useState(false);
+  // Suppression : « supprimer le contenu » coché par défaut (supprime aussi les
+  // fichiers Sonarr/Radarr). Retry : forcer le re-téléchargement reste décoché.
+  const [deleteFiles, setDeleteFiles] = useState(true);
   const [forceRedownload, setForceRedownload] = useState(false);
 
   const toggle = (s: number) => {

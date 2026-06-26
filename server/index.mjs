@@ -1187,11 +1187,13 @@ async function processCleanupQueue(prisma, config) {
       console.log(`[SeerWorker] "${job.title}" : pas de cible *arr (jamais grab\xE9) \u2014 skip ops *arr`);
     }
     if (job.seerrRequestId) {
-      await fetch(
+      const delRes = await fetch(
         `${config.seerrUrl}/api/v1/request/${job.seerrRequestId}`,
         { method: "DELETE", headers, signal: AbortSignal.timeout(1e4) }
-      ).catch(() => {
-      });
+      );
+      if (!delRes.ok && delRes.status !== 404) {
+        throw new Error(`Jellyseerr request delete returned ${delRes.status}`);
+      }
     }
     await updateCleanupJob(prisma, job.id, "completed");
     if (job.requestId) {
