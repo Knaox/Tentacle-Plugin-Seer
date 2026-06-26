@@ -1137,6 +1137,17 @@ async function cancelRadarrQueue(server, movieId) {
     console.warn(`[ArrService] cancelRadarrQueue #${movieId} failed:`, err);
   }
 }
+async function triggerSeerrJob(seerrUrl, apiKey, jobId) {
+  try {
+    await fetch(`${seerrUrl}/api/v1/settings/jobs/${jobId}/run`, {
+      method: "POST",
+      headers: { "X-Api-Key": apiKey },
+      signal: AbortSignal.timeout(1e4)
+    });
+  } catch (err) {
+    console.warn(`[ArrService] triggerSeerrJob ${jobId} failed:`, err);
+  }
+}
 
 // server/worker-cleanup.ts
 async function processCleanupQueue(prisma, config) {
@@ -1188,6 +1199,9 @@ async function processCleanupQueue(prisma, config) {
       console.log(`[SeerWorker] Deleted local request ${job.requestId}`);
     }
     await clearPendingCleanup(prisma, job.id);
+    if (job.deleteFiles) {
+      await triggerSeerrJob(config.seerrUrl, config.seerrApiKey, "availability-sync");
+    }
     console.log(`[SeerWorker] Cleanup completed for "${job.title}"`);
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : "Unknown error";
@@ -1898,7 +1912,7 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
       }
       const reqSeasons = req.seasons ?? [];
       const isSeasonSpecific = req.mediaType === "tv" && !!body.seasons && body.seasons.length > 0;
-      const removing = isSeasonSpecific ? body.seasons : null;
+      const removing = isSeasonSpecific ? body.seasons : req.mediaType === "tv" && reqSeasons.length > 0 ? reqSeasons : null;
       const remaining = isSeasonSpecific ? reqSeasons.filter((s) => !removing.includes(s)) : [];
       const partial = isSeasonSpecific && remaining.length > 0;
       await enqueueCleanup(prisma, {
@@ -2168,7 +2182,11 @@ function registerBulkRoutes(app, prisma, getWorkerConfig2) {
           title: req.title,
           seerrRequestId: req.seerrRequestId,
           seerrMediaId: req.seerrMediaId,
-          deleteFiles: true,
+          // Cohérent avec la suppression unitaire : on arrête le suivi sans
+          // supprimer les fichiers (lib partagée). Scopé aux saisons de la demande
+          // pour ne jamais toucher d'autres saisons de la série.
+          deleteFiles: false,
+          seasons: req.mediaType === "tv" && req.seasons && req.seasons.length > 0 ? req.seasons : null,
           requestId: id
         });
         deleted++;

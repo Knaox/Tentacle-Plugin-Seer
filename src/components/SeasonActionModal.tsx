@@ -36,7 +36,12 @@ export function SeasonActionModal({ request, action, onConfirm, onClose }: Seaso
   const allSelected = !hasSeasons || selected.size === seasons.length;
 
   const handleConfirm = () => {
-    const s = !hasSeasons || allSelected ? undefined : Array.from(selected).sort((a, b) => a - b);
+    // Saisons explicitement cochées (ou aucune si la demande n'a pas de saisons).
+    const explicit = hasSeasons ? Array.from(selected).sort((a, b) => a - b) : undefined;
+    // Suppression : TOUJOURS cibler les saisons de CETTE demande, jamais toute la
+    // série. `undefined` (= toute la série côté backend) seulement si la demande
+    // n'a pas de saisons. Retry : comportement historique conservé.
+    const s = action === "delete" ? explicit : (allSelected ? undefined : explicit);
     onConfirm(
       s,
       action === "retry" ? profileId : undefined,

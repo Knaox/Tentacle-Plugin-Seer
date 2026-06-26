@@ -11,6 +11,7 @@ import {
   getArrServerConfig, getMediaExternalId,
   unmonitorSonarrSeasons, deleteSonarrSeasonFiles, cancelSonarrQueue,
   unmonitorRadarrMovie, deleteRadarrMovieFile, cancelRadarrQueue,
+  triggerSeerrJob,
 } from "./arr-service";
 import type { WorkerConfig } from "./worker-sync";
 
@@ -79,6 +80,16 @@ export async function processCleanupQueue(prisma: PrismaClient, config: WorkerCo
     }
 
     await clearPendingCleanup(prisma, job.id);
+
+    // Si on a supprimé des fichiers, on relance la réconciliation de disponibilité
+    // Jellyseerr (par saison) au lieu d'attendre l'exécution planifiée. Best-effort.
+    // NB : Jellyseerr ne basculera la saison en « indisponible » qu'une fois que
+    // Jellyfin ne voit plus les épisodes (rescan déclenché par Sonarr→Jellyfin
+    // « Connect », ou scan planifié Jellyfin).
+    if (job.deleteFiles) {
+      await triggerSeerrJob(config.seerrUrl, config.seerrApiKey, "availability-sync");
+    }
+
     console.log(`[SeerWorker] Cleanup completed for "${job.title}"`);
 
   } catch (err) {

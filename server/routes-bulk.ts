@@ -42,7 +42,12 @@ export function registerBulkRoutes(
         await enqueueCleanup(prisma, {
           action: "delete", mediaType: req.mediaType, tmdbId: req.tmdbId, title: req.title,
           seerrRequestId: req.seerrRequestId, seerrMediaId: req.seerrMediaId,
-          deleteFiles: true, requestId: id,
+          // Cohérent avec la suppression unitaire : on arrête le suivi sans
+          // supprimer les fichiers (lib partagée). Scopé aux saisons de la demande
+          // pour ne jamais toucher d'autres saisons de la série.
+          deleteFiles: false,
+          seasons: req.mediaType === "tv" && req.seasons && req.seasons.length > 0 ? req.seasons : null,
+          requestId: id,
         });
         deleted++;
       } catch { errors++; }

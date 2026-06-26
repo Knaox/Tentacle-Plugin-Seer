@@ -331,6 +331,28 @@ export async function cancelRadarrQueue(
   }
 }
 
+/**
+ * Déclenche un job planifié Jellyseerr (POST /settings/jobs/{id}/run).
+ * Utilisé après une suppression de fichiers pour relancer `availability-sync`,
+ * qui réconcilie la disponibilité par saison avec Jellyfin + Sonarr/Radarr
+ * (au lieu d'attendre l'exécution planifiée, parfois quotidienne).
+ */
+export async function triggerSeerrJob(
+  seerrUrl: string,
+  apiKey: string,
+  jobId: string,
+): Promise<void> {
+  try {
+    await fetch(`${seerrUrl}/api/v1/settings/jobs/${jobId}/run`, {
+      method: "POST",
+      headers: { "X-Api-Key": apiKey },
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (err) {
+    console.warn(`[ArrService] triggerSeerrJob ${jobId} failed:`, err);
+  }
+}
+
 /** Supprime le média dans Seerr (reset pour permettre re-demande) */
 export async function deleteSeerrMedia(
   seerrUrl: string,

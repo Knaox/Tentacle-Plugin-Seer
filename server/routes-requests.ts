@@ -478,7 +478,13 @@ export function registerRequestRoutes(
       // fichiers si deleteFiles) sans jamais retirer la série/le film.
       const reqSeasons = req.seasons ?? [];
       const isSeasonSpecific = req.mediaType === "tv" && !!body.seasons && body.seasons.length > 0;
-      const removing = isSeasonSpecific ? body.seasons! : null;
+      // Défense : une suppression TV ne doit JAMAIS dépasser les saisons de CETTE
+      // demande. Si aucune saison précise n'est fournie, on retombe sur les saisons
+      // de la demande (et non sur « toute la série »). null seulement pour les films
+      // ou les demandes TV sans saisons enregistrées (legacy).
+      const removing = isSeasonSpecific
+        ? body.seasons!
+        : (req.mediaType === "tv" && reqSeasons.length > 0 ? reqSeasons : null);
       const remaining = isSeasonSpecific ? reqSeasons.filter((s) => !removing!.includes(s)) : [];
       // Partiel = on retire certaines saisons mais d'autres restent suivies.
       const partial = isSeasonSpecific && remaining.length > 0;
