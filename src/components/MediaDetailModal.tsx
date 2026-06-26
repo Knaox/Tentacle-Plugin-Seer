@@ -105,11 +105,24 @@ export function MediaDetailModal({ item, onClose, lockedSeasons, defaultProfileI
 
   const requestedSeasonMap = useMemo(() => {
     const map = new Map<number, number>();
+    // 1) Statuts de disponibilité par saison (présents seulement une fois dispo).
     if (tvDetail?.mediaInfo?.seasons) {
       for (const s of tvDetail.mediaInfo.seasons) map.set(s.seasonNumber, s.status);
     }
+    // 2) Saisons couvertes par une demande active : Jellyseerr ne remplit
+    //    mediaInfo.seasons qu'à la disponibilité ; une saison seulement demandée
+    //    (en attente/traitement) n'est QUE dans mediaInfo.requests[].seasons. On la
+    //    marque « en traitement » (3) pour la verrouiller, sans rétrograder une
+    //    saison déjà disponible. (statut demande : 3=refusée, 4=échouée → ignorées)
+    for (const r of tvDetail?.mediaInfo?.requests ?? []) {
+      if (r.status === 3 || r.status === 4) continue;
+      for (const se of r.seasons ?? []) {
+        const existing = map.get(se.seasonNumber);
+        if (existing === undefined || existing < 3) map.set(se.seasonNumber, 3);
+      }
+    }
     return map;
-  }, [tvDetail?.mediaInfo?.seasons]);
+  }, [tvDetail?.mediaInfo?.seasons, tvDetail?.mediaInfo?.requests]);
 
   const handleSeasonRequest = (seasons: number[], profileId?: string | null) => {
     requestMedia.mutate({

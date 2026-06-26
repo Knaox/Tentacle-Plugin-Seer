@@ -2,7 +2,7 @@
   "id": "seer",
   "name": "Seer",
   "description": "Media discovery and request management powered by Seerr / Overseerr",
-  "version": "1.10.4",
+  "version": "1.10.5",
   "author": "Knaox",
   "entry": "dist/plugin-seer.iife.js",
   "server": "server/index.mjs",

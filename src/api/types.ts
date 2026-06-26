@@ -146,6 +146,9 @@ export interface SeerrTvDetail {
   mediaInfo?: {
     status: number;
     seasons?: { id: number; seasonNumber: number; status: number }[];
+    /** Demandes actives — Jellyseerr n'expose les saisons seulement demandées
+     * (pas encore dispo) que via requests[].seasons, pas via seasons[]. */
+    requests?: { id: number; status: number; seasons?: { seasonNumber: number }[] }[];
   };
   credits?: {
     cast?: SeerrCastMember[];
