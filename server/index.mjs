@@ -2523,6 +2523,22 @@ async function getWorkerConfig(ctx) {
   const profiles = config.profiles ?? [];
   return { seerrUrl: url.replace(/\/$/, ""), seerrApiKey: apiKey, interval: 6e4, syncEvery: 2, profiles };
 }
+var MEDIA_STATUS_BLOCKLISTED = 6;
+async function getBlocklistedTags(seerrUrl, apiKey) {
+  return cached(`seerr:blocklistedTags:${seerrUrl}`, 5 * 6e4, async () => {
+    try {
+      const res = await fetch(`${seerrUrl}/api/v1/settings/main`, {
+        headers: { "X-Api-Key": apiKey },
+        signal: AbortSignal.timeout(8e3)
+      });
+      if (!res.ok) return "";
+      const data = await res.json();
+      return (data.blocklistedTags ?? "").trim();
+    } catch {
+      return "";
+    }
+  });
+}
 async function seerBackend(app, ctx) {
   const prisma = ctx.getPrisma();
   await ensureTables(prisma);
@@ -2596,10 +2612,19 @@ async function seerBackend(app, ctx) {
     const apiKey = config.apiKey;
     if (!seerrUrl || !apiKey) return reply.status(503).send({ message: "Seerr not configured" });
     const query = request.query;
+    const isDiscoverMovies = /^api\/v1\/discover\/movies(\/|$)/.test(wildcard);
+    const isDiscoverTv = /^api\/v1\/discover\/tv(\/|$)/.test(wildcard);
+    const isFilterable = isDiscoverMovies || isDiscoverTv || /^api\/v1\/discover\/trending/.test(wildcard) || /^api\/v1\/search/.test(wildcard);
+    const blocklistedTags = isFilterable && request.method === "GET" ? await getBlocklistedTags(seerrUrl, apiKey) : "";
     const qsParts = [];
+    let hasExcludeKeywords = false;
     for (const [k, v] of Object.entries(query)) {
       if (k === "_lang") continue;
+      if (k === "excludeKeywords") hasExcludeKeywords = true;
       qsParts.push(`${encodeURIComponent(k)}=${encodeURIComponent(v)}`);
+    }
+    if ((isDiscoverMovies || isDiscoverTv) && blocklistedTags && !hasExcludeKeywords) {
+      qsParts.push(`excludeKeywords=${encodeURIComponent(blocklistedTags)}`);
     }
     const qs = qsParts.join("&");
     const targetUrl = `${seerrUrl}/${wildcard}${qs ? `?${qs}` : ""}`;
@@ -2617,8 +2642,20 @@ async function seerBackend(app, ctx) {
         body: reqBody,
         signal: AbortSignal.timeout(15e3)
       });
-      reply.status(response.status);
       const ct = response.headers.get("content-type");
+      const shouldFilter = isFilterable && blocklistedTags !== "" && response.ok && (ct ?? "").includes("application/json");
+      if (shouldFilter) {
+        const data = await response.json().catch(() => null);
+        if (data && Array.isArray(data.results)) {
+          data.results = data.results.filter(
+            (item) => item?.mediaInfo?.status !== MEDIA_STATUS_BLOCKLISTED
+          );
+        }
+        reply.status(response.status);
+        reply.header("content-type", "application/json");
+        return reply.send(data ?? {});
+      }
+      reply.status(response.status);
       if (ct) reply.header("content-type", ct);
       if (!response.body) return reply.send();
       return reply.send(Readable.fromWeb(response.body));

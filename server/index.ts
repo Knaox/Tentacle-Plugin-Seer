@@ -14,6 +14,7 @@ import { registerRequestRoutes } from "./routes-requests";
 import { registerBulkRoutes } from "./routes-bulk";
 import { registerProfileRoutes } from "./routes-profiles";
 import { registerUsersRoutes } from "./routes-users";
+import { cached } from "./cache";
 
 const __pluginDir = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -44,6 +45,35 @@ async function getWorkerConfig(ctx: PluginBackendContext) {
   if (!url || !apiKey) return null;
   const profiles = (config.profiles as any[] | undefined) ?? [];
   return { seerrUrl: url.replace(/\/$/, ""), seerrApiKey: apiKey, interval: 60_000, syncEvery: 2, profiles };
+}
+
+/* ── Blocage par tags (Jellyseerr « Bloquer le contenu avec des tags ») ──
+ *
+ * Jellyseerr stocke les keywords TMDB bloqués dans `settings.main.blocklistedTags`
+ * (IDs séparés par des virgules). Deux mécanismes en découlent :
+ *   1. Discover : on les passe en `excludeKeywords` → TMDB `without_keywords`,
+ *      ce qui exclut le contenu directement à la source (pagination propre).
+ *   2. Search / trending / discover : Jellyseerr marque les médias correspondants
+ *      au statut BLOCKLISTED (6) via son job `process-blocklisted-tags`. On retire
+ *      donc tout résultat dont `mediaInfo.status === 6`.
+ * `settings.main` n'est lisible qu'avec la clé d'API admin (déjà côté plugin).
+ */
+const MEDIA_STATUS_BLOCKLISTED = 6;
+
+async function getBlocklistedTags(seerrUrl: string, apiKey: string): Promise<string> {
+  return cached(`seerr:blocklistedTags:${seerrUrl}`, 5 * 60_000, async () => {
+    try {
+      const res = await fetch(`${seerrUrl}/api/v1/settings/main`, {
+        headers: { "X-Api-Key": apiKey },
+        signal: AbortSignal.timeout(8_000),
+      });
+      if (!res.ok) return "";
+      const data = (await res.json()) as { blocklistedTags?: string };
+      return (data.blocklistedTags ?? "").trim();
+    } catch {
+      return "";
+    }
+  });
 }
 
 /* ── Main plugin registration ────────────────────────────────────── */
@@ -134,10 +164,32 @@ export default async function seerBackend(
     if (!seerrUrl || !apiKey) return reply.status(503).send({ message: "Seerr not configured" });
 
     const query = request.query as Record<string, string>;
+
+    // Endpoints de découverte/recherche soumis au blocage par tags Jellyseerr.
+    const isDiscoverMovies = /^api\/v1\/discover\/movies(\/|$)/.test(wildcard);
+    const isDiscoverTv = /^api\/v1\/discover\/tv(\/|$)/.test(wildcard);
+    const isFilterable =
+      isDiscoverMovies ||
+      isDiscoverTv ||
+      /^api\/v1\/discover\/trending/.test(wildcard) ||
+      /^api\/v1\/search/.test(wildcard);
+
+    // On ne charge les tags bloqués que pour les GET filtrables (cache 5 min).
+    const blocklistedTags =
+      isFilterable && request.method === "GET"
+        ? await getBlocklistedTags(seerrUrl, apiKey)
+        : "";
+
     const qsParts: string[] = [];
+    let hasExcludeKeywords = false;
     for (const [k, v] of Object.entries(query)) {
       if (k === "_lang") continue;
+      if (k === "excludeKeywords") hasExcludeKeywords = true;
       qsParts.push(`${encodeURIComponent(k)}=${encodeURIComponent(v)}`);
+    }
+    // Discover : exclusion native côté TMDB (without_keywords) si non déjà fournie.
+    if ((isDiscoverMovies || isDiscoverTv) && blocklistedTags && !hasExcludeKeywords) {
+      qsParts.push(`excludeKeywords=${encodeURIComponent(blocklistedTags)}`);
     }
     const qs = qsParts.join("&");
     const targetUrl = `${seerrUrl}/${wildcard}${qs ? `?${qs}` : ""}`;
@@ -156,8 +208,32 @@ export default async function seerBackend(
         method: request.method, headers, body: reqBody,
         signal: AbortSignal.timeout(15_000),
       });
-      reply.status(response.status);
+
+      // Filtrage JSON : retire les médias marqués BLOCKLISTED par Jellyseerr.
+      // Couvre la recherche (TMDB n'a pas de without_keywords) et complète le
+      // discover. Uniquement si des tags sont bloqués (sinon stream transparent).
       const ct = response.headers.get("content-type");
+      const shouldFilter =
+        isFilterable &&
+        blocklistedTags !== "" &&
+        response.ok &&
+        (ct ?? "").includes("application/json");
+
+      if (shouldFilter) {
+        const data = (await response.json().catch(() => null)) as
+          | { results?: Array<{ mediaInfo?: { status?: number } }> }
+          | null;
+        if (data && Array.isArray(data.results)) {
+          data.results = data.results.filter(
+            (item) => item?.mediaInfo?.status !== MEDIA_STATUS_BLOCKLISTED,
+          );
+        }
+        reply.status(response.status);
+        reply.header("content-type", "application/json");
+        return reply.send(data ?? {});
+      }
+
+      reply.status(response.status);
       if (ct) reply.header("content-type", ct);
       if (!response.body) return reply.send();
       return reply.send(Readable.fromWeb(response.body as any));
