@@ -110,7 +110,14 @@ export function SeriesSeasonPicker({
 
       {selectableSeasons.length > 0 ? (
         <button
-          onClick={() => onRequest(Array.from(selected).sort((a, b) => a - b), profileId)}
+          onClick={() =>
+            onRequest(
+              // Ne demander QUE les nouvelles saisons : les verrouillées (déjà
+              // demandées) sont pré-cochées pour l'affichage mais exclues du payload.
+              Array.from(selected).filter((s) => !lockedSet.has(s)).sort((a, b) => a - b),
+              profileId,
+            )
+          }
           disabled={!hasNewSelection || requesting}
           style={CTA_PRIMARY_HALO}
           className={`${CTA_PRIMARY} min-h-[48px] w-full py-3 focus:outline-none focus:ring-2 focus:ring-tentacle-brand/50`}

@@ -75,7 +75,8 @@ async function processNextRequest(prisma: PrismaClient, config: WorkerConfig): P
 
     const detail = await fetchMediaDetail(config.seerrUrl, config.seerrApiKey, request.mediaType, request.tmdbId);
 
-    // Clean up declined/failed requests on Seerr
+    // Clean up declined/failed requests on Seerr (non destructif pour la
+    // disponibilité : évite qu'une demande refusée bloque la nouvelle).
     if (detail?.mediaInfo?.requests) {
       for (const r of detail.mediaInfo.requests) {
         if (r.status === 3 || r.status === 4) {
@@ -87,13 +88,13 @@ async function processNextRequest(prisma: PrismaClient, config: WorkerConfig): P
       }
     }
 
-    // Reset Seerr media for clean re-request
-    if (detail?.mediaInfo?.id) {
-      await fetch(`${config.seerrUrl}/api/v1/media/${detail.mediaInfo.id}`, {
-        method: "DELETE", headers: { "X-Api-Key": config.seerrApiKey },
-        signal: AbortSignal.timeout(10_000),
-      }).catch(() => {});
-    }
+    // NOTE : on ne supprime PLUS le média Jellyseerr ici. Jellyseerr déduplique
+    // nativement les saisons à la création (MediaRequest.request : existingSeasons
+    // → finalSeasons), donc envoyer une demande sur un média partiel ne re-demande
+    // QUE les nouvelles saisons et préserve la disponibilité existante. Supprimer
+    // le média remettait existingSeasons à zéro et re-demandait tout (bug saison
+    // partielle). La suppression légitime reste gérée par : retry forceRedownload
+    // (routes-requests), retries auto (worker-sync), cleanup deleteFiles.
 
     // Anime detection
     if (request.mediaType === "tv" && detail && isAnimeFromKeywords(detail)) {
@@ -146,6 +147,24 @@ async function processNextRequest(prisma: PrismaClient, config: WorkerConfig): P
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
+      // Jellyseerr a déjà toutes les saisons demandées (local désynchronisé) :
+      // ce n'est pas un échec, la demande est déjà satisfaite. On reflète l'état
+      // du média plutôt que d'échouer + retry en boucle.
+      if (text.includes("No seasons available to request")) {
+        const mediaStatus = detail?.mediaInfo?.status;
+        const localStatus =
+          mediaStatus === 5 ? "available"
+            : mediaStatus === 4 ? "partially_available"
+              : "sent_to_seer";
+        await updateRequestStatus(prisma, request.id, localStatus, {
+          seerrMediaId: detail?.mediaInfo?.id,
+          seerrMediaStatus: mediaStatus,
+          sentAt: new Date(),
+        });
+        invalidate(`seer-cache:${request.jellyfinUserId}`);
+        console.log(`[SeerWorker] "${request.title}" : saisons déjà présentes côté Jellyseerr — marqué ${localStatus}`);
+        return;
+      }
       throw new Error(`Seerr returned ${res.status}: ${text.slice(0, 200)}`);
     }
 

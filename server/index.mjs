@@ -1214,14 +1214,6 @@ async function processNextRequest(prisma, config) {
         }
       }
     }
-    if (detail?.mediaInfo?.id) {
-      await fetch(`${config.seerrUrl}/api/v1/media/${detail.mediaInfo.id}`, {
-        method: "DELETE",
-        headers: { "X-Api-Key": config.seerrApiKey },
-        signal: AbortSignal.timeout(1e4)
-      }).catch(() => {
-      });
-    }
     if (request.mediaType === "tv" && detail && isAnimeFromKeywords(detail)) {
       const overrides = await fetchAnimeOverrides(config.seerrUrl, config.seerrApiKey);
       if (overrides) {
@@ -1268,6 +1260,18 @@ async function processNextRequest(prisma, config) {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
+      if (text.includes("No seasons available to request")) {
+        const mediaStatus = detail?.mediaInfo?.status;
+        const localStatus = mediaStatus === 5 ? "available" : mediaStatus === 4 ? "partially_available" : "sent_to_seer";
+        await updateRequestStatus(prisma, request.id, localStatus, {
+          seerrMediaId: detail?.mediaInfo?.id,
+          seerrMediaStatus: mediaStatus,
+          sentAt: /* @__PURE__ */ new Date()
+        });
+        invalidate(`seer-cache:${request.jellyfinUserId}`);
+        console.log(`[SeerWorker] "${request.title}" : saisons d\xE9j\xE0 pr\xE9sentes c\xF4t\xE9 Jellyseerr \u2014 marqu\xE9 ${localStatus}`);
+        return;
+      }
       throw new Error(`Seerr returned ${res.status}: ${text.slice(0, 200)}`);
     }
     const data = await res.json();
