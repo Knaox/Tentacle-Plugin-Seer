@@ -11,7 +11,7 @@ type Prisma = PrismaClient;
 
 export interface CleanupJob {
   id: string;
-  action: "delete" | "retry";
+  action: "delete" | "retry" | "sync";
   mediaType: "movie" | "tv";
   tmdbId: number;
   title: string;
@@ -55,16 +55,20 @@ export async function enqueueCleanup(
     deleteFiles?: boolean;
     seasons?: number[] | null;
     requestId?: string | null;
+    /** Exécution différée (ex. re-synchro de dispo après un délai) */
+    delaySeconds?: number;
   },
 ): Promise<string> {
   const id = uuid();
+  const delay = Math.max(0, Math.floor(job.delaySeconds ?? 0));
   await prisma.$executeRawUnsafe(
-    `INSERT INTO seer_cleanup_queue (id, action, media_type, tmdb_id, title, seerr_request_id, seerr_media_id, delete_files, seasons, request_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO seer_cleanup_queue (id, action, media_type, tmdb_id, title, seerr_request_id, seerr_media_id, delete_files, seasons, request_id, next_retry_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? SECOND))`,
     id, job.action, job.mediaType, job.tmdbId, job.title,
     job.seerrRequestId ?? null, job.seerrMediaId ?? null, job.deleteFiles ? 1 : 0,
     job.seasons && job.seasons.length > 0 ? JSON.stringify(job.seasons) : null,
     job.requestId ?? null,
+    delay,
   );
   return id;
 }

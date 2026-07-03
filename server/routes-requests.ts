@@ -195,21 +195,35 @@ export function registerRequestRoutes(
       }
     }
 
+    // Même logique de partiel que la branche locale : retirer certaines
+    // saisons d'une demande Jellyseerr n'efface PAS la demande entière —
+    // la réconciliation du worker l'édite (PUT saisons restantes).
+    const seerrMediaType = seerrReq.media?.mediaType ?? "movie";
+    const seerrSeasons = (seerrReq.seasons ?? [])
+      .map((s) => s.seasonNumber)
+      .filter((n) => typeof n === "number");
+    const isSeasonSpecific = seerrMediaType === "tv" && !!body.seasons && body.seasons.length > 0;
+    const removing = isSeasonSpecific
+      ? body.seasons!
+      : (seerrMediaType === "tv" && seerrSeasons.length > 0 ? seerrSeasons : null);
+    const remaining = isSeasonSpecific ? seerrSeasons.filter((s) => !removing!.includes(s)) : [];
+    const partial = isSeasonSpecific && remaining.length > 0;
+
     await enqueueCleanup(prisma, {
       action: "delete",
-      mediaType: seerrReq.media?.mediaType ?? "movie",
+      mediaType: seerrMediaType,
       tmdbId: seerrReq.media?.tmdbId ?? 0,
       title: `#${seerrReq.id}`,
-      seerrRequestId: seerrReq.id,
+      seerrRequestId: partial ? null : seerrReq.id,
       seerrMediaId: seerrReq.media?.id ?? null,
       deleteFiles,
-      seasons: body.seasons && body.seasons.length > 0 ? body.seasons : null,
+      seasons: removing,
       requestId: null,
     });
 
     invalidate(`seer-cache:${user.userId}`);
     kickWorkerNow();
-    return { success: true, status: "deleting" };
+    return { success: true, status: partial ? "updated" : "deleting" };
   });
 
 }

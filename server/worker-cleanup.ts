@@ -4,7 +4,7 @@
 
 import type { PrismaClient } from "@prisma/client";
 import {
-  getPendingCleanups, updateCleanupJob,
+  getPendingCleanups, updateCleanupJob, enqueueCleanup,
   clearPendingCleanup, deleteRequestById, updateRequestStatus,
   type CleanupJob,
 } from "./db";
@@ -45,6 +45,15 @@ async function processCleanupJob(
   const headers = { "X-Api-Key": config.seerrApiKey };
 
   try {
+    // Job « sync » différé : re-déclenche la réconciliation de disponibilité
+    // Jellyseerr une fois que Jellyfin a eu le temps de rescanner.
+    if (job.action === "sync") {
+      await triggerSeerrJob(config.seerrUrl, config.seerrApiKey, "availability-sync");
+      await updateCleanupJob(prisma, job.id, "completed");
+      invalidate("seer-cache");
+      console.log(`[SeerWorker] availability-sync re-déclenchée pour "${job.title}"`);
+      return;
+    }
     // === ÉTAPES *arr : on ne retire JAMAIS la série/le film de Sonarr/Radarr. ===
     // On agit en direct sur *arr : annuler la file → désactiver la surveillance
     // (toujours, empêche le re-téléchargement) → supprimer les fichiers (si demandé).
@@ -126,6 +135,17 @@ async function processCleanupJob(
     // « Connect », ou scan planifié Jellyfin).
     if (job.deleteFiles) {
       await triggerSeerrJob(config.seerrUrl, config.seerrApiKey, "availability-sync");
+      // Jellyfin n'a en général PAS encore vu la disparition des fichiers au
+      // moment de ce premier déclenchement (rescan via Sonarr→Connect ou
+      // monitoring temps réel) : on re-déclenche la synchro à +2 min et
+      // +10 min pour que la saison bascule réellement « non disponible »
+      // dans Jellyseerr sans attendre le job planifié.
+      for (const delay of [120, 600]) {
+        await enqueueCleanup(prisma, {
+          action: "sync", mediaType: job.mediaType, tmdbId: job.tmdbId,
+          title: job.title, deleteFiles: false, seasons: null, delaySeconds: delay,
+        });
+      }
     }
 
     // Les listes fusionnées (cache 60s par user) doivent refléter la suppression

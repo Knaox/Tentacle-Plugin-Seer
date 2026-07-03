@@ -7,12 +7,13 @@ import {
 import { useRequestMedia } from "../hooks/useRequestMedia";
 import { useToast } from "../hooks/useToast";
 import { RequestCard } from "./RequestCard";
-import { EmptyState } from "./EmptyState";
 import { SeasonActionModal } from "./SeasonActionModal";
 import { MarkMenuSheet, type MarkTarget } from "./MarkMenuSheet";
 import { RequestsStatsBar } from "./RequestsStatsBar";
 import { RequestsToolbar, type StatusFilter, type TypeFilter } from "./RequestsToolbar";
 import { RequestsBulkBar, BulkRetryModal } from "./RequestsBulkUI";
+import { RequestsQueueBanner } from "./RequestsQueueBanner";
+import { RequestsEmpty } from "./RequestsEmpty";
 import type { LocalRequest, SeerrSearchResult } from "../api/types";
 
 const MediaDetailModal = lazy(() =>
@@ -142,34 +143,9 @@ export function RequestsPage() {
     <div className="px-4 pt-4 md:px-8">
       <h1 className="mb-4 text-2xl font-bold text-white">{t("seer:myRequestsTitle")}</h1>
 
-      {/* Stats — remplace l'ancienne page Statistiques */}
       <RequestsStatsBar />
 
-      {/* Queue status banner */}
-      {queueData && (queueData.queued > 0 || queueData.processing || queueData.deleting > 0) && (
-        <div className="mb-4 flex items-center gap-3 rounded-xl border border-tentacle-brand/20 bg-tentacle-brand/10 px-4 py-3">
-          <div className="h-2 w-2 animate-pulse rounded-full bg-tentacle-brand-light" />
-          <div className="text-sm text-tentacle-brand-light">
-            {queueData.processing ? (
-              <span>
-                {t("seer:queueProcessing", { title: queueData.processing.title })}
-                {queueData.queued > 0 && (
-                  <span className="ml-2 text-tentacle-brand-light/60">
-                    {t("seer:queuePending", { count: queueData.queued })}
-                  </span>
-                )}
-              </span>
-            ) : queueData.queued > 0 ? (
-              <span>{t("seer:queueWaiting", { count: queueData.queued })}</span>
-            ) : null}
-            {queueData.deleting > 0 && (
-              <span className="ml-2 text-orange-400/80">
-                {t("seer:statusDeleting")}: {queueData.deleting}
-              </span>
-            )}
-          </div>
-        </div>
-      )}
+      <RequestsQueueBanner queue={queueData} />
 
       <RequestsToolbar
         search={search}
@@ -183,7 +159,6 @@ export function RequestsPage() {
         onToggleSelectionMode={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}
       />
 
-      {/* Request list */}
       {isLoading ? (
         <div className="space-y-3">
           {Array.from({ length: 3 }, (_, i) => (
@@ -226,28 +201,9 @@ export function RequestsPage() {
           ))}
         </div>
       ) : (
-        <EmptyState
-          title={statusFilter === "all" && !debouncedSearch ? t("seer:noRequestsAll") : t("seer:noRequestsFiltered")}
-          subtitle={statusFilter === "all" && !debouncedSearch ? t("seer:noRequestsHint") : undefined}
-          action={statusFilter === "all" && !debouncedSearch ? (
-            <button
-              onClick={() => {
-                if ((window as any).ReactNativeWebView?.postMessage) {
-                  (window as any).ReactNativeWebView.postMessage(JSON.stringify({ type: "NAVIGATE", route: "/(tabs)/plugins" }));
-                } else {
-                  window.parent.postMessage({ type: "NAVIGATE", path: "/plugins/seer/discover" }, "*");
-                }
-              }}
-              style={{ boxShadow: "0 8px 22px rgba(var(--brand-rgb), 0.45)" }}
-              className="inline-flex items-center justify-center rounded-lg bg-white px-5 py-2.5 text-sm font-bold text-black transition-all hover:-translate-y-0.5 hover:bg-white/95"
-            >
-              {t("discoverButton")}
-            </button>
-          ) : undefined}
-        />
+        <RequestsEmpty filtered={statusFilter !== "all" || !!debouncedSearch} />
       )}
 
-      {/* Pagination */}
       {totalPages > 1 && (
         <div className="mt-8 flex items-center justify-center gap-3 pb-8">
           <button

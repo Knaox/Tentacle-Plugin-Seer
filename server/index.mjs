@@ -231,9 +231,10 @@ function parseSeasons(raw) {
 }
 async function enqueueCleanup(prisma, job) {
   const id = uuid();
+  const delay = Math.max(0, Math.floor(job.delaySeconds ?? 0));
   await prisma.$executeRawUnsafe(
-    `INSERT INTO seer_cleanup_queue (id, action, media_type, tmdb_id, title, seerr_request_id, seerr_media_id, delete_files, seasons, request_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO seer_cleanup_queue (id, action, media_type, tmdb_id, title, seerr_request_id, seerr_media_id, delete_files, seasons, request_id, next_retry_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? SECOND))`,
     id,
     job.action,
     job.mediaType,
@@ -243,7 +244,8 @@ async function enqueueCleanup(prisma, job) {
     job.seerrMediaId ?? null,
     job.deleteFiles ? 1 : 0,
     job.seasons && job.seasons.length > 0 ? JSON.stringify(job.seasons) : null,
-    job.requestId ?? null
+    job.requestId ?? null,
+    delay
   );
   return id;
 }
@@ -1225,6 +1227,13 @@ async function processCleanupQueue(prisma, config) {
 async function processCleanupJob(prisma, config, job) {
   const headers = { "X-Api-Key": config.seerrApiKey };
   try {
+    if (job.action === "sync") {
+      await triggerSeerrJob(config.seerrUrl, config.seerrApiKey, "availability-sync");
+      await updateCleanupJob(prisma, job.id, "completed");
+      invalidate("seer-cache");
+      console.log(`[SeerWorker] availability-sync re-d\xE9clench\xE9e pour "${job.title}"`);
+      return;
+    }
     const arrType = job.mediaType === "movie" ? "radarr" : "sonarr";
     const [server, ext] = await Promise.all([
       getArrServerConfig(config.seerrUrl, config.seerrApiKey, arrType),
@@ -1275,6 +1284,17 @@ async function processCleanupJob(prisma, config, job) {
     await clearPendingCleanup(prisma, job.id);
     if (job.deleteFiles) {
       await triggerSeerrJob(config.seerrUrl, config.seerrApiKey, "availability-sync");
+      for (const delay of [120, 600]) {
+        await enqueueCleanup(prisma, {
+          action: "sync",
+          mediaType: job.mediaType,
+          tmdbId: job.tmdbId,
+          title: job.title,
+          deleteFiles: false,
+          seasons: null,
+          delaySeconds: delay
+        });
+      }
     }
     invalidate("seer-cache");
     console.log(`[SeerWorker] Cleanup completed for "${job.title}"`);
@@ -2247,10 +2267,10 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
         return reply.status(403).send({ message: "Not your request" });
       }
       const reqSeasons = req.seasons ?? [];
-      const isSeasonSpecific = req.mediaType === "tv" && !!body.seasons && body.seasons.length > 0;
-      const removing = isSeasonSpecific ? body.seasons : req.mediaType === "tv" && reqSeasons.length > 0 ? reqSeasons : null;
-      const remaining = isSeasonSpecific ? reqSeasons.filter((s) => !removing.includes(s)) : [];
-      const partial = isSeasonSpecific && remaining.length > 0;
+      const isSeasonSpecific2 = req.mediaType === "tv" && !!body.seasons && body.seasons.length > 0;
+      const removing2 = isSeasonSpecific2 ? body.seasons : req.mediaType === "tv" && reqSeasons.length > 0 ? reqSeasons : null;
+      const remaining2 = isSeasonSpecific2 ? reqSeasons.filter((s) => !removing2.includes(s)) : [];
+      const partial2 = isSeasonSpecific2 && remaining2.length > 0;
       await enqueueCleanup(prisma, {
         action: "delete",
         mediaType: req.mediaType,
@@ -2258,20 +2278,20 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
         title: req.title,
         // En partiel on préserve la demande Jellyseerr et la ligne locale
         // (les saisons conservées restent suivies) ; on agit uniquement sur *arr.
-        seerrRequestId: partial ? null : req.seerrRequestId,
+        seerrRequestId: partial2 ? null : req.seerrRequestId,
         seerrMediaId: req.seerrMediaId,
         deleteFiles,
-        seasons: removing,
-        requestId: partial ? null : parsed.id
+        seasons: removing2,
+        requestId: partial2 ? null : parsed.id
       });
-      if (partial) {
-        await addSeasonsToRequest(prisma, parsed.id, remaining);
+      if (partial2) {
+        await addSeasonsToRequest(prisma, parsed.id, remaining2);
       } else {
         await updateRequestStatus(prisma, parsed.id, "deleting");
       }
       invalidate(`seer-cache:${user.userId}`);
       kickWorkerNow();
-      return { success: true, status: partial ? "updated" : "deleting" };
+      return { success: true, status: partial2 ? "updated" : "deleting" };
     }
     const config = await getWorkerConfig2();
     if (!config) return reply.status(503).send({ message: "Seerr not configured" });
@@ -2287,20 +2307,26 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
         return reply.status(403).send({ message: "Not your request" });
       }
     }
+    const seerrMediaType = seerrReq.media?.mediaType ?? "movie";
+    const seerrSeasons = (seerrReq.seasons ?? []).map((s) => s.seasonNumber).filter((n) => typeof n === "number");
+    const isSeasonSpecific = seerrMediaType === "tv" && !!body.seasons && body.seasons.length > 0;
+    const removing = isSeasonSpecific ? body.seasons : seerrMediaType === "tv" && seerrSeasons.length > 0 ? seerrSeasons : null;
+    const remaining = isSeasonSpecific ? seerrSeasons.filter((s) => !removing.includes(s)) : [];
+    const partial = isSeasonSpecific && remaining.length > 0;
     await enqueueCleanup(prisma, {
       action: "delete",
-      mediaType: seerrReq.media?.mediaType ?? "movie",
+      mediaType: seerrMediaType,
       tmdbId: seerrReq.media?.tmdbId ?? 0,
       title: `#${seerrReq.id}`,
-      seerrRequestId: seerrReq.id,
+      seerrRequestId: partial ? null : seerrReq.id,
       seerrMediaId: seerrReq.media?.id ?? null,
       deleteFiles,
-      seasons: body.seasons && body.seasons.length > 0 ? body.seasons : null,
+      seasons: removing,
       requestId: null
     });
     invalidate(`seer-cache:${user.userId}`);
     kickWorkerNow();
-    return { success: true, status: "deleting" };
+    return { success: true, status: partial ? "updated" : "deleting" };
   });
 }
 
