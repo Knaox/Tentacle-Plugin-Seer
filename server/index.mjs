@@ -1682,7 +1682,7 @@ async function processNextRequest(prisma, config, skipIds) {
   return request.id;
 }
 
-// server/routes-requests.ts
+// server/seerr-unified.ts
 function getUser(request) {
   return request.user;
 }
@@ -1796,7 +1796,9 @@ function parseRequestId(id) {
   }
   return { kind: "local", id };
 }
-function registerRequestRoutes(app, prisma, getWorkerConfig2) {
+
+// server/routes-requests-read.ts
+function registerRequestReadRoutes(app, prisma, getWorkerConfig2) {
   app.get("/requests/stats", async (request, reply) => {
     const user = getUser(request);
     const config = await getWorkerConfig2();
@@ -1952,161 +1954,10 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
       pages: Math.max(1, Math.ceil(total / limit))
     };
   });
-  app.post("/requests", async (request, reply) => {
-    const user = getUser(request);
-    const body = request.body;
-    if (!body.mediaType || !body.tmdbId || !body.title) {
-      return reply.status(400).send({ message: "mediaType, tmdbId, and title are required" });
-    }
-    const settings = await getOrCreateUserSettings(prisma, user.userId, user.username);
-    if (settings.blocked) {
-      return reply.status(403).send({ errorKey: "seer:errUserBlocked", message: "User is blocked" });
-    }
-    let isAnime = false;
-    const config = await getWorkerConfig2();
-    if (body.mediaType === "tv" && config) {
-      const detail = await fetchMediaDetail(config.seerrUrl, config.seerrApiKey, "tv", body.tmdbId);
-      if (detail && isAnimeFromKeywords(detail)) isAnime = true;
-    }
-    if (body.mediaType === "movie" && !settings.allowMovies) {
-      return reply.status(403).send({ errorKey: "seer:errMoviesDenied", message: "Movies denied" });
-    }
-    if (body.mediaType === "tv" && isAnime && !settings.allowAnime) {
-      return reply.status(403).send({ errorKey: "seer:errAnimeDenied", message: "Anime denied" });
-    }
-    if (body.mediaType === "tv" && !isAnime && !settings.allowTv) {
-      return reply.status(403).send({ errorKey: "seer:errTvDenied", message: "TV denied" });
-    }
-    if (settings.dailyLimit !== null && settings.dailyLimit !== void 0) {
-      const todayCount = await countRequestsToday(prisma, user.userId);
-      if (todayCount >= settings.dailyLimit) {
-        return reply.status(429).send({
-          errorKey: "seer:errQuotaReached",
-          limit: settings.dailyLimit,
-          message: `Daily quota reached (${settings.dailyLimit})`
-        });
-      }
-    }
-    if (body.mediaType === "tv" && body.seasons?.length) {
-      const existing = await findExistingTvRequest(prisma, user.userId, body.tmdbId);
-      if (existing) {
-        const existingSeasons = new Set(existing.seasons ?? []);
-        const newSeasons = body.seasons.filter((s) => !existingSeasons.has(s));
-        if (newSeasons.length === 0) {
-          return reply.status(409).send({ message: "All seasons already requested", existing });
-        }
-        const merged = [...existing.seasons ?? [], ...newSeasons].sort((a, b) => a - b);
-        await addSeasonsToRequest(prisma, existing.id, merged);
-        await createRequest(prisma, {
-          jellyfinUserId: user.userId,
-          username: user.username,
-          mediaType: body.mediaType,
-          tmdbId: body.tmdbId,
-          title: body.title,
-          posterPath: body.posterPath,
-          backdropPath: body.backdropPath,
-          overview: body.overview,
-          year: body.year,
-          seasons: newSeasons,
-          profileId: body.profileId ?? existing.profileId,
-          isAnime
-        });
-        const updated = await getRequestById(prisma, existing.id);
-        invalidate(`seer-cache:${user.userId}`);
-        kickWorkerNow();
-        return reply.status(201).send(updated);
-      }
-    }
-    const dup = await findDuplicate(prisma, user.userId, body.tmdbId, body.mediaType, body.seasons);
-    if (dup) {
-      return reply.status(409).send({ message: "A request for this media is already active", existing: dup });
-    }
-    const req = await createRequest(prisma, {
-      jellyfinUserId: user.userId,
-      username: user.username,
-      mediaType: body.mediaType,
-      tmdbId: body.tmdbId,
-      title: body.title,
-      posterPath: body.posterPath,
-      backdropPath: body.backdropPath,
-      overview: body.overview,
-      year: body.year,
-      seasons: body.seasons,
-      profileId: body.profileId,
-      isAnime
-    });
-    invalidate(`seer-cache:${user.userId}`);
-    kickWorkerNow();
-    return reply.status(201).send(req);
-  });
-  app.delete("/requests/:id", async (request, reply) => {
-    const { id } = request.params;
-    const user = getUser(request);
-    const body = request.body ?? {};
-    const deleteFiles = body.deleteFiles === true;
-    const parsed = parseRequestId(id);
-    if (parsed.kind === "local") {
-      const req = await getRequestById(prisma, parsed.id);
-      if (!req) return reply.status(404).send({ message: "Request not found" });
-      if (req.jellyfinUserId !== user.userId && !user.isAdmin) {
-        return reply.status(403).send({ message: "Not your request" });
-      }
-      const reqSeasons = req.seasons ?? [];
-      const isSeasonSpecific = req.mediaType === "tv" && !!body.seasons && body.seasons.length > 0;
-      const removing = isSeasonSpecific ? body.seasons : req.mediaType === "tv" && reqSeasons.length > 0 ? reqSeasons : null;
-      const remaining = isSeasonSpecific ? reqSeasons.filter((s) => !removing.includes(s)) : [];
-      const partial = isSeasonSpecific && remaining.length > 0;
-      await enqueueCleanup(prisma, {
-        action: "delete",
-        mediaType: req.mediaType,
-        tmdbId: req.tmdbId,
-        title: req.title,
-        // En partiel on préserve la demande Jellyseerr et la ligne locale
-        // (les saisons conservées restent suivies) ; on agit uniquement sur *arr.
-        seerrRequestId: partial ? null : req.seerrRequestId,
-        seerrMediaId: req.seerrMediaId,
-        deleteFiles,
-        seasons: removing,
-        requestId: partial ? null : parsed.id
-      });
-      if (partial) {
-        await addSeasonsToRequest(prisma, parsed.id, remaining);
-      } else {
-        await updateRequestStatus(prisma, parsed.id, "deleting");
-      }
-      invalidate(`seer-cache:${user.userId}`);
-      kickWorkerNow();
-      return { success: true, status: partial ? "updated" : "deleting" };
-    }
-    const config = await getWorkerConfig2();
-    if (!config) return reply.status(503).send({ message: "Seerr not configured" });
-    const seerrReq = await fetchSeerrRequestById(config, parsed.seerrId);
-    if (!seerrReq) return reply.status(404).send({ message: "Seerr request not found" });
-    if (!user.isAdmin) {
-      const settingsRows = await prisma.$queryRawUnsafe(
-        `SELECT jellyseerr_user_id FROM seer_user_settings WHERE jellyfin_user_id = ? LIMIT 1`,
-        user.userId
-      );
-      const myId = settingsRows[0]?.jellyseerr_user_id ?? null;
-      if (!myId || seerrReq.requestedBy?.id !== myId) {
-        return reply.status(403).send({ message: "Not your request" });
-      }
-    }
-    await enqueueCleanup(prisma, {
-      action: "delete",
-      mediaType: seerrReq.media?.mediaType ?? "movie",
-      tmdbId: seerrReq.media?.tmdbId ?? 0,
-      title: `#${seerrReq.id}`,
-      seerrRequestId: seerrReq.id,
-      seerrMediaId: seerrReq.media?.id ?? null,
-      deleteFiles,
-      seasons: body.seasons && body.seasons.length > 0 ? body.seasons : null,
-      requestId: null
-    });
-    invalidate(`seer-cache:${user.userId}`);
-    kickWorkerNow();
-    return { success: true, status: "deleting" };
-  });
+}
+
+// server/routes-requests-actions.ts
+function registerRequestActionRoutes(app, prisma, getWorkerConfig2) {
   app.post("/requests/:id/retry", async (request, reply) => {
     const { id } = request.params;
     const user = getUser(request);
@@ -2289,6 +2140,167 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
     });
     kickWorkerNow();
     return { success: true };
+  });
+}
+
+// server/routes-requests.ts
+function registerRequestRoutes(app, prisma, getWorkerConfig2) {
+  registerRequestReadRoutes(app, prisma, getWorkerConfig2);
+  registerRequestActionRoutes(app, prisma, getWorkerConfig2);
+  app.post("/requests", async (request, reply) => {
+    const user = getUser(request);
+    const body = request.body;
+    if (!body.mediaType || !body.tmdbId || !body.title) {
+      return reply.status(400).send({ message: "mediaType, tmdbId, and title are required" });
+    }
+    const settings = await getOrCreateUserSettings(prisma, user.userId, user.username);
+    if (settings.blocked) {
+      return reply.status(403).send({ errorKey: "seer:errUserBlocked", message: "User is blocked" });
+    }
+    let isAnime = false;
+    const config = await getWorkerConfig2();
+    if (body.mediaType === "tv" && config) {
+      const detail = await fetchMediaDetail(config.seerrUrl, config.seerrApiKey, "tv", body.tmdbId);
+      if (detail && isAnimeFromKeywords(detail)) isAnime = true;
+    }
+    if (body.mediaType === "movie" && !settings.allowMovies) {
+      return reply.status(403).send({ errorKey: "seer:errMoviesDenied", message: "Movies denied" });
+    }
+    if (body.mediaType === "tv" && isAnime && !settings.allowAnime) {
+      return reply.status(403).send({ errorKey: "seer:errAnimeDenied", message: "Anime denied" });
+    }
+    if (body.mediaType === "tv" && !isAnime && !settings.allowTv) {
+      return reply.status(403).send({ errorKey: "seer:errTvDenied", message: "TV denied" });
+    }
+    if (settings.dailyLimit !== null && settings.dailyLimit !== void 0) {
+      const todayCount = await countRequestsToday(prisma, user.userId);
+      if (todayCount >= settings.dailyLimit) {
+        return reply.status(429).send({
+          errorKey: "seer:errQuotaReached",
+          limit: settings.dailyLimit,
+          message: `Daily quota reached (${settings.dailyLimit})`
+        });
+      }
+    }
+    if (body.mediaType === "tv" && body.seasons?.length) {
+      const existing = await findExistingTvRequest(prisma, user.userId, body.tmdbId);
+      if (existing) {
+        const existingSeasons = new Set(existing.seasons ?? []);
+        const newSeasons = body.seasons.filter((s) => !existingSeasons.has(s));
+        if (newSeasons.length === 0) {
+          return reply.status(409).send({ message: "All seasons already requested", existing });
+        }
+        const merged = [...existing.seasons ?? [], ...newSeasons].sort((a, b) => a - b);
+        await addSeasonsToRequest(prisma, existing.id, merged);
+        await createRequest(prisma, {
+          jellyfinUserId: user.userId,
+          username: user.username,
+          mediaType: body.mediaType,
+          tmdbId: body.tmdbId,
+          title: body.title,
+          posterPath: body.posterPath,
+          backdropPath: body.backdropPath,
+          overview: body.overview,
+          year: body.year,
+          seasons: newSeasons,
+          profileId: body.profileId ?? existing.profileId,
+          isAnime
+        });
+        const updated = await getRequestById(prisma, existing.id);
+        invalidate(`seer-cache:${user.userId}`);
+        kickWorkerNow();
+        return reply.status(201).send(updated);
+      }
+    }
+    const dup = await findDuplicate(prisma, user.userId, body.tmdbId, body.mediaType, body.seasons);
+    if (dup) {
+      return reply.status(409).send({ message: "A request for this media is already active", existing: dup });
+    }
+    const req = await createRequest(prisma, {
+      jellyfinUserId: user.userId,
+      username: user.username,
+      mediaType: body.mediaType,
+      tmdbId: body.tmdbId,
+      title: body.title,
+      posterPath: body.posterPath,
+      backdropPath: body.backdropPath,
+      overview: body.overview,
+      year: body.year,
+      seasons: body.seasons,
+      profileId: body.profileId,
+      isAnime
+    });
+    invalidate(`seer-cache:${user.userId}`);
+    kickWorkerNow();
+    return reply.status(201).send(req);
+  });
+  app.delete("/requests/:id", async (request, reply) => {
+    const { id } = request.params;
+    const user = getUser(request);
+    const body = request.body ?? {};
+    const deleteFiles = body.deleteFiles === true;
+    const parsed = parseRequestId(id);
+    if (parsed.kind === "local") {
+      const req = await getRequestById(prisma, parsed.id);
+      if (!req) return reply.status(404).send({ message: "Request not found" });
+      if (req.jellyfinUserId !== user.userId && !user.isAdmin) {
+        return reply.status(403).send({ message: "Not your request" });
+      }
+      const reqSeasons = req.seasons ?? [];
+      const isSeasonSpecific = req.mediaType === "tv" && !!body.seasons && body.seasons.length > 0;
+      const removing = isSeasonSpecific ? body.seasons : req.mediaType === "tv" && reqSeasons.length > 0 ? reqSeasons : null;
+      const remaining = isSeasonSpecific ? reqSeasons.filter((s) => !removing.includes(s)) : [];
+      const partial = isSeasonSpecific && remaining.length > 0;
+      await enqueueCleanup(prisma, {
+        action: "delete",
+        mediaType: req.mediaType,
+        tmdbId: req.tmdbId,
+        title: req.title,
+        // En partiel on préserve la demande Jellyseerr et la ligne locale
+        // (les saisons conservées restent suivies) ; on agit uniquement sur *arr.
+        seerrRequestId: partial ? null : req.seerrRequestId,
+        seerrMediaId: req.seerrMediaId,
+        deleteFiles,
+        seasons: removing,
+        requestId: partial ? null : parsed.id
+      });
+      if (partial) {
+        await addSeasonsToRequest(prisma, parsed.id, remaining);
+      } else {
+        await updateRequestStatus(prisma, parsed.id, "deleting");
+      }
+      invalidate(`seer-cache:${user.userId}`);
+      kickWorkerNow();
+      return { success: true, status: partial ? "updated" : "deleting" };
+    }
+    const config = await getWorkerConfig2();
+    if (!config) return reply.status(503).send({ message: "Seerr not configured" });
+    const seerrReq = await fetchSeerrRequestById(config, parsed.seerrId);
+    if (!seerrReq) return reply.status(404).send({ message: "Seerr request not found" });
+    if (!user.isAdmin) {
+      const settingsRows = await prisma.$queryRawUnsafe(
+        `SELECT jellyseerr_user_id FROM seer_user_settings WHERE jellyfin_user_id = ? LIMIT 1`,
+        user.userId
+      );
+      const myId = settingsRows[0]?.jellyseerr_user_id ?? null;
+      if (!myId || seerrReq.requestedBy?.id !== myId) {
+        return reply.status(403).send({ message: "Not your request" });
+      }
+    }
+    await enqueueCleanup(prisma, {
+      action: "delete",
+      mediaType: seerrReq.media?.mediaType ?? "movie",
+      tmdbId: seerrReq.media?.tmdbId ?? 0,
+      title: `#${seerrReq.id}`,
+      seerrRequestId: seerrReq.id,
+      seerrMediaId: seerrReq.media?.id ?? null,
+      deleteFiles,
+      seasons: body.seasons && body.seasons.length > 0 ? body.seasons : null,
+      requestId: null
+    });
+    invalidate(`seer-cache:${user.userId}`);
+    kickWorkerNow();
+    return { success: true, status: "deleting" };
   });
 }
 

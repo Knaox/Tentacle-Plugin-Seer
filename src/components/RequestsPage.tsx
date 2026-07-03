@@ -8,35 +8,23 @@ import { useRequestMedia } from "../hooks/useRequestMedia";
 import { useToast } from "../hooks/useToast";
 import { RequestCard } from "./RequestCard";
 import { EmptyState } from "./EmptyState";
-import { ProfileSelector } from "./ProfileSelector";
 import { SeasonActionModal } from "./SeasonActionModal";
 import { MarkMenuSheet, type MarkTarget } from "./MarkMenuSheet";
 import { RequestsStatsBar } from "./RequestsStatsBar";
+import { RequestsToolbar, type StatusFilter, type TypeFilter } from "./RequestsToolbar";
+import { RequestsBulkBar, BulkRetryModal } from "./RequestsBulkUI";
 import type { LocalRequest, SeerrSearchResult } from "../api/types";
 
 const MediaDetailModal = lazy(() =>
   import("./MediaDetailModal").then((m) => ({ default: m.MediaDetailModal }))
 );
 
-type StatusFilter = "all" | "queued" | "sent_to_seer" | "approved" | "downloading" | "available" | "failed" | "deleting";
-
-const STATUS_TABS: { value: StatusFilter; key: string }[] = [
-  { value: "all", key: "seer:filterAll" },
-  { value: "queued", key: "seer:filterQueued" },
-  { value: "sent_to_seer", key: "seer:filterSent" },
-  { value: "approved", key: "seer:filterApproved" },
-  { value: "downloading", key: "seer:filterDownloading" },
-  { value: "available", key: "seer:filterAvailable" },
-  { value: "failed", key: "seer:filterFailed" },
-  { value: "deleting", key: "seer:filterDeleting" },
-];
-
 export function RequestsPage() {
   const { t } = useTranslation("seer");
   const toast = useToast();
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [typeFilter, setTypeFilter] = useState<"all" | "movie" | "tv">("all");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -183,75 +171,17 @@ export function RequestsPage() {
         </div>
       )}
 
-      {/* Barre de recherche */}
-      <div className="relative mb-4 rounded-xl bg-white/5 backdrop-blur-xl">
-        <svg className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-        </svg>
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder={t("seer:searchRequestsPlaceholder")}
-          aria-label={t("seer:searchRequestsPlaceholder")}
-          className="w-full rounded-xl border border-white/5 bg-transparent py-3 pl-12 pr-12 text-sm text-white placeholder-white/30 outline-none transition-all focus:border-tentacle-brand/30 focus:ring-2 focus:ring-tentacle-brand/50"
-        />
-        {search && (
-          <button
-            onClick={() => setSearch("")}
-            aria-label={t("seer:cancel")}
-            className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 transition-colors hover:text-white/60"
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-            </svg>
-          </button>
-        )}
-      </div>
-
-      {/* Filters */}
-      <div className="mb-4 flex flex-wrap gap-2">
-        {STATUS_TABS.map((tab) => (
-          <button
-            key={tab.value}
-            onClick={() => { setStatusFilter(tab.value); setPage(1); }}
-            className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-              statusFilter === tab.value
-                ? "bg-white text-black shadow-sm"
-                : "bg-white/[0.06] text-white/60 hover:bg-white/[0.10] hover:text-white"
-            }`}
-          >
-            {t(tab.key)}
-          </button>
-        ))}
-      </div>
-      <div className="mb-6 flex items-center gap-2">
-        {(["all", "movie", "tv"] as const).map((v) => (
-          <button
-            key={v}
-            onClick={() => { setTypeFilter(v); setPage(1); }}
-            className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-              typeFilter === v
-                ? "bg-white text-black shadow-sm"
-                : "bg-white/[0.06] text-white/60 hover:bg-white/[0.10] hover:text-white"
-            }`}
-          >
-            {v === "all" ? t("filterAllType") : v === "movie" ? t("filterMovies") : t("filterSeries")}
-          </button>
-        ))}
-        {requests.length > 0 && (
-          <button
-            onClick={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}
-            className={`ml-auto rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-              selectionMode
-                ? "bg-tentacle-brand/30 text-tentacle-brand-light"
-                : "bg-white/10 text-white/60 hover:bg-white/15"
-            }`}
-          >
-            {selectionMode ? t("seer:bulkCancel") : t("seer:bulkSelect")}
-          </button>
-        )}
-      </div>
+      <RequestsToolbar
+        search={search}
+        onSearchChange={setSearch}
+        statusFilter={statusFilter}
+        onStatusFilterChange={(v) => { setStatusFilter(v); setPage(1); }}
+        typeFilter={typeFilter}
+        onTypeFilterChange={(v) => { setTypeFilter(v); setPage(1); }}
+        showSelectToggle={requests.length > 0}
+        selectionMode={selectionMode}
+        onToggleSelectionMode={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}
+      />
 
       {/* Request list */}
       {isLoading ? (
@@ -340,28 +270,14 @@ export function RequestsPage() {
 
       {/* Bulk action bar */}
       {selectionMode && selectedIds.size > 0 && (
-        <div className="fixed bottom-4 left-1/2 z-40 flex max-w-[calc(100vw-16px)] -translate-x-1/2 flex-wrap items-center justify-center gap-2 rounded-xl border border-white/10 bg-[var(--surface-dropdown,#14141a)] px-4 py-3 shadow-2xl backdrop-blur-sm sm:gap-3 sm:px-5">
-          <button
-            onClick={handleBulkDelete}
-            disabled={bulkDeleteMutation.isPending}
-            className="rounded-lg bg-red-600/20 px-4 py-2 text-xs font-semibold text-red-400 transition-colors hover:bg-red-600/30 disabled:opacity-50"
-          >
-            {bulkDeleteMutation.isPending ? "..." : t("seer:bulkDelete", { count: selectedIds.size })}
-          </button>
-          <button
-            onClick={() => setBulkRetryModal(true)}
-            disabled={bulkRetryMutation.isPending}
-            className="rounded-lg bg-tentacle-brand/20 px-4 py-2 text-xs font-semibold text-tentacle-brand-light transition-colors hover:bg-tentacle-brand/30 disabled:opacity-50"
-          >
-            {bulkRetryMutation.isPending ? "..." : t("seer:bulkRetry", { count: selectedIds.size })}
-          </button>
-          <button
-            onClick={exitSelectionMode}
-            className="rounded-lg bg-white/10 px-4 py-2 text-xs text-white/50 transition-colors hover:bg-white/15"
-          >
-            {t("seer:bulkCancel")}
-          </button>
-        </div>
+        <RequestsBulkBar
+          count={selectedIds.size}
+          deleting={bulkDeleteMutation.isPending}
+          retrying={bulkRetryMutation.isPending}
+          onBulkDelete={handleBulkDelete}
+          onOpenRetryModal={() => setBulkRetryModal(true)}
+          onCancel={exitSelectionMode}
+        />
       )}
 
       {/* Modal ajout de saisons */}
@@ -413,29 +329,14 @@ export function RequestsPage() {
 
       {/* Modal choix profil pour bulk retry */}
       {bulkRetryModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
-          onClick={() => setBulkRetryModal(false)}>
-          <div className="mx-4 w-full max-w-sm rounded-xl bg-[var(--surface-2,#141414)] p-5 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-4 text-sm font-semibold text-white">
-              {t("seer:bulkRetry", { count: selectedIds.size })}
-            </h3>
-            <ProfileSelector showAll selectedId={bulkProfileId} onChange={setBulkProfileId} />
-            <div className="mt-4 flex items-center justify-end gap-2">
-              <button onClick={() => setBulkRetryModal(false)}
-                className="rounded-lg bg-white/10 px-4 py-1.5 text-xs text-white/50 hover:bg-white/15">
-                {t("seer:cancel")}
-              </button>
-              <button
-                onClick={() => handleBulkRetry(bulkProfileId)}
-                disabled={bulkRetryMutation.isPending}
-                style={{ boxShadow: "0 8px 22px rgba(var(--brand-rgb), 0.45)" }}
-                className="inline-flex items-center justify-center rounded-lg bg-white px-4 py-1.5 text-xs font-bold text-black transition-all hover:bg-white/95 disabled:opacity-40">
-                {bulkRetryMutation.isPending ? "..." : t("seer:seasonActionConfirm")}
-              </button>
-            </div>
-          </div>
-        </div>
+        <BulkRetryModal
+          count={selectedIds.size}
+          profileId={bulkProfileId}
+          onProfileChange={setBulkProfileId}
+          retrying={bulkRetryMutation.isPending}
+          onConfirm={() => handleBulkRetry(bulkProfileId)}
+          onClose={() => setBulkRetryModal(false)}
+        />
       )}
     </div>
   );
