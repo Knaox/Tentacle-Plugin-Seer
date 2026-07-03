@@ -74,8 +74,8 @@ export function RequestsPage() {
   const requests = data?.results ?? [];
   const totalPages = data?.pages ?? 1;
 
-  const handleDelete = (id: string, seasons?: number[], deleteFiles?: boolean) => {
-    deleteMutation.mutate({ id, seasons, deleteFiles }, {
+  const handleDelete = (id: string, seasons?: number[], deleteFiles?: boolean, full?: boolean) => {
+    deleteMutation.mutate({ id, seasons, deleteFiles, full }, {
       onSuccess: () => toast.show("success", t("requestDeleting")),
       onError: () => toast.show("error", t("requestDeleteError")),
     });
@@ -397,7 +397,11 @@ export function RequestsPage() {
           action={actionModal.action}
           onConfirm={(seasons, profileId, options) => {
             if (actionModal.action === "delete") {
-              handleDelete(actionModal.request.id, seasons, options?.deleteFiles);
+              // Partiel = des saisons de la demande survivent → l'état de la
+              // carte ne passe pas « En suppression » (MAJ optimiste ciblée).
+              const reqSeasons = actionModal.request.seasons ?? [];
+              const full = !seasons || seasons.length === 0 || seasons.length >= reqSeasons.length;
+              handleDelete(actionModal.request.id, seasons, options?.deleteFiles, full);
             } else {
               handleRetry(actionModal.request.id, seasons, profileId, options?.forceRedownload);
             }

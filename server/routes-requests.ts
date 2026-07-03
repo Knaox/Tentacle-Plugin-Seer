@@ -339,6 +339,24 @@ export function registerRequestRoutes(
 
         const out: UnifiedRequest[] = [...localFiltered, ...seerrUnified];
         out.sort((a, b) => (b.createdAt > a.createdAt ? 1 : -1));
+
+        // Demandes Jellyseerr dont la suppression est en file (job cleanup
+        // pending) : affichées « deleting » tout de suite. Sans ce marquage,
+        // un refetch juste après la suppression re-affichait l'ancien état
+        // jusqu'à ce que le worker ait réellement supprimé côté Jellyseerr.
+        try {
+          const pendingDeletes = await prisma.$queryRawUnsafe<Array<{ seerr_request_id: number }>>(
+            `SELECT seerr_request_id FROM seer_cleanup_queue
+             WHERE status = 'pending' AND action = 'delete' AND seerr_request_id IS NOT NULL`,
+          );
+          const deletingIds = new Set(pendingDeletes.map((r) => Number(r.seerr_request_id)));
+          if (deletingIds.size > 0) {
+            for (const u of out) {
+              if (u.seerrRequestId && deletingIds.has(u.seerrRequestId)) u.status = "deleting";
+            }
+          }
+        } catch { /* best-effort */ }
+
         return out;
       },
     );

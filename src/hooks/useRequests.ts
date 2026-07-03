@@ -1,9 +1,9 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { getMyRequests, deleteRequest, retryRequest, retryDeleteRequest, getQueueStatus, bulkDeleteRequests, bulkRetryRequests, markRequestStatus } from "../api/seer-client";
 import { useToast } from "./useToast";
-import type { LocalRequest } from "../api/types";
+import type { LocalRequest, LocalRequestsResponse, RequestStatus } from "../api/types";
 
 export function useMyRequests(
   page = 1,
@@ -56,15 +56,54 @@ export function useMyRequests(
   return query;
 }
 
+/* ── MAJ optimiste des statuts ─────────────────────────────────────────
+ * Chaque action (mark, suppression, redemande) se voit INSTANTANÉMENT dans
+ * la liste ; la revalidation qui suit reflète l'état réel de Jellyseerr
+ * (source de vérité) et confirme — ou corrige — l'affichage. */
+
+type RequestsSnapshot = Array<[readonly unknown[], LocalRequestsResponse | undefined]>;
+
+async function applyOptimisticStatus(
+  qc: QueryClient,
+  ids: string[],
+  status: RequestStatus,
+): Promise<RequestsSnapshot> {
+  await qc.cancelQueries({ queryKey: ["seer-my-requests"] });
+  const snapshot = qc.getQueriesData<LocalRequestsResponse>({
+    queryKey: ["seer-my-requests"],
+  }) as RequestsSnapshot;
+  const idSet = new Set(ids);
+  qc.setQueriesData<LocalRequestsResponse>({ queryKey: ["seer-my-requests"] }, (old) =>
+    old?.results
+      ? { ...old, results: old.results.map((r) => (idSet.has(r.id) ? { ...r, status } : r)) }
+      : old,
+  );
+  return snapshot;
+}
+
+function rollbackOptimistic(qc: QueryClient, snapshot?: RequestsSnapshot): void {
+  for (const [key, data] of snapshot ?? []) {
+    qc.setQueryData(key as unknown[], data);
+  }
+}
+
+function invalidateRequests(qc: QueryClient): void {
+  qc.invalidateQueries({ queryKey: ["seer-my-requests"] });
+  qc.invalidateQueries({ queryKey: ["seer-queue-status"] });
+}
+
 export function useDeleteRequest() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (args: { id: string; seasons?: number[]; deleteFiles?: boolean }) =>
+    mutationFn: (args: { id: string; seasons?: number[]; deleteFiles?: boolean; full?: boolean }) =>
       deleteRequest(args.id, { seasons: args.seasons, deleteFiles: args.deleteFiles }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["seer-my-requests"] });
-      qc.invalidateQueries({ queryKey: ["seer-queue-status"] });
-    },
+    // Suppression complète → badge « En suppression » immédiat. Une suppression
+    // partielle (des saisons restent) ne change pas l'état de la demande.
+    onMutate: async (args) => ({
+      snapshot: args.full === false ? undefined : await applyOptimisticStatus(qc, [args.id], "deleting"),
+    }),
+    onError: (_err, _vars, ctx) => rollbackOptimistic(qc, ctx?.snapshot),
+    onSettled: () => invalidateRequests(qc),
   });
 }
 
@@ -73,10 +112,9 @@ export function useRetryRequest() {
   return useMutation({
     mutationFn: (args: { id: string; seasons?: number[]; profileId?: string | null; forceRedownload?: boolean }) =>
       retryRequest(args.id, { seasons: args.seasons, profileId: args.profileId, forceRedownload: args.forceRedownload }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["seer-my-requests"] });
-      qc.invalidateQueries({ queryKey: ["seer-queue-status"] });
-    },
+    onMutate: async (args) => ({ snapshot: await applyOptimisticStatus(qc, [args.id], "queued") }),
+    onError: (_err, _vars, ctx) => rollbackOptimistic(qc, ctx?.snapshot),
+    onSettled: () => invalidateRequests(qc),
   });
 }
 
@@ -84,10 +122,9 @@ export function useRetryDeleteRequest() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => retryDeleteRequest(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["seer-my-requests"] });
-      qc.invalidateQueries({ queryKey: ["seer-queue-status"] });
-    },
+    onMutate: async (id) => ({ snapshot: await applyOptimisticStatus(qc, [id], "deleting") }),
+    onError: (_err, _vars, ctx) => rollbackOptimistic(qc, ctx?.snapshot),
+    onSettled: () => invalidateRequests(qc),
   });
 }
 
@@ -95,10 +132,9 @@ export function useBulkDeleteRequests() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (ids: string[]) => bulkDeleteRequests(ids),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["seer-my-requests"] });
-      qc.invalidateQueries({ queryKey: ["seer-queue-status"] });
-    },
+    onMutate: async (ids) => ({ snapshot: await applyOptimisticStatus(qc, ids, "deleting") }),
+    onError: (_err, _vars, ctx) => rollbackOptimistic(qc, ctx?.snapshot),
+    onSettled: () => invalidateRequests(qc),
   });
 }
 
@@ -106,20 +142,31 @@ export function useBulkRetryRequests() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (args: { ids: string[]; profileId?: string | null }) => bulkRetryRequests(args.ids, args.profileId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["seer-my-requests"] });
-      qc.invalidateQueries({ queryKey: ["seer-queue-status"] });
-    },
+    onMutate: async (args) => ({ snapshot: await applyOptimisticStatus(qc, args.ids, "queued") }),
+    onError: (_err, _vars, ctx) => rollbackOptimistic(qc, ctx?.snapshot),
+    onSettled: () => invalidateRequests(qc),
   });
 }
+
+/** Statut local affiché pendant qu'un mark Jellyseerr est en vol. */
+const MARK_TO_LOCAL: Record<"available" | "partial" | "processing" | "unknown", RequestStatus> = {
+  available: "available",
+  partial: "partially_available",
+  processing: "downloading",
+  unknown: "unavailable",
+};
 
 export function useMarkRequestStatus() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (args: { id: string; status: "available" | "partial" | "processing" | "unknown" }) =>
       markRequestStatus(args.id, args.status),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["seer-my-requests"] });
+    onMutate: async (args) => ({
+      snapshot: await applyOptimisticStatus(qc, [args.id], MARK_TO_LOCAL[args.status]),
+    }),
+    onError: (_err, _vars, ctx) => rollbackOptimistic(qc, ctx?.snapshot),
+    onSettled: () => {
+      invalidateRequests(qc);
       qc.invalidateQueries({ queryKey: ["seer-stats-overview"] });
     },
   });

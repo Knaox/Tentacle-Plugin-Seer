@@ -36,7 +36,7 @@ const STATUS_COLOR: Record<RequestStatus, string> = {
   downloading: "bg-orange-500/20 text-orange-400",
   partially_available: "bg-amber-400/20 text-amber-300",
   available: "bg-emerald-500/20 text-emerald-400",
-  unavailable: "bg-white/10 text-white/60",
+  unavailable: "bg-tentacle-brand/20 text-tentacle-brand-light",
   retry_pending: "bg-orange-500/20 text-orange-300", failed: "bg-red-500/20 text-red-400",
   deleting: "bg-orange-500/20 text-orange-400", delete_failed: "bg-red-500/20 text-red-400",
 };

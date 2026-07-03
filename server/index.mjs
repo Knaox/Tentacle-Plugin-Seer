@@ -1914,6 +1914,19 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
         const localFiltered = localPending.filter((l) => !l.seerrRequestId || !seerrSeenIds.has(l.seerrRequestId)).map(localToUnified);
         const out = [...localFiltered, ...seerrUnified];
         out.sort((a, b) => b.createdAt > a.createdAt ? 1 : -1);
+        try {
+          const pendingDeletes = await prisma.$queryRawUnsafe(
+            `SELECT seerr_request_id FROM seer_cleanup_queue
+             WHERE status = 'pending' AND action = 'delete' AND seerr_request_id IS NOT NULL`
+          );
+          const deletingIds = new Set(pendingDeletes.map((r) => Number(r.seerr_request_id)));
+          if (deletingIds.size > 0) {
+            for (const u of out) {
+              if (u.seerrRequestId && deletingIds.has(u.seerrRequestId)) u.status = "deleting";
+            }
+          }
+        } catch {
+        }
         return out;
       }
     );

@@ -36,8 +36,9 @@ const OPTIONS: MarkOption[] = [
     iconPaths: ["M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"],
   },
   {
-    target: "unknown", labelKey: "seer:markAsUnknown", color: "text-white/70",
-    iconPaths: ["m9.75 9.75 4.5 4.5m0-4.5-4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"],
+    // « unknown » côté API : Jellyseerr repasse le média à l'état demandé
+    target: "unknown", labelKey: "seer:markAsUnknown", color: "text-violet-300",
+    iconPaths: ["M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3"],
   },
 ];
 
