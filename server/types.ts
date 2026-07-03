@@ -10,6 +10,8 @@ export type RequestStatus =
   | "downloading"
   | "partially_available"
   | "available"
+  /** Média marqué « non disponible » (UNKNOWN) côté Jellyseerr */
+  | "unavailable"
   | "retry_pending"
   | "failed"
   | "deleting"

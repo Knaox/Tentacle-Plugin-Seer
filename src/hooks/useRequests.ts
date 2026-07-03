@@ -116,7 +116,7 @@ export function useBulkRetryRequests() {
 export function useMarkRequestStatus() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (args: { id: string; status: "available" | "partial" | "unknown" }) =>
+    mutationFn: (args: { id: string; status: "available" | "partial" | "processing" | "unknown" }) =>
       markRequestStatus(args.id, args.status),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["seer-my-requests"] });

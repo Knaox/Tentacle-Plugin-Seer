@@ -198,6 +198,7 @@ export type RequestStatus =
   | "downloading"
   | "partially_available"
   | "available"
+  | "unavailable"
   | "retry_pending"
   | "failed"
   | "deleting"

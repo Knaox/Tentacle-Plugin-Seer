@@ -93,7 +93,7 @@ export function RequestsPage() {
     });
   };
 
-  const handleMark = (id: string, status: "available" | "partial" | "unknown") => {
+  const handleMark = (id: string, status: "available" | "partial" | "processing" | "unknown") => {
     markMutation.mutate({ id, status }, {
       onSuccess: () => toast.show("success", t("seer:markedSuccess")),
       onError: () => toast.show("error", t("seer:markedError")),

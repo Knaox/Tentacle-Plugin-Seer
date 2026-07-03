@@ -264,7 +264,7 @@ export async function retryDeleteRequest(id: string): Promise<void> {
 
 export async function markRequestStatus(
   id: string,
-  status: "available" | "partial" | "unknown",
+  status: "available" | "partial" | "processing" | "unknown",
 ): Promise<{ success: boolean; target: string }> {
   return backendFetch(`/requests/${id}/mark`, {
     method: "POST",

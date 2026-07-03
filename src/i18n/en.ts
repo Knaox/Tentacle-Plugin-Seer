@@ -203,6 +203,7 @@ export default {
   statusDownloading: "Downloading",
   statusAvailable: "Available",
   statusRetryPending: "Retrying",
+  statusUnavailable: "Not available",
   statusFailed: "Failed",
   statusDeleting: "Deleting",
   statusDeleteFailed: "Delete Failed",
@@ -215,6 +216,7 @@ export default {
   status_partially_available: "Partially available",
   status_available: "Available",
   status_retry_pending: "Retrying",
+  status_unavailable: "Not available",
   status_failed: "Failed",
   status_deleting: "Deleting",
   status_delete_failed: "Delete Failed",
@@ -373,6 +375,7 @@ export default {
   markAsAvailable: "Available",
   markAsPartial: "Partially available",
   markAsUnknown: "Not available",
+  markAsProcessing: "Processing",
   markedSuccess: "Jellyseerr status updated",
   markedError: "Failed to update status",
 

@@ -25,6 +25,7 @@ const STATUS_I18N: Record<RequestStatus, string> = {
   downloading: "seer:statusDownloading",
   partially_available: "seer:statusPartiallyAvailableBadge",
   available: "seer:statusAvailable",
+  unavailable: "seer:statusUnavailable",
   retry_pending: "seer:statusRetryPending", failed: "seer:statusFailed",
   deleting: "seer:statusDeleting", delete_failed: "seer:statusDeleteFailed",
 };
@@ -35,6 +36,7 @@ const STATUS_COLOR: Record<RequestStatus, string> = {
   downloading: "bg-orange-500/20 text-orange-400",
   partially_available: "bg-amber-400/20 text-amber-300",
   available: "bg-emerald-500/20 text-emerald-400",
+  unavailable: "bg-white/10 text-white/60",
   retry_pending: "bg-orange-500/20 text-orange-300", failed: "bg-red-500/20 text-red-400",
   deleting: "bg-orange-500/20 text-orange-400", delete_failed: "bg-red-500/20 text-red-400",
 };
@@ -43,7 +45,7 @@ const PROGRESS_STEPS: RequestStatus[] = ["queued", "sent_to_seer", "approved", "
 
 function getProgressIndex(status: RequestStatus): number {
   if (status === "processing" || status === "retry_pending") return 0;
-  if (status === "failed" || status === "deleting" || status === "delete_failed") return -1;
+  if (status === "failed" || status === "deleting" || status === "delete_failed" || status === "unavailable") return -1;
   return PROGRESS_STEPS.indexOf(status);
 }
 

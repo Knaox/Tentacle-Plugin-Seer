@@ -662,14 +662,17 @@ export function registerRequestRoutes(
     return reply.status(201).send(newReq);
   });
 
-  /* ── POST /requests/:id/mark — change le statut Jellyseerr du media ── */
+  /* ── POST /requests/:id/mark — change le statut Jellyseerr du media ──
+   * Écriture ONE-SHOT vers Jellyseerr : le plugin n'« épingle » jamais
+   * l'état marqué. Si Jellyseerr change ensuite l'état de lui-même
+   * (availability-sync, téléchargement…), l'affichage suit Jellyseerr. */
   app.post("/requests/:id/mark", async (request, reply) => {
     const { id } = request.params as { id: string };
     const user = getUser(request);
-    const body = (request.body as { status?: "available" | "partial" | "unknown" } | null) ?? {};
+    const body = (request.body as { status?: "available" | "partial" | "processing" | "unknown" } | null) ?? {};
     const target = body.status;
-    if (!target || !["available", "partial", "unknown"].includes(target)) {
-      return reply.status(400).send({ message: "status must be 'available', 'partial' or 'unknown'" });
+    if (!target || !["available", "partial", "processing", "unknown"].includes(target)) {
+      return reply.status(400).send({ message: "status must be 'available', 'partial', 'processing' or 'unknown'" });
     }
 
     const config = await getWorkerConfig();
@@ -720,11 +723,13 @@ export function registerRequestRoutes(
       });
     }
 
-    // Réflecte localement (best-effort)
+    // Réflecte localement (best-effort). Simple miroir de l'état Jellyseerr :
+    // la synchro périodique (Jellyseerr → local) reprend la main ensuite.
     if (parsed.kind === "local") {
-      const localStatus = target === "available" ? "available"
+      const localStatus: RequestStatus = target === "available" ? "available"
         : target === "partial" ? "partially_available"
-        : "sent_to_seer";
+        : target === "processing" ? "downloading"
+        : "unavailable";
       await updateRequestStatus(prisma, parsed.id, localStatus);
     }
 

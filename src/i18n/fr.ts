@@ -204,6 +204,7 @@ export default {
   statusAvailable: "Disponible",
   statusPartiallyAvailableBadge: "Partiellement dispo.",
   statusRetryPending: "Nouvelle tentative",
+  statusUnavailable: "Non disponible",
   statusFailed: "Échec",
   statusDeleting: "En suppression",
   statusDeleteFailed: "Échec suppression",
@@ -216,6 +217,7 @@ export default {
   status_partially_available: "Partiellement disponible",
   status_available: "Disponible",
   status_retry_pending: "Nouvelle tentative",
+  status_unavailable: "Non disponible",
   status_failed: "Échec",
   status_deleting: "En suppression",
   status_delete_failed: "Échec suppression",
@@ -374,6 +376,7 @@ export default {
   markAsAvailable: "Disponible",
   markAsPartial: "Partiellement disponible",
   markAsUnknown: "Non disponible",
+  markAsProcessing: "En traitement",
   markedSuccess: "Statut mis à jour sur Jellyseerr",
   markedError: "Échec de la mise à jour du statut",
 

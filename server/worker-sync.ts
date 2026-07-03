@@ -154,7 +154,8 @@ export async function retryFailedRequests(prisma: PrismaClient): Promise<void> {
 /* ── Helpers ──────────────────────────────────────────────────────── */
 
 /**
- * Mapping Jellyseerr → status local.
+ * Mapping Jellyseerr → status local. L'état du MÉDIA Jellyseerr (source de
+ * vérité, y compris posé manuellement via « Marquer comme ») prime.
  *
  * Jellyseerr media.status (Overseerr) :
  *   1 = UNKNOWN, 2 = PENDING, 3 = PROCESSING, 4 = PARTIALLY_AVAILABLE, 5 = AVAILABLE
@@ -167,13 +168,21 @@ export function mapSeerrStatus(
 ): SeerRequest["status"] {
   if (requestStatus === 3) return "failed";
   if (requestStatus === 4) return "failed";
-  if (downloadStatus?.some((d) => d.status === "failed" || d.status === "warning")) return "failed";
 
+  // Disponible / partiellement disponible AVANT les échecs de téléchargement :
+  // un état posé (par Jellyseerr ou manuellement par l'utilisateur) ne doit
+  // jamais être re-écrasé en « échec » — et donc auto-retenté — sur la foi
+  // d'un downloadStatus périmé.
   if (mediaStatus === 5) return "available";
   if (mediaStatus === 4) return "partially_available";
-  if (mediaStatus === 3) return "downloading";
 
+  if (downloadStatus?.some((d) => d.status === "failed" || d.status === "warning")) return "failed";
+
+  if (mediaStatus === 3) return "downloading";
   if (requestStatus === 1) return "sent_to_seer";
+  // Média marqué « non disponible » (UNKNOWN) dans Jellyseerr alors que la
+  // demande reste approuvée → on reflète le vrai état Jellyseerr.
+  if (mediaStatus === 1) return "unavailable";
   return "approved";
 }
 

@@ -926,11 +926,12 @@ async function retryFailedRequests(prisma) {
 function mapSeerrStatus(requestStatus, mediaStatus, downloadStatus) {
   if (requestStatus === 3) return "failed";
   if (requestStatus === 4) return "failed";
-  if (downloadStatus?.some((d) => d.status === "failed" || d.status === "warning")) return "failed";
   if (mediaStatus === 5) return "available";
   if (mediaStatus === 4) return "partially_available";
+  if (downloadStatus?.some((d) => d.status === "failed" || d.status === "warning")) return "failed";
   if (mediaStatus === 3) return "downloading";
   if (requestStatus === 1) return "sent_to_seer";
+  if (mediaStatus === 1) return "unavailable";
   return "approved";
 }
 function statusNotification(request, newStatus) {
@@ -2203,8 +2204,8 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
     const user = getUser(request);
     const body = request.body ?? {};
     const target = body.status;
-    if (!target || !["available", "partial", "unknown"].includes(target)) {
-      return reply.status(400).send({ message: "status must be 'available', 'partial' or 'unknown'" });
+    if (!target || !["available", "partial", "processing", "unknown"].includes(target)) {
+      return reply.status(400).send({ message: "status must be 'available', 'partial', 'processing' or 'unknown'" });
     }
     const config = await getWorkerConfig2();
     if (!config) return reply.status(503).send({ message: "Seerr not configured" });
@@ -2245,7 +2246,7 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
       });
     }
     if (parsed.kind === "local") {
-      const localStatus = target === "available" ? "available" : target === "partial" ? "partially_available" : "sent_to_seer";
+      const localStatus = target === "available" ? "available" : target === "partial" ? "partially_available" : target === "processing" ? "downloading" : "unavailable";
       await updateRequestStatus(prisma, parsed.id, localStatus);
     }
     invalidate(`seer-cache:${user.userId}`);
