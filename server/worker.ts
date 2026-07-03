@@ -13,19 +13,53 @@ import type { SeerProfile } from "./types";
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let cycleCount = 0;
+let prismaRef: PrismaClient | null = null;
+let getConfigRef: (() => Promise<WorkerConfig | null>) | null = null;
+let requestQueueBusy = false;
+let cleanupQueueBusy = false;
+
+/** File d'envoi : jusqu'à 10 demandes par passe (bulk retry, rafale d'ajouts). */
+async function runRequestQueue(prisma: PrismaClient, config: WorkerConfig): Promise<void> {
+  if (requestQueueBusy) return;
+  requestQueueBusy = true;
+  try {
+    // `seen` : une demande repassée en retry_pending pendant la passe n'est pas
+    // re-traitée immédiatement (elle garde son rythme d'un retry par tick).
+    const seen = new Set<string>();
+    for (let i = 0; i < 10; i++) {
+      const processedId = await processNextRequest(prisma, config, seen);
+      if (!processedId) return;
+      seen.add(processedId);
+    }
+  } finally {
+    requestQueueBusy = false;
+  }
+}
+
+async function runCleanupQueue(prisma: PrismaClient, config: WorkerConfig): Promise<void> {
+  if (cleanupQueueBusy) return;
+  cleanupQueueBusy = true;
+  try {
+    await processCleanupQueue(prisma, config);
+  } finally {
+    cleanupQueueBusy = false;
+  }
+}
 
 export function startWorker(
   prisma: PrismaClient,
   getConfig: () => Promise<WorkerConfig | null>,
 ): void {
   if (timer) return;
+  prismaRef = prisma;
+  getConfigRef = getConfig;
 
   async function tick() {
     const config = await getConfig();
     if (!config || !config.seerrUrl || !config.seerrApiKey) return;
     cycleCount++;
 
-    try { await processNextRequest(prisma, config); }
+    try { await runRequestQueue(prisma, config); }
     catch (err) { console.error("[SeerWorker] Error processing request:", err); }
 
     if (cycleCount % config.syncEvery === 0) {
@@ -36,13 +70,39 @@ export function startWorker(
     try { await retryFailedRequests(prisma); }
     catch (err) { console.error("[SeerWorker] Error retrying failed requests:", err); }
 
-    try { await processCleanupQueue(prisma, config); }
+    try { await runCleanupQueue(prisma, config); }
     catch (err) { console.error("[SeerWorker] Error processing cleanup queue:", err); }
   }
 
   setTimeout(tick, 5000);
   timer = setInterval(() => { tick(); }, 60_000);
   console.log("[SeerWorker] Started");
+}
+
+/**
+ * Réveille le worker immédiatement (appelé par les routes après un enqueue :
+ * suppression, bulk, nouvelle demande). Sans ce kick, chaque action attendait
+ * le prochain tick (60 s) — un bulk delete de 20 items prenait ~20 minutes.
+ * Les gardes `*QueueBusy` empêchent tout chevauchement avec le tick périodique.
+ */
+export function kickWorkerNow(): void {
+  const prisma = prismaRef;
+  const getConfig = getConfigRef;
+  if (!prisma || !getConfig) return;
+  setTimeout(async () => {
+    try {
+      const config = await getConfig();
+      if (!config || !config.seerrUrl || !config.seerrApiKey) return;
+      await Promise.all([
+        runRequestQueue(prisma, config)
+          .catch((err) => console.error("[SeerWorker] Kick request queue failed:", err)),
+        runCleanupQueue(prisma, config)
+          .catch((err) => console.error("[SeerWorker] Kick cleanup queue failed:", err)),
+      ]);
+    } catch (err) {
+      console.error("[SeerWorker] Kick failed:", err);
+    }
+  }, 50);
 }
 
 export function stopWorker(): void {
@@ -55,12 +115,17 @@ export function isWorkerRunning(): boolean {
 
 /* ── Process next queued request ───────────────────────────────────── */
 
-async function processNextRequest(prisma: PrismaClient, config: WorkerConfig): Promise<void> {
+/** Traite la prochaine demande en file. Retourne son id, ou null si rien à faire. */
+async function processNextRequest(
+  prisma: PrismaClient,
+  config: WorkerConfig,
+  skipIds: ReadonlySet<string>,
+): Promise<string | null> {
   const request = await getNextQueued(prisma);
-  if (!request) return;
+  if (!request || skipIds.has(request.id)) return null;
 
   const fresh = await getRequestById(prisma, request.id);
-  if (!fresh || (fresh.status !== "queued" && fresh.status !== "retry_pending")) return;
+  if (!fresh || (fresh.status !== "queued" && fresh.status !== "retry_pending")) return request.id;
 
   await updateRequestStatus(prisma, request.id, "processing");
 
@@ -163,7 +228,7 @@ async function processNextRequest(prisma: PrismaClient, config: WorkerConfig): P
         });
         invalidate(`seer-cache:${request.jellyfinUserId}`);
         console.log(`[SeerWorker] "${request.title}" : saisons déjà présentes côté Jellyseerr — marqué ${localStatus}`);
-        return;
+        return request.id;
       }
       throw new Error(`Seerr returned ${res.status}: ${text.slice(0, 200)}`);
     }
@@ -223,4 +288,5 @@ async function processNextRequest(prisma: PrismaClient, config: WorkerConfig): P
       console.warn(`[SeerWorker] Request for "${request.title}" retry ${newRetryCount}/${request.maxRetries}: ${errMsg}`);
     }
   }
+  return request.id;
 }

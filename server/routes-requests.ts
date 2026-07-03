@@ -15,6 +15,7 @@ import type { CreateRequestBody, UnifiedRequest, RequestStatus, SeerRequest } fr
 import { fetchMediaDetail, isAnimeFromKeywords } from "./anime";
 import { resolveJellyseerrUserId } from "./jellyseerr-user";
 import { mapSeerrStatus } from "./worker-sync";
+import { kickWorkerNow } from "./worker";
 import { cached, invalidate } from "./cache";
 
 interface JellyfinUser { userId: string; username: string; isAdmin: boolean; }
@@ -441,6 +442,7 @@ export function registerRequestRoutes(
 
         const updated = await getRequestById(prisma, existing.id);
         invalidate(`seer-cache:${user.userId}`);
+        kickWorkerNow();
         return reply.status(201).send(updated);
       }
     }
@@ -461,6 +463,7 @@ export function registerRequestRoutes(
     });
 
     invalidate(`seer-cache:${user.userId}`);
+    kickWorkerNow();
     return reply.status(201).send(req);
   });
 
@@ -511,6 +514,7 @@ export function registerRequestRoutes(
         await updateRequestStatus(prisma, parsed.id, "deleting");
       }
       invalidate(`seer-cache:${user.userId}`);
+      kickWorkerNow();
       return { success: true, status: partial ? "updated" : "deleting" };
     }
 
@@ -546,6 +550,7 @@ export function registerRequestRoutes(
     });
 
     invalidate(`seer-cache:${user.userId}`);
+    kickWorkerNow();
     return { success: true, status: "deleting" };
   });
 
@@ -595,6 +600,7 @@ export function registerRequestRoutes(
         profileId: newProfileId, isAnime: req.isAnime,
       });
       invalidate(`seer-cache:${user.userId}`);
+      kickWorkerNow();
       return reply.status(201).send(newReq);
     }
 
@@ -652,6 +658,7 @@ export function registerRequestRoutes(
       isAnime: false,
     });
     invalidate(`seer-cache:${user.userId}`);
+    kickWorkerNow();
     return reply.status(201).send(newReq);
   });
 
@@ -745,6 +752,7 @@ export function registerRequestRoutes(
       deleteFiles: true, requestId: id,
     });
 
+    kickWorkerNow();
     return { success: true };
   });
 }

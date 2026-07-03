@@ -247,11 +247,11 @@ async function enqueueCleanup(prisma, job) {
   );
   return id;
 }
-async function getPendingCleanups(prisma) {
+async function getPendingCleanups(prisma, limit = 25) {
   const rows = await prisma.$queryRawUnsafe(
     `SELECT * FROM seer_cleanup_queue
      WHERE status = 'pending' AND next_retry_at <= NOW()
-     ORDER BY created_at ASC LIMIT 1`
+     ORDER BY created_at ASC LIMIT ${Math.max(1, Math.min(100, limit))}`
   );
   return rows.map((r) => ({
     id: r.id,
@@ -1210,10 +1210,18 @@ async function reconcileSeerrSeasons(prisma, config, tmdbId, removedSeasons) {
 }
 
 // server/worker-cleanup.ts
+var CLEANUP_BATCH = 25;
 async function processCleanupQueue(prisma, config) {
-  const jobs = await getPendingCleanups(prisma);
-  if (jobs.length === 0) return;
-  const job = jobs[0];
+  for (let pass = 0; pass < 4; pass++) {
+    const jobs = await getPendingCleanups(prisma, CLEANUP_BATCH);
+    if (jobs.length === 0) return;
+    for (const job of jobs) {
+      await processCleanupJob(prisma, config, job);
+    }
+    if (jobs.length < CLEANUP_BATCH) return;
+  }
+}
+async function processCleanupJob(prisma, config, job) {
   const headers = { "X-Api-Key": config.seerrApiKey };
   try {
     const arrType = job.mediaType === "movie" ? "radarr" : "sonarr";
@@ -1437,14 +1445,43 @@ async function importJellyseerrUserFromJellyfin(config, jellyfinUserId) {
 // server/worker.ts
 var timer = null;
 var cycleCount = 0;
+var prismaRef = null;
+var getConfigRef = null;
+var requestQueueBusy = false;
+var cleanupQueueBusy = false;
+async function runRequestQueue(prisma, config) {
+  if (requestQueueBusy) return;
+  requestQueueBusy = true;
+  try {
+    const seen = /* @__PURE__ */ new Set();
+    for (let i = 0; i < 10; i++) {
+      const processedId = await processNextRequest(prisma, config, seen);
+      if (!processedId) return;
+      seen.add(processedId);
+    }
+  } finally {
+    requestQueueBusy = false;
+  }
+}
+async function runCleanupQueue(prisma, config) {
+  if (cleanupQueueBusy) return;
+  cleanupQueueBusy = true;
+  try {
+    await processCleanupQueue(prisma, config);
+  } finally {
+    cleanupQueueBusy = false;
+  }
+}
 function startWorker(prisma, getConfig) {
   if (timer) return;
+  prismaRef = prisma;
+  getConfigRef = getConfig;
   async function tick() {
     const config = await getConfig();
     if (!config || !config.seerrUrl || !config.seerrApiKey) return;
     cycleCount++;
     try {
-      await processNextRequest(prisma, config);
+      await runRequestQueue(prisma, config);
     } catch (err) {
       console.error("[SeerWorker] Error processing request:", err);
     }
@@ -1461,7 +1498,7 @@ function startWorker(prisma, getConfig) {
       console.error("[SeerWorker] Error retrying failed requests:", err);
     }
     try {
-      await processCleanupQueue(prisma, config);
+      await runCleanupQueue(prisma, config);
     } catch (err) {
       console.error("[SeerWorker] Error processing cleanup queue:", err);
     }
@@ -1471,6 +1508,23 @@ function startWorker(prisma, getConfig) {
     tick();
   }, 6e4);
   console.log("[SeerWorker] Started");
+}
+function kickWorkerNow() {
+  const prisma = prismaRef;
+  const getConfig = getConfigRef;
+  if (!prisma || !getConfig) return;
+  setTimeout(async () => {
+    try {
+      const config = await getConfig();
+      if (!config || !config.seerrUrl || !config.seerrApiKey) return;
+      await Promise.all([
+        runRequestQueue(prisma, config).catch((err) => console.error("[SeerWorker] Kick request queue failed:", err)),
+        runCleanupQueue(prisma, config).catch((err) => console.error("[SeerWorker] Kick cleanup queue failed:", err))
+      ]);
+    } catch (err) {
+      console.error("[SeerWorker] Kick failed:", err);
+    }
+  }, 50);
 }
 function stopWorker() {
   if (timer) {
@@ -1482,11 +1536,11 @@ function stopWorker() {
 function isWorkerRunning() {
   return timer !== null;
 }
-async function processNextRequest(prisma, config) {
+async function processNextRequest(prisma, config, skipIds) {
   const request = await getNextQueued(prisma);
-  if (!request) return;
+  if (!request || skipIds.has(request.id)) return null;
   const fresh = await getRequestById(prisma, request.id);
-  if (!fresh || fresh.status !== "queued" && fresh.status !== "retry_pending") return;
+  if (!fresh || fresh.status !== "queued" && fresh.status !== "retry_pending") return request.id;
   await updateRequestStatus(prisma, request.id, "processing");
   try {
     const seerrBody = {
@@ -1565,7 +1619,7 @@ async function processNextRequest(prisma, config) {
         });
         invalidate(`seer-cache:${request.jellyfinUserId}`);
         console.log(`[SeerWorker] "${request.title}" : saisons d\xE9j\xE0 pr\xE9sentes c\xF4t\xE9 Jellyseerr \u2014 marqu\xE9 ${localStatus}`);
-        return;
+        return request.id;
       }
       throw new Error(`Seerr returned ${res.status}: ${text.slice(0, 200)}`);
     }
@@ -1624,6 +1678,7 @@ async function processNextRequest(prisma, config) {
       console.warn(`[SeerWorker] Request for "${request.title}" retry ${newRetryCount}/${request.maxRetries}: ${errMsg}`);
     }
   }
+  return request.id;
 }
 
 // server/routes-requests.ts
@@ -1944,6 +1999,7 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
         });
         const updated = await getRequestById(prisma, existing.id);
         invalidate(`seer-cache:${user.userId}`);
+        kickWorkerNow();
         return reply.status(201).send(updated);
       }
     }
@@ -1966,6 +2022,7 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
       isAnime
     });
     invalidate(`seer-cache:${user.userId}`);
+    kickWorkerNow();
     return reply.status(201).send(req);
   });
   app.delete("/requests/:id", async (request, reply) => {
@@ -2004,6 +2061,7 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
         await updateRequestStatus(prisma, parsed.id, "deleting");
       }
       invalidate(`seer-cache:${user.userId}`);
+      kickWorkerNow();
       return { success: true, status: partial ? "updated" : "deleting" };
     }
     const config = await getWorkerConfig2();
@@ -2032,6 +2090,7 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
       requestId: null
     });
     invalidate(`seer-cache:${user.userId}`);
+    kickWorkerNow();
     return { success: true, status: "deleting" };
   });
   app.post("/requests/:id/retry", async (request, reply) => {
@@ -2084,6 +2143,7 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
         isAnime: req.isAnime
       });
       invalidate(`seer-cache:${user.userId}`);
+      kickWorkerNow();
       return reply.status(201).send(newReq2);
     }
     if (!config) return reply.status(503).send({ message: "Seerr not configured" });
@@ -2135,6 +2195,7 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
       isAnime: false
     });
     invalidate(`seer-cache:${user.userId}`);
+    kickWorkerNow();
     return reply.status(201).send(newReq);
   });
   app.post("/requests/:id/mark", async (request, reply) => {
@@ -2212,6 +2273,7 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
       deleteFiles: true,
       requestId: id
     });
+    kickWorkerNow();
     return { success: true };
   });
 }
@@ -2264,6 +2326,7 @@ function registerBulkRoutes(app, prisma, getWorkerConfig2) {
         errors++;
       }
     }
+    if (deleted > 0) kickWorkerNow();
     return { success: true, deleted, errors };
   });
   app.post("/requests/bulk-retry", async (request, reply) => {
@@ -2329,6 +2392,7 @@ function registerBulkRoutes(app, prisma, getWorkerConfig2) {
         errors++;
       }
     }
+    if (retried > 0) kickWorkerNow();
     return { success: true, retried, errors };
   });
 }

@@ -8,6 +8,7 @@ import {
   getRequestById, createRequest, deleteRequestById,
   enqueueCleanup, updateRequestStatus,
 } from "./db";
+import { kickWorkerNow } from "./worker";
 
 interface JellyfinUser { userId: string; username: string; isAdmin: boolean; }
 
@@ -53,6 +54,7 @@ export function registerBulkRoutes(
       } catch { errors++; }
     }
 
+    if (deleted > 0) kickWorkerNow();
     return { success: true, deleted, errors };
   });
 
@@ -105,6 +107,7 @@ export function registerBulkRoutes(
       } catch { errors++; }
     }
 
+    if (retried > 0) kickWorkerNow();
     return { success: true, retried, errors };
   });
 }

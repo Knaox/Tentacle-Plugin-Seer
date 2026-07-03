@@ -6,6 +6,7 @@ import type { PrismaClient } from "@prisma/client";
 import {
   getPendingCleanups, updateCleanupJob,
   clearPendingCleanup, deleteRequestById, updateRequestStatus,
+  type CleanupJob,
 } from "./db";
 import {
   getArrServerConfig, getMediaExternalId,
@@ -17,11 +18,30 @@ import { reconcileSeerrSeasons } from "./seerr-reconcile";
 import { invalidate } from "./cache";
 import type { WorkerConfig } from "./worker-sync";
 
-export async function processCleanupQueue(prisma: PrismaClient, config: WorkerConfig): Promise<void> {
-  const jobs = await getPendingCleanups(prisma);
-  if (jobs.length === 0) return;
+const CLEANUP_BATCH = 25;
 
-  const job = jobs[0];
+/**
+ * Traite TOUT le backlog éligible par lots (au lieu d'un seul job par tick,
+ * qui faisait durer une suppression groupée de 20 demandes ~20 minutes).
+ * Un job qui échoue reçoit un next_retry_at futur et sort du lot suivant —
+ * pas de boucle infinie. Cap de sécurité à 4 lots (100 jobs) par passe.
+ */
+export async function processCleanupQueue(prisma: PrismaClient, config: WorkerConfig): Promise<void> {
+  for (let pass = 0; pass < 4; pass++) {
+    const jobs = await getPendingCleanups(prisma, CLEANUP_BATCH);
+    if (jobs.length === 0) return;
+    for (const job of jobs) {
+      await processCleanupJob(prisma, config, job);
+    }
+    if (jobs.length < CLEANUP_BATCH) return;
+  }
+}
+
+async function processCleanupJob(
+  prisma: PrismaClient,
+  config: WorkerConfig,
+  job: CleanupJob,
+): Promise<void> {
   const headers = { "X-Api-Key": config.seerrApiKey };
 
   try {

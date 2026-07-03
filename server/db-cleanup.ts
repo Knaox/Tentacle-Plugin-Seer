@@ -69,11 +69,11 @@ export async function enqueueCleanup(
   return id;
 }
 
-export async function getPendingCleanups(prisma: Prisma): Promise<CleanupJob[]> {
+export async function getPendingCleanups(prisma: Prisma, limit = 25): Promise<CleanupJob[]> {
   const rows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
     `SELECT * FROM seer_cleanup_queue
      WHERE status = 'pending' AND next_retry_at <= NOW()
-     ORDER BY created_at ASC LIMIT 1`,
+     ORDER BY created_at ASC LIMIT ${Math.max(1, Math.min(100, limit))}`,
   );
   return rows.map((r) => ({
     id: r.id as string,
