@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { LocalRequest, RequestStatus } from "../api/types";
 import { posterUrl } from "../utils/media-helpers";
@@ -10,7 +9,8 @@ interface RequestCardProps {
   onRetryDelete?: (id: string) => void;
   onAddSeasons?: (request: LocalRequest) => void;
   onOpenModal?: (request: LocalRequest, action: "delete" | "retry") => void;
-  onMark?: (id: string, status: "available" | "partial" | "unknown") => void;
+  /** Ouvre le sélecteur de statut « Marquer comme » (sheet au niveau page) */
+  onOpenMarkMenu?: (request: LocalRequest) => void;
   marking?: boolean;
   deleting?: boolean;
   retrying?: boolean;
@@ -41,6 +41,10 @@ const STATUS_COLOR: Record<RequestStatus, string> = {
   deleting: "bg-orange-500/20 text-orange-400", delete_failed: "bg-red-500/20 text-red-400",
 };
 
+/* Boutons d'action : hauteur tactile (36px) + retour à la ligne sans débordement. */
+const ACTION_BTN =
+  "min-h-[36px] rounded-lg px-3 py-1.5 text-[11px] font-medium transition-colors disabled:opacity-50";
+
 const PROGRESS_STEPS: RequestStatus[] = ["queued", "sent_to_seer", "approved", "downloading", "available"];
 
 function getProgressIndex(status: RequestStatus): number {
@@ -50,14 +54,15 @@ function getProgressIndex(status: RequestStatus): number {
 }
 
 export function RequestCard({
-  request, onDelete, onRetry, onRetryDelete, onAddSeasons, onOpenModal, onMark,
+  request, onDelete, onRetry, onRetryDelete, onAddSeasons, onOpenModal, onOpenMarkMenu,
   marking, deleting, retrying, selectable, selected, onSelect,
 }: RequestCardProps) {
   const { t } = useTranslation("seer");
-  const [markMenuOpen, setMarkMenuOpen] = useState(false);
-  // Activé seulement quand on a un lien Jellyseerr (sinon /mark renverra 400)
+  // Activé seulement quand on a un lien Jellyseerr (sinon /mark renverra 400).
+  // Inclut available/unavailable : un état marqué doit pouvoir être re-changé.
   const canMark = !!request.seerrMediaId && [
-    "downloading", "failed", "approved", "sent_to_seer", "partially_available",
+    "downloading", "failed", "approved", "sent_to_seer",
+    "partially_available", "available", "unavailable",
   ].includes(request.status);
 
   const openModal = (action: "delete" | "retry") => onOpenModal?.(request, action);
@@ -67,7 +72,9 @@ export function RequestCard({
   const poster = posterUrl(request.posterPath);
   const typeLabel = request.mediaType === "movie" ? t("seer:typeMovie") : t("seer:typeSeries");
   const progressIdx = getProgressIndex(request.status);
-  const canRetry = !["available", "processing", "deleting"].includes(request.status);
+  // « Redemander » reste disponible même une fois le média disponible ou marqué
+  // non disponible (re-téléchargement) — il ne disparaît plus après un mark.
+  const canRetry = !["processing", "deleting", "delete_failed"].includes(request.status);
   const canDelete = !["processing", "deleting"].includes(request.status);
   const isSelectable = !["deleting", "processing"].includes(request.status);
 
@@ -162,72 +169,47 @@ export function RequestCard({
           </p>
         )}
 
-        <div className="mt-auto flex items-center justify-between pt-1">
+        {/* Footer : wrap sur mobile — les boutons ne débordent plus de la carte. */}
+        <div className="mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 pt-2">
           <span className="text-[10px] text-white/30" title={date}>{relativeTime}</span>
 
           {selectable ? null : (
-            <div className="relative flex items-center gap-1.5">
+            <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
               {(request.status === "delete_failed" || request.status === "deleting") && onRetryDelete && (
                 <button onClick={() => onRetryDelete(request.id)}
-                  className="rounded-md bg-orange-600/20 px-2.5 py-1 text-[10px] font-medium text-orange-400 transition-colors hover:bg-orange-600/30">
+                  className={`${ACTION_BTN} bg-orange-600/20 text-orange-400 hover:bg-orange-600/30`}>
                   {request.status === "deleting" ? t("seer:forceDelete") : t("seer:retryDelete")}
                 </button>
               )}
               {canAddSeasons && onAddSeasons && (
                 <button onClick={() => onAddSeasons(request)}
-                  className="rounded-md bg-blue-600/20 px-2.5 py-1 text-[10px] font-medium text-blue-400 transition-colors hover:bg-blue-600/30">
+                  className={`${ACTION_BTN} bg-blue-600/20 text-blue-400 hover:bg-blue-600/30`}>
                   + {t("seer:addSeasons")}
                 </button>
               )}
-              {canMark && onMark && (
-                <>
-                  <button
-                    onClick={() => setMarkMenuOpen((v) => !v)}
-                    disabled={marking}
-                    className="rounded-md bg-white/[0.06] px-2.5 py-1 text-[10px] font-medium text-white/70 transition-colors hover:bg-white/[0.10] hover:text-white disabled:opacity-50"
-                  >
-                    {marking ? "..." : t("seer:markAs")} ▾
-                  </button>
-                  {markMenuOpen && (
-                    <div className="absolute right-0 top-full z-20 mt-1 flex min-w-[180px] flex-col overflow-hidden rounded-lg border border-white/10 bg-tentacle-surface-modal shadow-tentacle-dropdown backdrop-blur-tentacle-dropdown">
-                      <button
-                        onClick={() => { setMarkMenuOpen(false); onMark(request.id, "available"); }}
-                        className="px-3 py-2 text-left text-[11px] text-emerald-300 hover:bg-white/5"
-                      >
-                        {t("seer:markAsAvailable")}
-                      </button>
-                      {request.mediaType === "tv" && (
-                        <button
-                          onClick={() => { setMarkMenuOpen(false); onMark(request.id, "partial"); }}
-                          className="px-3 py-2 text-left text-[11px] text-amber-300 hover:bg-white/5"
-                        >
-                          {t("seer:markAsPartial")}
-                        </button>
-                      )}
-                      <button
-                        onClick={() => { setMarkMenuOpen(false); onMark(request.id, "unknown"); }}
-                        className="px-3 py-2 text-left text-[11px] text-white/60 hover:bg-white/5"
-                      >
-                        {t("seer:markAsUnknown")}
-                      </button>
-                    </div>
-                  )}
-                </>
+              {canMark && onOpenMarkMenu && (
+                <button
+                  onClick={() => onOpenMarkMenu(request)}
+                  disabled={marking}
+                  className={`${ACTION_BTN} bg-white/[0.06] text-white/70 hover:bg-white/[0.10] hover:text-white`}
+                >
+                  {marking ? "…" : t("seer:markAs")}
+                </button>
               )}
               {canRetry && onRetry && request.status !== "delete_failed" && (
                 <button
                   onClick={() => openModal("retry")}
                   disabled={retrying}
-                  className="rounded-md bg-tentacle-brand/20 px-2.5 py-1 text-[10px] font-medium text-tentacle-brand-light transition-colors hover:bg-tentacle-brand/30 disabled:opacity-50">
-                  {retrying ? "..." : t("seer:retry")}
+                  className={`${ACTION_BTN} bg-tentacle-brand/20 text-tentacle-brand-light hover:bg-tentacle-brand/30`}>
+                  {retrying ? "…" : t("seer:retry")}
                 </button>
               )}
               {canDelete && onDelete && (
                 <button
                   onClick={() => openModal("delete")}
                   disabled={deleting}
-                  className="rounded-md bg-red-600/20 px-2.5 py-1 text-[10px] font-medium text-red-400 transition-colors hover:bg-red-600/30 disabled:opacity-50">
-                  {deleting ? "..." : t("seer:delete")}
+                  className={`${ACTION_BTN} bg-red-600/20 text-red-400 hover:bg-red-600/30`}>
+                  {deleting ? "…" : t("seer:delete")}
                 </button>
               )}
             </div>

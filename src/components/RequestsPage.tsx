@@ -10,6 +10,7 @@ import { RequestCard } from "./RequestCard";
 import { EmptyState } from "./EmptyState";
 import { ProfileSelector } from "./ProfileSelector";
 import { SeasonActionModal } from "./SeasonActionModal";
+import { MarkMenuSheet, type MarkTarget } from "./MarkMenuSheet";
 import { RequestsStatsBar } from "./RequestsStatsBar";
 import type { LocalRequest, SeerrSearchResult } from "../api/types";
 
@@ -46,6 +47,7 @@ export function RequestsPage() {
   const [bulkRetryModal, setBulkRetryModal] = useState(false);
   const [bulkProfileId, setBulkProfileId] = useState<string | null>(null);
   const [actionModal, setActionModal] = useState<{ request: LocalRequest; action: "delete" | "retry" } | null>(null);
+  const [markMenuFor, setMarkMenuFor] = useState<LocalRequest | null>(null);
 
   const backendStatus = statusFilter === "all" ? undefined : statusFilter;
   const backendType = typeFilter === "all" ? undefined : typeFilter;
@@ -93,7 +95,7 @@ export function RequestsPage() {
     });
   };
 
-  const handleMark = (id: string, status: "available" | "partial" | "processing" | "unknown") => {
+  const handleMark = (id: string, status: MarkTarget) => {
     markMutation.mutate({ id, status }, {
       onSuccess: () => toast.show("success", t("seer:markedSuccess")),
       onError: () => toast.show("error", t("seer:markedError")),
@@ -282,7 +284,7 @@ export function RequestsPage() {
                 onRetryDelete={handleRetryDelete}
                 onAddSeasons={handleAddSeasons}
                 onOpenModal={(req, action) => setActionModal({ request: req, action })}
-                onMark={handleMark}
+                onOpenMarkMenu={setMarkMenuFor}
                 marking={markMutation.isPending}
                 deleting={deleteMutation.isPending}
                 retrying={retryMutation.isPending}
@@ -374,6 +376,18 @@ export function RequestsPage() {
             requesting={requestMedia.isPending}
           />
         </Suspense>
+      )}
+
+      {/* Sheet « Marquer comme » (niveau page : hors des stacking contexts des cartes) */}
+      {markMenuFor && (
+        <MarkMenuSheet
+          request={markMenuFor}
+          onSelect={(target) => {
+            handleMark(markMenuFor.id, target);
+            setMarkMenuFor(null);
+          }}
+          onClose={() => setMarkMenuFor(null)}
+        />
       )}
 
       {/* Modal saison/profil pour retry/delete individuel */}
