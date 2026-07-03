@@ -198,6 +198,7 @@ export default {
   // Statuses
   statusQueued: "Pending",
   statusProcessing: "Processing",
+  statusRequested: "Requested",
   statusSentToSeer: "Sent",
   statusApproved: "Approved",
   statusDownloading: "Downloading",
@@ -236,7 +237,6 @@ export default {
   seasonRequested: "Requested",
   seasonLocked: "already requested",
   seasonAvailable: "Available",
-  seasonDownloading: "Downloading",
   seasonPartial: "Partial",
   allSeasonsRequested: "All seasons already requested",
   selectSeasonsPrompt: "Select seasons",

@@ -5,7 +5,7 @@ import { EpisodeList } from "./EpisodeList";
 interface SeasonRowProps {
   tvId: number;
   season: SeerrSeason;
-  /** Statut Seerr de la saison (2 demandé, 3 dl, 4 partiel, 5 dispo) — undefined si jamais demandée. */
+  /** Statut Seerr de la saison (2 en attente, 3 en acquisition, 4 partiel, 5 dispo) — undefined si jamais demandée. */
   status?: number;
   /** Déjà demandée côté Tentacle (verrouillée). */
   locked?: boolean;
@@ -20,7 +20,8 @@ interface SeasonRowProps {
 function statusBadge(status: number | undefined, locked: boolean | undefined, t: (k: string) => string) {
   if (status === 5) return { label: t("seer:seasonAvailable"), cls: "bg-emerald-500/15 text-emerald-300" };
   if (status === 4) return { label: t("seer:seasonPartial"), cls: "bg-orange-500/15 text-orange-300" };
-  if (status === 3) return { label: t("seer:seasonDownloading"), cls: "bg-blue-500/15 text-blue-300" };
+  // 2 (en attente) et 3 (en acquisition) : Jellyseerr affiche « Demandé »
+  // dans les deux cas — pas de « Téléchargement » sans download réellement actif.
   if ((status !== undefined && status >= 2) || locked) return { label: t("seer:seasonRequested"), cls: "bg-amber-500/15 text-amber-300" };
   return null;
 }

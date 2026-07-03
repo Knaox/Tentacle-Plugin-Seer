@@ -15,7 +15,9 @@ function StatusBadge({ status }: { status: number }) {
   const { t } = useTranslation("seer");
   const config: Record<number, { cls: string; key: string }> = {
     2: { cls: "bg-amber-500/80", key: "statusPending" },
-    3: { cls: "bg-blue-500/80", key: "statusProcessing" },
+    // PROCESSING = approuvé, en cours d'acquisition — Jellyseerr affiche
+    // « Demandé » (pas de notion de téléchargement sans download actif).
+    3: { cls: "bg-tentacle-brand/80", key: "statusRequested" },
     4: { cls: "bg-orange-500/80", key: "statusPartiallyAvailable" },
     5: { cls: "bg-emerald-500/80", key: "statusAvailable" },
   };
