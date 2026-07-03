@@ -54,7 +54,7 @@ export function TrailerModal({ open, onClose, trailers, initialIndex = 0 }: Trai
     >
       <div className="absolute inset-0 bg-black/90 backdrop-blur-sm" />
       <div
-        className="relative w-full max-w-3xl overflow-hidden rounded-2xl border border-white/[0.08] bg-tentacle-surface-1 shadow-2xl"
+        className="relative w-full max-w-3xl overflow-hidden rounded-2xl border border-white/[0.08] bg-[var(--surface-1,#0a0a0a)] shadow-2xl"
         onClick={(e) => e.stopPropagation()}
         style={{ animation: "scaleIn 250ms ease forwards" }}
       >

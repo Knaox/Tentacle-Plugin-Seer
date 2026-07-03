@@ -186,7 +186,7 @@ export function MediaDetailModal({ item, onClose, lockedSeasons, defaultProfileI
       <div className="absolute inset-0 bg-black/90 backdrop-blur-sm" />
       <div
         ref={scrollRef}
-        className="relative max-h-[94dvh] w-full max-w-3xl overflow-y-auto overscroll-contain rounded-t-2xl bg-tentacle-surface-1 pb-[env(safe-area-inset-bottom)] sm:max-h-[90vh] sm:rounded-2xl lg:max-w-4xl"
+        className="relative max-h-[94dvh] w-full max-w-3xl overflow-y-auto overscroll-contain rounded-t-2xl bg-[var(--surface-1,#0a0a0a)] pb-[env(safe-area-inset-bottom)] sm:max-h-[90vh] sm:rounded-2xl lg:max-w-4xl"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -224,7 +224,7 @@ export function MediaDetailModal({ item, onClose, lockedSeasons, defaultProfileI
           {overview && (
             <div>
               <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-white/40">{t("synopsisTitle")}</h4>
-              <p className={`text-sm leading-relaxed text-white/65 sm:text-base ${synopsisExpanded ? "" : "line-clamp-3"}`}>{overview}</p>
+              <p className={`text-sm leading-relaxed text-white/75 sm:text-base ${synopsisExpanded ? "" : "line-clamp-3"}`}>{overview}</p>
               {overview.length > 200 && (
                 <button
                   onClick={() => setSynopsisExpanded((v) => !v)}

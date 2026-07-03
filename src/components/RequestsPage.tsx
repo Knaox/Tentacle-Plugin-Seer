@@ -340,7 +340,7 @@ export function RequestsPage() {
 
       {/* Bulk action bar */}
       {selectionMode && selectedIds.size > 0 && (
-        <div className="fixed bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-xl border border-white/10 bg-tentacle-surface-1/95 px-5 py-3 shadow-2xl backdrop-blur-sm">
+        <div className="fixed bottom-4 left-1/2 z-40 flex max-w-[calc(100vw-16px)] -translate-x-1/2 flex-wrap items-center justify-center gap-2 rounded-xl border border-white/10 bg-[var(--surface-dropdown,#14141a)] px-4 py-3 shadow-2xl backdrop-blur-sm sm:gap-3 sm:px-5">
           <button
             onClick={handleBulkDelete}
             disabled={bulkDeleteMutation.isPending}
@@ -411,7 +411,7 @@ export function RequestsPage() {
       {bulkRetryModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
           onClick={() => setBulkRetryModal(false)}>
-          <div className="mx-4 w-full max-w-sm rounded-xl bg-tentacle-surface-2 p-5 shadow-2xl"
+          <div className="mx-4 w-full max-w-sm rounded-xl bg-[var(--surface-2,#141414)] p-5 shadow-2xl"
             onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-4 text-sm font-semibold text-white">
               {t("seer:bulkRetry", { count: selectedIds.size })}

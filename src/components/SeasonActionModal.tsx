@@ -61,7 +61,7 @@ export function SeasonActionModal({ request, action, onConfirm, onClose }: Seaso
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={onClose}>
-      <div className="mx-4 flex w-full max-w-sm max-h-[85vh] flex-col rounded-xl bg-tentacle-surface-2 p-5 shadow-2xl"
+      <div className="mx-4 flex w-full max-w-sm max-h-[85vh] flex-col rounded-xl bg-[var(--surface-2,#141414)] p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}>
         <h3 className="mb-4 text-sm font-semibold text-white">{title}</h3>
 

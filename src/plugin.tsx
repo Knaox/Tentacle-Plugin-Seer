@@ -2,6 +2,7 @@ import { lazy } from "react";
 import type { TentaclePlugin } from "@tentacle-tv/plugins-api";
 import { isSeerConfigured } from "./api/seer-client";
 import { setSeerBackendUrl } from "./api/endpoints";
+import { ensureHostTheme } from "./utils/host-theme";
 import { ToastProvider } from "./components/ToastProvider";
 import enTranslations from "./i18n/en";
 import frTranslations from "./i18n/fr";
@@ -116,6 +117,10 @@ export const seerPlugin: TentaclePlugin = {
   isConfigured: isSeerConfigured,
 
   async initialize() {
+    // Tokens de thème garantis (le template WebView mobile ne fournit pas les
+    // tokens sémantiques → modals/dropdowns transparents sans ce fallback).
+    ensureHostTheme();
+
     // Configure backend URL from host app
     const tentacle = (window as unknown as Record<string, unknown>).__tentacle as Record<string, unknown> | undefined;
     const hostBackendUrl = (tentacle?.backendUrl as string) ?? "";
