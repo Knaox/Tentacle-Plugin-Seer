@@ -202,11 +202,13 @@ export default {
   statusApproved: "Approved",
   statusDownloading: "Downloading",
   statusAvailable: "Available",
+  statusPartiallyAvailableBadge: "Partially avail.",
   statusRetryPending: "Retrying",
   statusUnavailable: "Requested",
   statusFailed: "Failed",
   statusDeleting: "Deleting",
   statusDeleteFailed: "Delete Failed",
+  statusDeleted: "Deleted",
   statusCancelled: "Cancelled",
   status_queued: "Pending",
   status_processing: "Processing",
@@ -220,6 +222,7 @@ export default {
   status_failed: "Failed",
   status_deleting: "Deleting",
   status_delete_failed: "Delete Failed",
+  status_deleted: "Deleted",
 
   // Seasons
   seasonsTitle: "Seasons",
@@ -375,7 +378,7 @@ export default {
   markAsAvailable: "Available",
   markAsPartial: "Partially available",
   markAsUnknown: "Requested",
-  markAsProcessing: "Downloading",
+  markAsProcessing: "Processing",
   markedSuccess: "Jellyseerr status updated",
   markedError: "Failed to update status",
 

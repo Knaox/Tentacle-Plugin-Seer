@@ -208,6 +208,7 @@ export default {
   statusFailed: "Échec",
   statusDeleting: "En suppression",
   statusDeleteFailed: "Échec suppression",
+  statusDeleted: "Supprimée",
   statusCancelled: "Annulé",
   status_queued: "En attente",
   status_processing: "Traitement",
@@ -221,6 +222,7 @@ export default {
   status_failed: "Échec",
   status_deleting: "En suppression",
   status_delete_failed: "Échec suppression",
+  status_deleted: "Supprimée",
 
   // Seasons
   seasonsTitle: "Saisons",
@@ -376,7 +378,7 @@ export default {
   markAsAvailable: "Disponible",
   markAsPartial: "Partiellement disponible",
   markAsUnknown: "Demandée",
-  markAsProcessing: "En téléchargement",
+  markAsProcessing: "En traitement",
   markedSuccess: "Statut mis à jour sur Jellyseerr",
   markedError: "Échec de la mise à jour du statut",
 

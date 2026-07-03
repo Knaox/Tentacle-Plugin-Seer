@@ -157,10 +157,11 @@ export async function retryFailedRequests(prisma: PrismaClient): Promise<void> {
  * Mapping Jellyseerr → status local. L'état du MÉDIA Jellyseerr (source de
  * vérité, y compris posé manuellement via « Marquer comme ») prime.
  *
- * Jellyseerr media.status (Overseerr) :
- *   1 = UNKNOWN, 2 = PENDING, 3 = PROCESSING, 4 = PARTIALLY_AVAILABLE, 5 = AVAILABLE
+ * Jellyseerr media.status :
+ *   1 = UNKNOWN, 2 = PENDING, 3 = PROCESSING, 4 = PARTIALLY_AVAILABLE,
+ *   5 = AVAILABLE, 6 = BLOCKLISTED, 7 = DELETED
  * Jellyseerr request.status :
- *   1 = PENDING_APPROVAL, 2 = APPROVED, 3 = DECLINED, 4 = FAILED
+ *   1 = PENDING_APPROVAL, 2 = APPROVED, 3 = DECLINED, 4 = FAILED, 5 = COMPLETED
  */
 export function mapSeerrStatus(
   requestStatus: number, mediaStatus?: number,
@@ -176,13 +177,27 @@ export function mapSeerrStatus(
   if (mediaStatus === 5) return "available";
   if (mediaStatus === 4) return "partially_available";
 
-  if (downloadStatus?.some((d) => d.status === "failed" || d.status === "warning")) return "failed";
+  // Média dégradé DELETED par l'availability-sync Jellyseerr (introuvable dans
+  // Jellyfin et sans fichier *arr) : badge « Supprimé » côté Jellyseerr — on
+  // affiche pareil, et surtout PAS « échec » (pas d'auto-retry destructif).
+  if (mediaStatus === 7) return "deleted";
 
-  if (mediaStatus === 3) return "downloading";
-  if (requestStatus === 1) return "sent_to_seer";
-  // Média marqué « non disponible » (UNKNOWN) dans Jellyseerr alors que la
-  // demande reste approuvée → on reflète le vrai état Jellyseerr.
+  // Média marqué « Demandée » (UNKNOWN) — posé à la main via « Marquer comme »
+  // ou par Jellyseerr. État FINAL tant que rien ne bouge : un downloadStatus
+  // périmé (warning/failed résiduel dans la file *arr) ne doit JAMAIS le
+  // requalifier « échec », sinon l'auto-retry supprime la demande Jellyseerr
+  // qu'on vient précisément de requalifier (bug « la demande se supprime »).
   if (mediaStatus === 1) return "unavailable";
+
+  // PROCESSING = approuvé, en cours d'acquisition. Le check d'échec de
+  // téléchargement ne vaut QUE dans cet état (info fraîche) ; Jellyseerr
+  // n'affiche « en traitement » que si un download est réellement actif —
+  // sans download actif, son badge est « Demandé », on mappe pareil.
+  if (mediaStatus === 3) {
+    if (downloadStatus?.some((d) => d.status === "failed" || d.status === "warning")) return "failed";
+    return downloadStatus && downloadStatus.length > 0 ? "downloading" : "unavailable";
+  }
+  if (requestStatus === 1) return "sent_to_seer";
   return "approved";
 }
 

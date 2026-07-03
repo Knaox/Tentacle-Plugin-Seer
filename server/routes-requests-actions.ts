@@ -8,12 +8,13 @@ import {
   createRequest, getRequestById, deleteRequestById,
   updateRequestStatus, enqueueCleanup,
 } from "./db";
+import { uuid } from "./db-helpers";
 import type { RequestStatus } from "./types";
 import { invalidate } from "./cache";
 import { kickWorkerNow } from "./worker";
 import {
   getUser, type WorkerCfg, parseRequestId,
-  fetchSeerrRequestById, fetchSeerrTmdbDetail,
+  fetchSeerrRequestById, fetchSeerrTmdbDetail, type SeerrSingleRequest,
 } from "./seerr-unified";
 
 export function registerRequestActionRoutes(
@@ -131,9 +132,10 @@ export function registerRequestActionRoutes(
   });
 
   /* ── POST /requests/:id/mark — change le statut Jellyseerr du media ──
-   * Écriture ONE-SHOT vers Jellyseerr : le plugin n'« épingle » jamais
-   * l'état marqué. Si Jellyseerr change ensuite l'état de lui-même
-   * (availability-sync, téléchargement…), l'affichage suit Jellyseerr. */
+   * L'affichage suit l'état réel Jellyseerr, avec UNE exception : une ligne
+   * locale « available » (posée ici, exclue de la resynchro) épingle l'état
+   * « Disponible » côté Seer même si Jellyseerr perd le média plus tard
+   * (availability-sync → UNKNOWN/DELETED quand il ne le voit nulle part). */
   app.post("/requests/:id/mark", async (request, reply) => {
     const { id } = request.params as { id: string };
     const user = getUser(request);
@@ -151,22 +153,25 @@ export function registerRequestActionRoutes(
     // Résoudre le seerrMediaId selon la source
     let seerrMediaId: number | null = null;
     let ownerJellyfinUserId: string | null = null;
+    let ownerUsername: string | null = null;
+    let seerrReq: Awaited<ReturnType<typeof fetchSeerrRequestById>> = null;
     if (parsed.kind === "local") {
       const req = await getRequestById(prisma, parsed.id);
       if (!req) return reply.status(404).send({ message: "Request not found" });
       seerrMediaId = req.seerrMediaId;
       ownerJellyfinUserId = req.jellyfinUserId;
     } else {
-      const seerrReq = await fetchSeerrRequestById(config, parsed.seerrId);
+      seerrReq = await fetchSeerrRequestById(config, parsed.seerrId);
       if (!seerrReq) return reply.status(404).send({ message: "Seerr request not found" });
       seerrMediaId = seerrReq.media?.id ?? null;
       // Trouver le jellyfinUserId via le mapping seer_user_settings
       if (seerrReq.requestedBy?.id) {
-        const rows = await prisma.$queryRawUnsafe<Array<{ jellyfin_user_id: string }>>(
-          `SELECT jellyfin_user_id FROM seer_user_settings WHERE jellyseerr_user_id = ? LIMIT 1`,
+        const rows = await prisma.$queryRawUnsafe<Array<{ jellyfin_user_id: string; username: string }>>(
+          `SELECT jellyfin_user_id, username FROM seer_user_settings WHERE jellyseerr_user_id = ? LIMIT 1`,
           seerrReq.requestedBy.id,
         );
         ownerJellyfinUserId = rows[0]?.jellyfin_user_id ?? null;
+        ownerUsername = rows[0]?.username ?? null;
       }
     }
 
@@ -191,14 +196,31 @@ export function registerRequestActionRoutes(
       });
     }
 
-    // Réflecte localement (best-effort). Simple miroir de l'état Jellyseerr :
-    // la synchro périodique (Jellyseerr → local) reprend la main ensuite.
+    // Miroir local de l'effet réel Jellyseerr : « processing » sans download
+    // actif s'affiche « Demandée » (comme Jellyseerr), pas « Téléchargement »
+    // — le worker corrige en « downloading » si un téléchargement démarre.
+    const localStatus: RequestStatus = target === "available" ? "available"
+      : target === "partial" ? "partially_available"
+      : "unavailable";
+    const extra = target === "available" ? { completedAt: new Date() } : undefined;
+
     if (parsed.kind === "local") {
-      const localStatus: RequestStatus = target === "available" ? "available"
-        : target === "partial" ? "partially_available"
-        : target === "processing" ? "downloading"
-        : "unavailable";
-      await updateRequestStatus(prisma, parsed.id, localStatus);
+      await updateRequestStatus(prisma, parsed.id, localStatus, extra);
+    } else if (seerrReq?.media && ownerJellyfinUserId) {
+      // Demande née côté Jellyseerr : la ligne locale liée (si présente) suit
+      // l'état posé — indispensable pour débrancher une épingle périmée.
+      const existing = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
+        `SELECT id FROM seer_requests WHERE seerr_request_id = ? LIMIT 1`,
+        seerrReq.id,
+      );
+      if (existing.length > 0) {
+        await updateRequestStatus(prisma, existing[0].id, localStatus, extra);
+      } else if (target === "available") {
+        await insertAvailablePin(prisma, config, seerrReq, {
+          jellyfinUserId: ownerJellyfinUserId,
+          username: ownerUsername ?? user.username,
+        });
+      }
     }
 
     invalidate(`seer-cache:${user.userId}`);
@@ -228,4 +250,35 @@ export function registerRequestActionRoutes(
     kickWorkerNow();
     return { success: true };
   });
+}
+
+/** Épingle « Disponible » pour une demande née côté Jellyseerr : ligne locale
+ * en statut "available" (exclue de la resynchro par design) pour que Seer
+ * continue d'afficher « Disponible » même si l'availability-sync Jellyseerr
+ * dégrade ensuite le média (UNKNOWN/DELETED quand il ne le voit nulle part). */
+async function insertAvailablePin(
+  prisma: PrismaClient,
+  config: WorkerCfg,
+  seerrReq: SeerrSingleRequest,
+  owner: { jellyfinUserId: string; username: string },
+): Promise<void> {
+  const media = seerrReq.media;
+  if (!media) return;
+  const detail = await fetchSeerrTmdbDetail(config, media.mediaType, media.tmdbId);
+  const seasons = seerrReq.seasons
+    ?.map((s) => s.seasonNumber)
+    .filter((n) => typeof n === "number") ?? [];
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO seer_requests
+      (id, jellyfin_user_id, username, media_type, tmdb_id, title, poster_path,
+       backdrop_path, overview, year, seasons, status, seerr_request_id,
+       seerr_media_id, seerr_media_status, sent_at, completed_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'available', ?, ?, ?, NOW(), NOW())`,
+    uuid(), owner.jellyfinUserId, owner.username, media.mediaType, media.tmdbId,
+    detail?.title ?? detail?.name ?? `#${seerrReq.id}`,
+    detail?.posterPath ?? null, detail?.backdropPath ?? null, detail?.overview ?? null,
+    (detail?.releaseDate ?? detail?.firstAirDate ?? "").slice(0, 4) || null,
+    seasons.length > 0 ? JSON.stringify(seasons) : null,
+    seerrReq.id, media.id, media.status ?? null,
+  );
 }

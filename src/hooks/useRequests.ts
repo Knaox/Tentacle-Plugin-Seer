@@ -148,11 +148,13 @@ export function useBulkRetryRequests() {
   });
 }
 
-/** Statut local affiché pendant qu'un mark Jellyseerr est en vol. */
+/** Statut local affiché pendant qu'un mark Jellyseerr est en vol.
+ * « processing » sans téléchargement actif s'affiche « Demandée » (l'effet
+ * réel Jellyseerr) — le badge passe « Téléchargement » si un download démarre. */
 const MARK_TO_LOCAL: Record<"available" | "partial" | "processing" | "unknown", RequestStatus> = {
   available: "available",
   partial: "partially_available",
-  processing: "downloading",
+  processing: "unavailable",
   unknown: "unavailable",
 };
 

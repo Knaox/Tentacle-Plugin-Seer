@@ -49,7 +49,15 @@ export function seerrRequestToUnified(
   fallbackUser: { jellyfinUserId: string; username: string },
 ): UnifiedRequest {
   const local = localById.get(sr.id);
-  const status = mapSeerrStatus(sr.status, sr.media?.status, sr.media?.downloadStatus);
+  let status = mapSeerrStatus(sr.status, sr.media?.status, sr.media?.downloadStatus);
+  // Épingle « Disponible » : une ligne locale "available" (posée par « Marquer
+  // comme » et exclue de la resynchro par design) l'emporte quand Jellyseerr a
+  // PERDU le média (availability-sync → UNKNOWN/DELETED, approbation fantôme).
+  // Un état réel plus actif (téléchargement, re-demande, dispo partielle…)
+  // reprend toujours la main.
+  if (local?.status === "available" && (status === "approved" || status === "unavailable" || status === "deleted")) {
+    status = "available";
+  }
   const seasons = sr.seasons?.map((s) => s.seasonNumber).filter((n) => typeof n === "number") ?? null;
   const mediaType = (sr.media?.mediaType ?? "movie") as "movie" | "tv";
   const title = detail?.title ?? detail?.name ?? local?.title ?? `#${sr.id}`;

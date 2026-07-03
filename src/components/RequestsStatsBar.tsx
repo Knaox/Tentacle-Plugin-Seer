@@ -9,8 +9,11 @@ const STATUS_COLORS: Record<string, string> = {
   approved: "bg-tentacle-brand",
   downloading: "bg-orange-500",
   available: "bg-emerald-500",
+  partially_available: "bg-amber-400",
+  unavailable: "bg-tentacle-brand",
   retry_pending: "bg-orange-400",
   failed: "bg-red-500",
+  deleted: "bg-white/30",
 };
 
 const STATUS_TEXT: Record<string, string> = {
@@ -20,8 +23,11 @@ const STATUS_TEXT: Record<string, string> = {
   approved: "text-tentacle-brand-light",
   downloading: "text-orange-400",
   available: "text-emerald-400",
+  partially_available: "text-amber-300",
+  unavailable: "text-tentacle-brand-light",
   retry_pending: "text-orange-300",
   failed: "text-red-400",
+  deleted: "text-white/50",
 };
 
 export function RequestsStatsBar() {

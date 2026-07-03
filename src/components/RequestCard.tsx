@@ -28,6 +28,7 @@ const STATUS_I18N: Record<RequestStatus, string> = {
   unavailable: "seer:statusUnavailable",
   retry_pending: "seer:statusRetryPending", failed: "seer:statusFailed",
   deleting: "seer:statusDeleting", delete_failed: "seer:statusDeleteFailed",
+  deleted: "seer:statusDeleted",
 };
 
 const STATUS_COLOR: Record<RequestStatus, string> = {
@@ -39,6 +40,7 @@ const STATUS_COLOR: Record<RequestStatus, string> = {
   unavailable: "bg-tentacle-brand/20 text-tentacle-brand-light",
   retry_pending: "bg-orange-500/20 text-orange-300", failed: "bg-red-500/20 text-red-400",
   deleting: "bg-orange-500/20 text-orange-400", delete_failed: "bg-red-500/20 text-red-400",
+  deleted: "bg-white/10 text-white/50",
 };
 
 /* Boutons d'action : hauteur tactile (36px) + retour à la ligne sans débordement. */
@@ -49,7 +51,7 @@ const PROGRESS_STEPS: RequestStatus[] = ["queued", "sent_to_seer", "approved", "
 
 function getProgressIndex(status: RequestStatus): number {
   if (status === "processing" || status === "retry_pending") return 0;
-  if (status === "failed" || status === "deleting" || status === "delete_failed" || status === "unavailable") return -1;
+  if (status === "failed" || status === "deleting" || status === "delete_failed" || status === "unavailable" || status === "deleted") return -1;
   return PROGRESS_STEPS.indexOf(status);
 }
 
@@ -59,10 +61,10 @@ export function RequestCard({
 }: RequestCardProps) {
   const { t } = useTranslation("seer");
   // Activé seulement quand on a un lien Jellyseerr (sinon /mark renverra 400).
-  // Inclut available/unavailable : un état marqué doit pouvoir être re-changé.
+  // Inclut available/unavailable/deleted : un état marqué doit pouvoir être re-changé.
   const canMark = !!request.seerrMediaId && [
     "downloading", "failed", "approved", "sent_to_seer",
-    "partially_available", "available", "unavailable",
+    "partially_available", "available", "unavailable", "deleted",
   ].includes(request.status);
 
   const openModal = (action: "delete" | "retry") => onOpenModal?.(request, action);

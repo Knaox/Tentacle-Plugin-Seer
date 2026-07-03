@@ -202,7 +202,9 @@ export type RequestStatus =
   | "retry_pending"
   | "failed"
   | "deleting"
-  | "delete_failed";
+  | "delete_failed"
+  /** Média retiré côté Jellyseerr (availability-sync : introuvable partout) */
+  | "deleted";
 
 export interface LocalRequest {
   id: string;

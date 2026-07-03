@@ -930,10 +930,13 @@ function mapSeerrStatus(requestStatus, mediaStatus, downloadStatus) {
   if (requestStatus === 4) return "failed";
   if (mediaStatus === 5) return "available";
   if (mediaStatus === 4) return "partially_available";
-  if (downloadStatus?.some((d) => d.status === "failed" || d.status === "warning")) return "failed";
-  if (mediaStatus === 3) return "downloading";
-  if (requestStatus === 1) return "sent_to_seer";
+  if (mediaStatus === 7) return "deleted";
   if (mediaStatus === 1) return "unavailable";
+  if (mediaStatus === 3) {
+    if (downloadStatus?.some((d) => d.status === "failed" || d.status === "warning")) return "failed";
+    return downloadStatus && downloadStatus.length > 0 ? "downloading" : "unavailable";
+  }
+  if (requestStatus === 1) return "sent_to_seer";
   return "approved";
 }
 function statusNotification(request, newStatus) {
@@ -1708,7 +1711,10 @@ function getUser(request) {
 }
 function seerrRequestToUnified(sr, detail, localById, fallbackUser) {
   const local = localById.get(sr.id);
-  const status = mapSeerrStatus(sr.status, sr.media?.status, sr.media?.downloadStatus);
+  let status = mapSeerrStatus(sr.status, sr.media?.status, sr.media?.downloadStatus);
+  if (local?.status === "available" && (status === "approved" || status === "unavailable" || status === "deleted")) {
+    status = "available";
+  }
   const seasons = sr.seasons?.map((s) => s.seasonNumber).filter((n) => typeof n === "number") ?? null;
   const mediaType = sr.media?.mediaType ?? "movie";
   const title = detail?.title ?? detail?.name ?? local?.title ?? `#${sr.id}`;
@@ -1977,6 +1983,7 @@ function registerRequestReadRoutes(app, prisma, getWorkerConfig2) {
 }
 
 // server/routes-requests-actions.ts
+init_db_helpers();
 function registerRequestActionRoutes(app, prisma, getWorkerConfig2) {
   app.post("/requests/:id/retry", async (request, reply) => {
     const { id } = request.params;
@@ -2096,21 +2103,24 @@ function registerRequestActionRoutes(app, prisma, getWorkerConfig2) {
     const parsed = parseRequestId(id);
     let seerrMediaId = null;
     let ownerJellyfinUserId = null;
+    let ownerUsername = null;
+    let seerrReq = null;
     if (parsed.kind === "local") {
       const req = await getRequestById(prisma, parsed.id);
       if (!req) return reply.status(404).send({ message: "Request not found" });
       seerrMediaId = req.seerrMediaId;
       ownerJellyfinUserId = req.jellyfinUserId;
     } else {
-      const seerrReq = await fetchSeerrRequestById(config, parsed.seerrId);
+      seerrReq = await fetchSeerrRequestById(config, parsed.seerrId);
       if (!seerrReq) return reply.status(404).send({ message: "Seerr request not found" });
       seerrMediaId = seerrReq.media?.id ?? null;
       if (seerrReq.requestedBy?.id) {
         const rows = await prisma.$queryRawUnsafe(
-          `SELECT jellyfin_user_id FROM seer_user_settings WHERE jellyseerr_user_id = ? LIMIT 1`,
+          `SELECT jellyfin_user_id, username FROM seer_user_settings WHERE jellyseerr_user_id = ? LIMIT 1`,
           seerrReq.requestedBy.id
         );
         ownerJellyfinUserId = rows[0]?.jellyfin_user_id ?? null;
+        ownerUsername = rows[0]?.username ?? null;
       }
     }
     if (!seerrMediaId) return reply.status(400).send({ message: "No Jellyseerr media linked" });
@@ -2129,9 +2139,23 @@ function registerRequestActionRoutes(app, prisma, getWorkerConfig2) {
         message: `Jellyseerr mark ${target} failed: ${res.status} ${text.slice(0, 200)}`
       });
     }
+    const localStatus = target === "available" ? "available" : target === "partial" ? "partially_available" : "unavailable";
+    const extra = target === "available" ? { completedAt: /* @__PURE__ */ new Date() } : void 0;
     if (parsed.kind === "local") {
-      const localStatus = target === "available" ? "available" : target === "partial" ? "partially_available" : target === "processing" ? "downloading" : "unavailable";
-      await updateRequestStatus(prisma, parsed.id, localStatus);
+      await updateRequestStatus(prisma, parsed.id, localStatus, extra);
+    } else if (seerrReq?.media && ownerJellyfinUserId) {
+      const existing = await prisma.$queryRawUnsafe(
+        `SELECT id FROM seer_requests WHERE seerr_request_id = ? LIMIT 1`,
+        seerrReq.id
+      );
+      if (existing.length > 0) {
+        await updateRequestStatus(prisma, existing[0].id, localStatus, extra);
+      } else if (target === "available") {
+        await insertAvailablePin(prisma, config, seerrReq, {
+          jellyfinUserId: ownerJellyfinUserId,
+          username: ownerUsername ?? user.username
+        });
+      }
     }
     invalidate(`seer-cache:${user.userId}`);
     return { success: true, target };
@@ -2161,6 +2185,33 @@ function registerRequestActionRoutes(app, prisma, getWorkerConfig2) {
     kickWorkerNow();
     return { success: true };
   });
+}
+async function insertAvailablePin(prisma, config, seerrReq, owner) {
+  const media = seerrReq.media;
+  if (!media) return;
+  const detail = await fetchSeerrTmdbDetail(config, media.mediaType, media.tmdbId);
+  const seasons = seerrReq.seasons?.map((s) => s.seasonNumber).filter((n) => typeof n === "number") ?? [];
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO seer_requests
+      (id, jellyfin_user_id, username, media_type, tmdb_id, title, poster_path,
+       backdrop_path, overview, year, seasons, status, seerr_request_id,
+       seerr_media_id, seerr_media_status, sent_at, completed_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'available', ?, ?, ?, NOW(), NOW())`,
+    uuid(),
+    owner.jellyfinUserId,
+    owner.username,
+    media.mediaType,
+    media.tmdbId,
+    detail?.title ?? detail?.name ?? `#${seerrReq.id}`,
+    detail?.posterPath ?? null,
+    detail?.backdropPath ?? null,
+    detail?.overview ?? null,
+    (detail?.releaseDate ?? detail?.firstAirDate ?? "").slice(0, 4) || null,
+    seasons.length > 0 ? JSON.stringify(seasons) : null,
+    seerrReq.id,
+    media.id,
+    media.status ?? null
+  );
 }
 
 // server/routes-requests.ts
