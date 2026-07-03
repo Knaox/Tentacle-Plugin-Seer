@@ -1,6 +1,6 @@
 {
   "name": "tentacle-plugin-seer",
-  "version": "1.10.7",
+  "version": "1.11.0",
   "private": true,
   "type": "module",
   "scripts": {

@@ -2,31 +2,54 @@
   "id": "seer",
   "name": "Seer",
   "description": "Media discovery and request management powered by Seerr / Overseerr",
-  "version": "1.10.7",
+  "version": "1.11.0",
   "author": "Knaox",
   "entry": "dist/plugin-seer.iife.js",
   "server": "server/index.mjs",
-  "platforms": ["web", "desktop", "mobile"],
+  "platforms": [
+    "web",
+    "desktop",
+    "mobile"
+  ],
   "minTentacleVersion": "0.9.0",
   "navItems": [
     {
       "path": "/discover",
       "icon": "compass",
-      "platforms": ["web", "desktop", "mobile"],
-      "labels": { "en": "Discover", "fr": "Découvrir" }
+      "platforms": [
+        "web",
+        "desktop",
+        "mobile"
+      ],
+      "labels": {
+        "en": "Discover",
+        "fr": "Découvrir"
+      }
     },
     {
       "path": "/requests",
       "icon": "list",
-      "platforms": ["web", "desktop", "mobile"],
-      "labels": { "en": "Requests", "fr": "Demandes" }
+      "platforms": [
+        "web",
+        "desktop",
+        "mobile"
+      ],
+      "labels": {
+        "en": "Requests",
+        "fr": "Demandes"
+      }
     },
     {
       "path": "/admin/plugins/seer",
       "icon": "settings",
       "admin": true,
-      "platforms": ["web"],
-      "labels": { "en": "Settings", "fr": "Paramètres" }
+      "platforms": [
+        "web"
+      ],
+      "labels": {
+        "en": "Settings",
+        "fr": "Paramètres"
+      }
     }
   ]
 }
