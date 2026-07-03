@@ -53,11 +53,14 @@ export function RequestsStatsBar() {
   }
   if (!stats || stats.total === 0) return null;
 
+  // « En attente » inclut les demandes « Demandée » (unavailable) — cohérent
+  // avec l'onglet du même nom dans les filtres de la liste.
   const pending =
     (stats.byStatus.queued ?? 0) +
     (stats.byStatus.processing ?? 0) +
     (stats.byStatus.sent_to_seer ?? 0) +
-    (stats.byStatus.approved ?? 0);
+    (stats.byStatus.approved ?? 0) +
+    (stats.byStatus.unavailable ?? 0);
   const downloading = stats.byStatus.downloading ?? 0;
   const available = stats.byStatus.available ?? 0;
   const failed = (stats.byStatus.failed ?? 0) + (stats.byStatus.retry_pending ?? 0);

@@ -38,7 +38,11 @@ export function RequestsPage() {
   const [actionModal, setActionModal] = useState<{ request: LocalRequest; action: "delete" | "retry" } | null>(null);
   const [markMenuFor, setMarkMenuFor] = useState<LocalRequest | null>(null);
 
-  const backendStatus = statusFilter === "all" ? undefined : statusFilter;
+  // « En attente » regroupe la file locale (queued) ET les demandes
+  // « Demandée » (unavailable : approuvées côté Jellyseerr, pas encore acquises).
+  const backendStatus = statusFilter === "all" ? undefined
+    : statusFilter === "queued" ? "queued,unavailable"
+    : statusFilter;
   const backendType = typeFilter === "all" ? undefined : typeFilter;
   const { data, isLoading } = useMyRequests(page, 20, backendStatus, backendType, debouncedSearch || undefined);
 
