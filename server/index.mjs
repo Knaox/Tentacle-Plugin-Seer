@@ -1149,6 +1149,66 @@ async function triggerSeerrJob(seerrUrl, apiKey, jobId) {
   }
 }
 
+// server/seerr-reconcile.ts
+async function reconcileSeerrSeasons(prisma, config, tmdbId, removedSeasons) {
+  if (removedSeasons.length === 0) return;
+  const removed = new Set(removedSeasons);
+  const headers = { "X-Api-Key": config.seerrApiKey };
+  const res = await fetch(`${config.seerrUrl}/api/v1/tv/${tmdbId}`, {
+    headers,
+    signal: AbortSignal.timeout(1e4)
+  });
+  if (res.status === 404) return;
+  if (!res.ok) {
+    throw new Error(`Jellyseerr GET /tv/${tmdbId} returned ${res.status}`);
+  }
+  const detail = await res.json();
+  for (const req of detail.mediaInfo?.requests ?? []) {
+    const seasons = (req.seasons ?? []).map((s) => s.seasonNumber).filter((n) => typeof n === "number");
+    if (seasons.length === 0) continue;
+    const remaining = seasons.filter((n) => !removed.has(n));
+    if (remaining.length === seasons.length) continue;
+    if (remaining.length === 0) {
+      const del = await fetch(`${config.seerrUrl}/api/v1/request/${req.id}`, {
+        method: "DELETE",
+        headers,
+        signal: AbortSignal.timeout(1e4)
+      });
+      if (!del.ok && del.status !== 404) {
+        throw new Error(`Jellyseerr DELETE /request/${req.id} returned ${del.status}`);
+      }
+      await prisma.$executeRawUnsafe(
+        `DELETE FROM seer_requests WHERE seerr_request_id = ?`,
+        req.id
+      );
+      console.log(
+        `[SeerReconcile] tv#${tmdbId} : demande Jellyseerr #${req.id} supprim\xE9e (S${seasons.join(", S")} retir\xE9es)`
+      );
+    } else {
+      const put = await fetch(`${config.seerrUrl}/api/v1/request/${req.id}`, {
+        method: "PUT",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ mediaType: "tv", seasons: remaining }),
+        signal: AbortSignal.timeout(1e4)
+      });
+      if (!put.ok && put.status !== 404) {
+        const text = await put.text().catch(() => "");
+        throw new Error(
+          `Jellyseerr PUT /request/${req.id} returned ${put.status} ${text.slice(0, 200)}`
+        );
+      }
+      await prisma.$executeRawUnsafe(
+        `UPDATE seer_requests SET seasons = ? WHERE seerr_request_id = ?`,
+        JSON.stringify(remaining),
+        req.id
+      );
+      console.log(
+        `[SeerReconcile] tv#${tmdbId} : demande Jellyseerr #${req.id} r\xE9duite aux saisons S${remaining.join(", S")}`
+      );
+    }
+  }
+}
+
 // server/worker-cleanup.ts
 async function processCleanupQueue(prisma, config) {
   const jobs = await getPendingCleanups(prisma);
@@ -1195,6 +1255,9 @@ async function processCleanupQueue(prisma, config) {
         throw new Error(`Jellyseerr request delete returned ${delRes.status}`);
       }
     }
+    if (job.mediaType === "tv" && job.seasons && job.seasons.length > 0) {
+      await reconcileSeerrSeasons(prisma, config, job.tmdbId, job.seasons);
+    }
     await updateCleanupJob(prisma, job.id, "completed");
     if (job.requestId) {
       await deleteRequestById(prisma, job.requestId);
@@ -1204,6 +1267,7 @@ async function processCleanupQueue(prisma, config) {
     if (job.deleteFiles) {
       await triggerSeerrJob(config.seerrUrl, config.seerrApiKey, "availability-sync");
     }
+    invalidate("seer-cache");
     console.log(`[SeerWorker] Cleanup completed for "${job.title}"`);
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : "Unknown error";

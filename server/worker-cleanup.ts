@@ -13,6 +13,8 @@ import {
   unmonitorRadarrMovie, deleteRadarrMovieFile, cancelRadarrQueue,
   triggerSeerrJob,
 } from "./arr-service";
+import { reconcileSeerrSeasons } from "./seerr-reconcile";
+import { invalidate } from "./cache";
 import type { WorkerConfig } from "./worker-sync";
 
 export async function processCleanupQueue(prisma: PrismaClient, config: WorkerConfig): Promise<void> {
@@ -77,6 +79,16 @@ export async function processCleanupQueue(prisma: PrismaClient, config: WorkerCo
       }
     }
 
+    // === Réconciliation des saisons côté Jellyseerr (TV ciblée). ===
+    // Les fichiers/la surveillance des saisons retirées viennent d'être coupés
+    // pour tout le serveur ; on retire donc ces saisons de TOUTES les demandes
+    // Jellyseerr qui les couvrent (PUT saisons restantes, ou DELETE si vide).
+    // Sans cela, une suppression partielle (ex. S2 sur S1+S2) laissait S2
+    // « demandée » pour toujours dans Jellyseerr.
+    if (job.mediaType === "tv" && job.seasons && job.seasons.length > 0) {
+      await reconcileSeerrSeasons(prisma, config, job.tmdbId, job.seasons);
+    }
+
     // === Cleanup local ===
     await updateCleanupJob(prisma, job.id, "completed");
 
@@ -95,6 +107,10 @@ export async function processCleanupQueue(prisma: PrismaClient, config: WorkerCo
     if (job.deleteFiles) {
       await triggerSeerrJob(config.seerrUrl, config.seerrApiKey, "availability-sync");
     }
+
+    // Les listes fusionnées (cache 60s par user) doivent refléter la suppression
+    // sans attendre l'expiration du TTL.
+    invalidate("seer-cache");
 
     console.log(`[SeerWorker] Cleanup completed for "${job.title}"`);
 
