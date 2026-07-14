@@ -6,14 +6,13 @@ import {
 } from "../hooks/useRequests";
 import { useRequestMedia } from "../hooks/useRequestMedia";
 import { useToast } from "../hooks/useToast";
-import { RequestCard } from "./RequestCard";
+import { RequestsList } from "./RequestsList";
 import { SeasonActionModal } from "./SeasonActionModal";
 import { MarkMenuSheet, type MarkTarget } from "./MarkMenuSheet";
 import { RequestsStatsBar } from "./RequestsStatsBar";
 import { RequestsToolbar, type StatusFilter, type TypeFilter } from "./RequestsToolbar";
 import { RequestsBulkBar, BulkRetryModal } from "./RequestsBulkUI";
 import { RequestsQueueBanner } from "./RequestsQueueBanner";
-import { RequestsEmpty } from "./RequestsEmpty";
 import type { LocalRequest, SeerrSearchResult } from "../api/types";
 
 const MediaDetailModal = lazy(() =>
@@ -145,7 +144,7 @@ export function RequestsPage() {
 
   return (
     <div className="px-4 pt-4 md:px-8">
-      <h1 className="mb-4 text-2xl font-bold text-white">{t("seer:myRequestsTitle")}</h1>
+      <h1 className="mb-4 text-2xl font-bold text-tentacle-text-primary">{t("seer:myRequestsTitle")}</h1>
 
       <RequestsStatsBar />
 
@@ -163,70 +162,26 @@ export function RequestsPage() {
         onToggleSelectionMode={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}
       />
 
-      {isLoading ? (
-        <div className="space-y-3">
-          {Array.from({ length: 3 }, (_, i) => (
-            <div key={i} className="flex animate-pulse gap-3 rounded-xl bg-white/5 p-3">
-              <div className="h-24 w-16 rounded-lg bg-white/10" />
-              <div className="flex-1 space-y-2 py-1">
-                <div className="h-4 w-1/3 rounded bg-white/10" />
-                <div className="h-3 w-1/4 rounded bg-white/5" />
-                <div className="h-1 w-full rounded bg-white/5" />
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : requests.length > 0 ? (
-        <div className="space-y-3">
-          {requests.map((request, i) => (
-            <div
-              key={request.id}
-              style={{
-                opacity: 0,
-                animation: `fadeSlideUp 400ms cubic-bezier(0.25,0.46,0.45,0.94) ${Math.min(i, 9) * 50}ms forwards`,
-              }}
-            >
-              <RequestCard
-                request={request}
-                onDelete={handleDelete}
-                onRetry={handleRetry}
-                onRetryDelete={handleRetryDelete}
-                onAddSeasons={handleAddSeasons}
-                onOpenModal={(req, action) => setActionModal({ request: req, action })}
-                onOpenMarkMenu={setMarkMenuFor}
-                marking={markMutation.isPending}
-                deleting={deleteMutation.isPending}
-                retrying={retryMutation.isPending}
-                selectable={selectionMode}
-                selected={selectedIds.has(request.id)}
-                onSelect={toggleSelect}
-              />
-            </div>
-          ))}
-        </div>
-      ) : (
-        <RequestsEmpty filtered={statusFilter !== "all" || !!debouncedSearch} />
-      )}
-
-      {totalPages > 1 && (
-        <div className="mt-8 flex items-center justify-center gap-3 pb-8">
-          <button
-            disabled={page <= 1}
-            onClick={() => setPage((p) => p - 1)}
-            className="rounded-lg bg-white/5 px-4 py-2 text-sm text-white/60 transition-colors hover:bg-white/10 disabled:opacity-30"
-          >
-            {t("seer:previousPage")}
-          </button>
-          <span className="text-sm text-white/40">{page} / {totalPages}</span>
-          <button
-            disabled={page >= totalPages}
-            onClick={() => setPage((p) => p + 1)}
-            className="rounded-lg bg-white/5 px-4 py-2 text-sm text-white/60 transition-colors hover:bg-white/10 disabled:opacity-30"
-          >
-            {t("seer:nextPage")}
-          </button>
-        </div>
-      )}
+      <RequestsList
+        isLoading={isLoading}
+        requests={requests}
+        filtered={statusFilter !== "all" || !!debouncedSearch}
+        page={page}
+        totalPages={totalPages}
+        onPageChange={setPage}
+        selectionMode={selectionMode}
+        selectedIds={selectedIds}
+        onToggleSelect={toggleSelect}
+        onDelete={handleDelete}
+        onRetry={handleRetry}
+        onRetryDelete={handleRetryDelete}
+        onAddSeasons={handleAddSeasons}
+        onOpenActionModal={(req, action) => setActionModal({ request: req, action })}
+        onOpenMarkMenu={setMarkMenuFor}
+        marking={markMutation.isPending}
+        deleting={deleteMutation.isPending}
+        retrying={retryMutation.isPending}
+      />
 
       {/* Bulk action bar */}
       {selectionMode && selectedIds.size > 0 && (

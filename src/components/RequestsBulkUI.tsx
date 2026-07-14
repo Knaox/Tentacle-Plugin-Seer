@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { ProfileSelector } from "./ProfileSelector";
+import { CTA_PRIMARY, CTA_PRIMARY_HALO } from "../styles/cta";
 
 interface RequestsBulkBarProps {
   count: number;
@@ -16,7 +17,7 @@ export function RequestsBulkBar({
 }: RequestsBulkBarProps) {
   const { t } = useTranslation("seer");
   return (
-    <div className="fixed bottom-4 left-1/2 z-40 flex max-w-[calc(100vw-16px)] -translate-x-1/2 flex-wrap items-center justify-center gap-2 rounded-xl border border-white/10 bg-[var(--surface-dropdown,#14141a)] px-4 py-3 shadow-2xl backdrop-blur-sm sm:gap-3 sm:px-5">
+    <div className="fixed bottom-4 left-1/2 z-40 flex max-w-[calc(100vw-16px)] -translate-x-1/2 flex-wrap items-center justify-center gap-2 rounded-xl border border-tentacle-border-subtle bg-tentacle-surface-dropdown px-4 py-3 shadow-2xl backdrop-blur-sm sm:gap-3 sm:px-5">
       <button
         onClick={onBulkDelete}
         disabled={deleting}
@@ -33,7 +34,7 @@ export function RequestsBulkBar({
       </button>
       <button
         onClick={onCancel}
-        className="rounded-lg bg-white/10 px-4 py-2 text-xs text-white/50 transition-colors hover:bg-white/15"
+        className="rounded-lg bg-tentacle-fill-soft px-4 py-2 text-xs text-tentacle-text-tertiary transition-colors hover:bg-tentacle-fill-medium"
       >
         {t("seer:bulkCancel")}
       </button>
@@ -57,22 +58,22 @@ export function BulkRetryModal({
   const { t } = useTranslation("seer");
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={onClose}>
-      <div className="mx-4 w-full max-w-sm rounded-xl bg-[var(--surface-2,#141414)] p-5 shadow-2xl"
+      <div className="mx-4 w-full max-w-sm rounded-xl bg-tentacle-surface-2 p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}>
-        <h3 className="mb-4 text-sm font-semibold text-white">
+        <h3 className="mb-4 text-sm font-semibold text-tentacle-text-primary">
           {t("seer:bulkRetry", { count })}
         </h3>
         <ProfileSelector showAll selectedId={profileId} onChange={onProfileChange} />
         <div className="mt-4 flex items-center justify-end gap-2">
           <button onClick={onClose}
-            className="rounded-lg bg-white/10 px-4 py-1.5 text-xs text-white/50 hover:bg-white/15">
+            className="rounded-lg bg-tentacle-fill-soft px-4 py-1.5 text-xs text-tentacle-text-tertiary hover:bg-tentacle-fill-medium">
             {t("seer:cancel")}
           </button>
           <button
             onClick={onConfirm}
             disabled={retrying}
-            style={{ boxShadow: "0 8px 22px rgba(var(--brand-rgb), 0.45)" }}
-            className="inline-flex items-center justify-center rounded-lg bg-white px-4 py-1.5 text-xs font-bold text-black transition-all hover:bg-white/95 disabled:opacity-40">
+            style={CTA_PRIMARY_HALO}
+            className={`${CTA_PRIMARY} px-4 py-1.5 text-xs`}>
             {retrying ? "..." : t("seer:seasonActionConfirm")}
           </button>
         </div>

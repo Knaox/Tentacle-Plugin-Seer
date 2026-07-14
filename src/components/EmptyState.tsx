@@ -8,7 +8,7 @@ interface EmptyStateProps {
 function DefaultIcon() {
   return (
     <svg
-      className="h-16 w-16 text-white/20"
+      className="h-16 w-16 text-tentacle-text-disabled"
       fill="none"
       viewBox="0 0 24 24"
       stroke="currentColor"
@@ -27,9 +27,9 @@ export function EmptyState({ icon, title, subtitle, action }: EmptyStateProps) {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
       {icon ?? <DefaultIcon />}
-      <h3 className="mt-4 text-base font-medium text-white/60">{title}</h3>
+      <h3 className="mt-4 text-base font-medium text-tentacle-text-secondary">{title}</h3>
       {subtitle && (
-        <p className="mt-1.5 max-w-xs text-sm text-white/40">{subtitle}</p>
+        <p className="mt-1.5 max-w-xs text-sm text-tentacle-text-tertiary">{subtitle}</p>
       )}
       {action && <div className="mt-5">{action}</div>}
     </div>

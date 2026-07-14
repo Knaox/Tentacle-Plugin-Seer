@@ -98,13 +98,13 @@ export function ModalDetailHeader({ item, detail, mediaType, navStack, onBack, o
           <img
             src={poster}
             alt={title}
-            className="relative h-[156px] w-[104px] flex-shrink-0 rounded-xl object-cover shadow-xl ring-1 ring-white/10 sm:h-[204px] sm:w-[136px]"
+            className="relative h-[156px] w-[104px] flex-shrink-0 rounded-xl object-cover shadow-xl ring-1 ring-tentacle-border-subtle sm:h-[204px] sm:w-[136px]"
             style={{ opacity: posterLoaded ? 1 : 0, transition: "opacity 300ms ease" }}
             onLoad={() => setPosterLoaded(true)}
           />
         ) : (
-          <div className="relative flex h-[156px] w-[104px] flex-shrink-0 items-center justify-center rounded-xl bg-tentacle-surface-2 shadow-xl ring-1 ring-white/10 sm:h-[204px] sm:w-[136px]">
-            <svg className="h-12 w-12 text-white/20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={0.8}>
+          <div className="relative flex h-[156px] w-[104px] flex-shrink-0 items-center justify-center rounded-xl bg-tentacle-surface-2 shadow-xl ring-1 ring-tentacle-border-subtle sm:h-[204px] sm:w-[136px]">
+            <svg className="h-12 w-12 text-tentacle-text-disabled" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={0.8}>
               {mediaType === "tv" ? (
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 20.25h12m-7.5-3v3m3-3v3m-10.125-3h17.25c.621 0 1.125-.504 1.125-1.125V4.875c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125Z" />
               ) : (
@@ -114,14 +114,14 @@ export function ModalDetailHeader({ item, detail, mediaType, navStack, onBack, o
           </div>
         )}
         <div className="min-w-0 flex-1 self-end pb-1">
-          <h2 id="seer-detail-title" className="text-xl font-bold leading-tight text-white sm:text-3xl">{title}</h2>
+          <h2 id="seer-detail-title" className="text-xl font-bold leading-tight text-tentacle-text-primary sm:text-3xl">{title}</h2>
           {showOriginalTitle && (
-            <p className="mt-0.5 truncate text-xs text-white/30">{originalTitle}</p>
+            <p className="mt-0.5 truncate text-xs text-tentacle-text-quaternary">{originalTitle}</p>
           )}
           {tagline && (
-            <p className="mt-1 line-clamp-1 text-sm italic text-white/50">{tagline}</p>
+            <p className="mt-1 line-clamp-1 text-sm italic text-tentacle-text-tertiary">{tagline}</p>
           )}
-          <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm text-white/50">
+          <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm text-tentacle-text-tertiary">
             {year && <span>{year}</span>}
             {detail && "runtime" in detail && (detail as SeerrMovieDetail).runtime ? (
               <span>{formatRuntime((detail as SeerrMovieDetail).runtime!)}</span>
@@ -129,7 +129,7 @@ export function ModalDetailHeader({ item, detail, mediaType, navStack, onBack, o
               <span>{t("seasonsCount", { count: tvDetail.numberOfSeasons })}</span>
             ) : null}
             {certification && (
-              <span className="rounded border border-white/20 px-1.5 py-0.5 text-[11px] font-semibold text-white/60">
+              <span className="rounded border border-tentacle-border-strong px-1.5 py-0.5 text-[11px] font-semibold text-tentacle-text-secondary">
                 {certification}
               </span>
             )}
@@ -140,7 +140,7 @@ export function ModalDetailHeader({ item, detail, mediaType, navStack, onBack, o
                 </svg>
                 {rating.toFixed(1)}
                 {voteCount != null && voteCount > 0 && (
-                  <span className="hidden font-normal text-white/30 sm:inline">
+                  <span className="hidden font-normal text-tentacle-text-quaternary sm:inline">
                     ({voteCount.toLocaleString()})
                   </span>
                 )}
@@ -150,7 +150,7 @@ export function ModalDetailHeader({ item, detail, mediaType, navStack, onBack, o
           {detail?.genres && detail.genres.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1">
               {detail.genres.slice(0, 4).map((g) => (
-                <span key={g.id} className="rounded-full bg-white/[0.08] px-2.5 py-0.5 text-[11px] text-white/60">{g.name}</span>
+                <span key={g.id} className="rounded-full bg-tentacle-fill-soft px-2.5 py-0.5 text-[11px] text-tentacle-text-secondary">{g.name}</span>
               ))}
             </div>
           )}

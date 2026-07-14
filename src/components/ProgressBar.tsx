@@ -46,7 +46,7 @@ export function ProgressBar({ status }: ProgressBarProps) {
         const isCurrent = i === currentIdx;
         return (
           <div key={step.key} className="flex flex-1 flex-col items-center gap-1">
-            <div className="h-1.5 w-full rounded-full bg-white/10">
+            <div className="h-1.5 w-full rounded-full bg-tentacle-fill-soft">
               <div
                 className={`h-full rounded-full transition-all duration-500 ${
                   isCompleted
@@ -60,7 +60,7 @@ export function ProgressBar({ status }: ProgressBarProps) {
             </div>
             <span
               className={`hidden text-[10px] sm:block ${
-                isCompleted || isCurrent ? "text-white/60" : "text-white/20"
+                isCompleted || isCurrent ? "text-tentacle-text-secondary" : "text-tentacle-text-disabled"
               }`}
             >
               {t(step.labelKey)}

@@ -61,9 +61,9 @@ export function SeasonActionModal({ request, action, onConfirm, onClose }: Seaso
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={onClose}>
-      <div className="mx-4 flex w-full max-w-sm max-h-[85vh] flex-col rounded-xl bg-[var(--surface-2,#141414)] p-5 shadow-2xl"
+      <div className="mx-4 flex w-full max-w-sm max-h-[85vh] flex-col rounded-xl bg-tentacle-surface-2 p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}>
-        <h3 className="mb-4 text-sm font-semibold text-white">{title}</h3>
+        <h3 className="mb-4 text-sm font-semibold text-tentacle-text-primary">{title}</h3>
 
         {/* Saisons — uniquement pour les séries */}
         {hasSeasons && (
@@ -72,8 +72,8 @@ export function SeasonActionModal({ request, action, onConfirm, onClose }: Seaso
               {seasons.map((s) => (
                 <button key={s} onClick={() => toggle(s)}
                   className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
-                    selected.has(s) ? "bg-white text-black shadow-sm"
-                      : "bg-white/[0.06] text-white/60 hover:bg-white/[0.10] hover:text-white"
+                    selected.has(s) ? "bg-tentacle-cta-primary text-tentacle-cta-primary-fg shadow-sm"
+                      : "bg-tentacle-fill-soft text-tentacle-text-secondary hover:bg-tentacle-fill-medium hover:text-tentacle-text-primary"
                   }`}>
                   S{s}
                 </button>
@@ -83,7 +83,7 @@ export function SeasonActionModal({ request, action, onConfirm, onClose }: Seaso
             <button onClick={() => setSelected(new Set(seasons))}
               className={`mb-3 w-full flex-shrink-0 rounded-lg px-3 py-2 text-xs font-medium transition-all ${
                 allSelected ? "bg-tentacle-brand/20 text-tentacle-brand-light ring-1 ring-tentacle-brand/30"
-                  : "bg-white/5 text-white/50 hover:bg-white/10"
+                  : "bg-tentacle-fill-subtle text-tentacle-text-tertiary hover:bg-tentacle-fill-medium"
               }`}>
               {t("seer:seasonActionAll")}
             </button>
@@ -103,7 +103,7 @@ export function SeasonActionModal({ request, action, onConfirm, onClose }: Seaso
         )}
 
         {/* Option destructive — décochée par défaut */}
-        <label className="mb-3 flex flex-shrink-0 cursor-pointer items-start gap-2 rounded-lg bg-white/[0.04] px-3 py-2">
+        <label className="mb-3 flex flex-shrink-0 cursor-pointer items-start gap-2 rounded-lg bg-tentacle-fill-subtle px-3 py-2">
           <input
             type="checkbox"
             checked={action === "delete" ? deleteFiles : forceRedownload}
@@ -111,10 +111,10 @@ export function SeasonActionModal({ request, action, onConfirm, onClose }: Seaso
             className="mt-0.5 h-4 w-4 accent-tentacle-brand"
           />
           <div className="min-w-0 flex-1">
-            <span className="block text-[11px] font-medium text-white/80">
+            <span className="block text-[11px] font-medium text-tentacle-text-secondary">
               {action === "delete" ? t("seer:deleteAlsoFiles") : t("seer:forceRedownload")}
             </span>
-            <span className="block text-[10px] text-white/40">
+            <span className="block text-[10px] text-tentacle-text-tertiary">
               {action === "delete" ? t("seer:deleteAlsoFilesHint") : t("seer:forceRedownloadHint")}
             </span>
           </div>

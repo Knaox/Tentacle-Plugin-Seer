@@ -11,7 +11,7 @@ export function PlatformFilter({ selected, onToggle }: PlatformFilterProps) {
 
   return (
     <div>
-      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-white/40">
+      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-tentacle-text-tertiary">
         {t("filterPlatforms")}
       </h4>
       <div className="grid grid-cols-2 gap-2">
@@ -24,7 +24,7 @@ export function PlatformFilter({ selected, onToggle }: PlatformFilterProps) {
               className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
                 active
                   ? "border border-tentacle-brand/50 bg-tentacle-brand/10 text-tentacle-brand"
-                  : "border border-white/5 bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/70"
+                  : "border border-tentacle-border-subtle bg-tentacle-fill-subtle text-tentacle-text-tertiary hover:bg-tentacle-fill-medium hover:text-tentacle-text-secondary"
               }`}
             >
               {active && (

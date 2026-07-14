@@ -21,7 +21,7 @@ export function ExtrasRow({ trailers, onSelect }: ExtrasRowProps) {
 
   return (
     <section>
-      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-white/40">
+      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-tentacle-text-tertiary">
         {t("seer:extras")}
       </h4>
       <div
@@ -92,7 +92,7 @@ function ExtraTile({
             onError={() => setUnavailable(true)}
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center text-white/25">
+          <div className="flex h-full w-full items-center justify-center text-tentacle-text-disabled">
             <PlayGlyph />
           </div>
         )}
@@ -102,8 +102,8 @@ function ExtraTile({
           </span>
         </div>
       </div>
-      <p className="mt-1.5 truncate text-sm font-medium text-white/90">{label}</p>
-      {sublabel && <p className="truncate text-xs text-white/45">{sublabel}</p>}
+      <p className="mt-1.5 truncate text-sm font-medium text-tentacle-text-secondary">{label}</p>
+      {sublabel && <p className="truncate text-xs text-tentacle-text-tertiary">{sublabel}</p>}
     </button>
   );
 }

@@ -40,7 +40,7 @@ export function SeasonRow({
 
   return (
     <div className={`overflow-hidden rounded-xl border transition-colors ${
-      expanded ? "border-white/[0.14] bg-white/[0.05]" : "border-white/[0.08] bg-white/[0.03]"
+      expanded ? "border-tentacle-border-strong bg-tentacle-fill-subtle" : "border-tentacle-border-subtle bg-tentacle-fill-subtle"
     }`}>
       <div className="flex min-h-[52px] items-center gap-3 pr-2">
         {/* Zone checkbox + libellé : toggle la sélection (ou déplie si non sélectionnable) */}
@@ -53,21 +53,21 @@ export function SeasonRow({
           {selectable && (
             <span className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border transition-colors ${
               isChecked
-                ? canCheck ? "border-tentacle-brand bg-tentacle-brand" : "border-white/15 bg-white/15"
-                : "border-white/25 bg-transparent"
+                ? canCheck ? "border-tentacle-brand bg-tentacle-brand" : "border-tentacle-border-strong bg-tentacle-fill-medium"
+                : "border-tentacle-border-strong bg-transparent"
             }`}>
               {isChecked && (
-                <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <svg className={`h-3 w-3 ${canCheck ? "text-white" : "text-tentacle-text-primary"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
               )}
             </span>
           )}
           <span className="min-w-0">
-            <span className="block truncate text-sm font-semibold text-white">
+            <span className="block truncate text-sm font-semibold text-tentacle-text-primary">
               {season.name || t("seer:seasonFallback", { number: season.seasonNumber })}
             </span>
-            <span className="block text-[11px] text-white/40">
+            <span className="block text-[11px] text-tentacle-text-tertiary">
               {t("seer:episodeCount", { count: season.episodeCount })}
               {season.airDate && <> · {season.airDate.slice(0, 4)}</>}
             </span>
@@ -86,7 +86,7 @@ export function SeasonRow({
           onClick={onExpandToggle}
           aria-expanded={expanded}
           aria-label={t("seer:episodesTitle")}
-          className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-white/40 transition-colors hover:bg-white/[0.06] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-tentacle-brand/50"
+          className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-tentacle-text-tertiary transition-colors hover:bg-tentacle-fill-soft hover:text-tentacle-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-tentacle-brand/50"
         >
           <svg
             className="h-4 w-4 transition-transform duration-200"
@@ -99,7 +99,7 @@ export function SeasonRow({
       </div>
 
       {expanded && (
-        <div className="border-t border-white/[0.06] px-4 pb-2" style={{ animation: "fadeIn 200ms ease" }}>
+        <div className="border-t border-tentacle-border-subtle px-4 pb-2" style={{ animation: "fadeIn 200ms ease" }}>
           <EpisodeList tvId={tvId} seasonNumber={season.seasonNumber} />
         </div>
       )}

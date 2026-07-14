@@ -28,8 +28,8 @@ export function NextEpisodeBanner({ episode }: { episode: SeerrEpisode }) {
             className="hidden h-16 w-28 flex-shrink-0 rounded-lg object-cover sm:block"
           />
         ) : (
-          <div className="hidden h-16 w-28 flex-shrink-0 items-center justify-center rounded-lg bg-white/5 sm:flex">
-            <svg className="h-6 w-6 text-white/20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.2}>
+          <div className="hidden h-16 w-28 flex-shrink-0 items-center justify-center rounded-lg bg-tentacle-fill-subtle sm:flex">
+            <svg className="h-6 w-6 text-tentacle-text-disabled" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M3.375 19.5h17.25c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v12.75c0 .621.504 1.125 1.125 1.125Z" />
             </svg>
           </div>
@@ -42,11 +42,11 @@ export function NextEpisodeBanner({ episode }: { episode: SeerrEpisode }) {
             </svg>
             {t("seer:nextEpisodeTitle")}
           </p>
-          <p className="mt-1 truncate text-sm font-semibold text-white">
-            <span className="text-white/50">{code}</span>
+          <p className="mt-1 truncate text-sm font-semibold text-tentacle-text-primary">
+            <span className="text-tentacle-text-tertiary">{code}</span>
             {episode.name && <span> · {episode.name}</span>}
           </p>
-          <p className="mt-0.5 text-xs capitalize text-white/55">{formatAirDateLong(episode.airDate)}</p>
+          <p className="mt-0.5 text-xs capitalize text-tentacle-text-tertiary">{formatAirDateLong(episode.airDate)}</p>
         </div>
 
         {/* Countdown */}

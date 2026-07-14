@@ -8,10 +8,8 @@ import { useRequestMedia } from "../hooks/useRequestMedia";
 import type { RequestMediaPayload } from "../hooks/useRequestMedia";
 import { formatSeerError } from "../api/seer-client";
 import { MediaCard } from "./MediaCard";
-import { MediaTabBar } from "./MediaTabBar";
 import { FilterPanel } from "./FilterPanel";
-import { ActiveFilterPills } from "./ActiveFilterPills";
-import { BlockedResultsBanner } from "./BlockedResultsBanner";
+import { DiscoverSearchHeader } from "./DiscoverSearchHeader";
 import { HeroCarousel } from "./HeroCarousel";
 import { MediaDetailModal } from "./MediaDetailModal";
 import { SkeletonList } from "./SkeletonList";
@@ -168,106 +166,35 @@ export function DiscoverPage() {
         </div>
       )}
 
-      {/* Search bar */}
-      <div className="relative mb-4 rounded-xl bg-white/5 backdrop-blur-xl">
-        <svg className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-        </svg>
-        <input
-          ref={searchInputRef}
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t("seer:searchPlaceholder")}
-          className="w-full rounded-xl border border-white/5 bg-transparent py-3 pl-12 pr-24 text-sm text-white placeholder-white/30 outline-none transition-all focus:border-tentacle-brand/30 focus:ring-2 focus:ring-tentacle-brand/50 focus:shadow-lg focus:shadow-tentacle-brand/5"
-        />
-        {query && (
-          <button
-            onClick={() => setQuery("")}
-            className="absolute right-16 top-1/2 -translate-y-1/2 text-white/30 transition-colors hover:text-white/60"
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-            </svg>
-          </button>
-        )}
-        {typeof navigator !== "undefined" && navigator.maxTouchPoints === 0 && !/Mobi|Android/i.test(navigator.userAgent) && (
-          <kbd className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] text-white/30">
-            Ctrl+K
-          </kbd>
-        )}
-      </div>
-
-      {/* Tabs + Filter button row */}
-      {!isSearching && (
-        <div className="mb-3 flex flex-wrap items-center gap-3">
-          <MediaTabBar value={mediaType} onChange={handleTabChange} />
-
-          <button
-            onClick={() => setFilterPanelOpen(true)}
-            className="relative flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/60 transition-colors hover:bg-white/10 hover:text-white/80"
-          >
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" />
-            </svg>
-            {t("filterTitle")}
-            {activeFilterCount > 0 && (
-              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-tentacle-brand text-[9px] font-bold text-white">
-                {activeFilterCount}
-              </span>
-            )}
-          </button>
-
-          {hasActiveFilters && (
-            <button
-              onClick={resetFilters}
-              className="rounded-lg px-3 py-1.5 text-xs font-medium text-white/30 transition-colors hover:text-white/60"
-            >
-              {t("resetFilters")}
-            </button>
-          )}
-
-          {totalResults != null && !isLoading && hasActiveFilters && (
-            <span className="ml-auto text-xs text-white/30">
-              {t("resultCount", { count: totalResults })}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Active filter pills */}
-      {!isSearching && (
-        <ActiveFilterPills
-          mediaType={mediaType}
-          filters={filters}
-          totalResults={undefined}
-          onRemoveGenre={toggleGenre}
-          onRemoveWatchProvider={toggleWatchProvider}
-          onClearYears={() => { setYearFrom(null); setYearTo(null); }}
-          onClearRating={() => setRatingMin(null)}
-          onClearLanguage={() => setOriginalLanguage(null)}
-          onRemoveTvStatus={toggleTvStatus}
-          onReset={resetFilters}
-          hasActiveFilters={hasActiveFilters}
-        />
-      )}
-
-      {/* Bandeau « contenu masqué · afficher quand même » */}
-      {(() => {
-        const searchBlockedActive = !!searchData?.blockedActive;
-        const searchBlockedCount = searchData?.blockedCount ?? 0;
-        const bannerVisible = isSearching
-          ? searchBlockedActive && (showBlocked || searchBlockedCount > 0)
-          : blockedActive;
-        if (!bannerVisible || isLoading) return null;
-        return (
-          <BlockedResultsBanner
-            blockedCount={isSearching ? searchBlockedCount : 0}
-            showBlocked={showBlocked}
-            onToggle={toggleShowBlocked}
-          />
-        );
-      })()}
+      <DiscoverSearchHeader
+        query={query}
+        onQueryChange={setQuery}
+        searchInputRef={searchInputRef}
+        isSearching={isSearching}
+        mediaType={mediaType}
+        onTabChange={handleTabChange}
+        onOpenFilterPanel={() => setFilterPanelOpen(true)}
+        activeFilterCount={activeFilterCount}
+        hasActiveFilters={hasActiveFilters}
+        onResetFilters={resetFilters}
+        totalResults={totalResults}
+        isLoading={isLoading}
+        filters={filters}
+        onRemoveGenre={toggleGenre}
+        onRemoveWatchProvider={toggleWatchProvider}
+        onClearYears={() => { setYearFrom(null); setYearTo(null); }}
+        onClearRating={() => setRatingMin(null)}
+        onClearLanguage={() => setOriginalLanguage(null)}
+        onRemoveTvStatus={toggleTvStatus}
+        showBlockedBanner={
+          !isLoading && (isSearching
+            ? !!searchData?.blockedActive && (showBlocked || (searchData?.blockedCount ?? 0) > 0)
+            : blockedActive)
+        }
+        blockedCount={isSearching ? (searchData?.blockedCount ?? 0) : 0}
+        showBlocked={showBlocked}
+        onToggleShowBlocked={toggleShowBlocked}
+      />
 
       {/* Results */}
       <div key={viewKey} style={{ animation: "viewCrossfade 200ms ease" }}>
@@ -278,9 +205,9 @@ export function DiscoverPage() {
           <svg className="h-10 w-10 text-red-400/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
           </svg>
-          <p className="text-sm font-medium text-white/60">{t("seer:connectionError")}</p>
+          <p className="text-sm font-medium text-tentacle-text-secondary">{t("seer:connectionError")}</p>
           {errorMessage && (
-            <p className="max-w-md text-center text-xs text-white/30">{errorMessage}</p>
+            <p className="max-w-md text-center text-xs text-tentacle-text-quaternary">{errorMessage}</p>
           )}
           <button
             onClick={() => { refetch(); }}

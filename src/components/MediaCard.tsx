@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SeerrSearchResult } from "../api/types";
 import { posterUrl, mediaTitle, mediaYear, mediaTypeKey } from "../utils/media-helpers";
+import { CTA_PRIMARY, CTA_PRIMARY_HALO } from "../styles/cta";
 
 interface MediaCardProps {
   item: SeerrSearchResult;
@@ -36,11 +37,11 @@ function PosterFallback({ label, mediaType }: { label: string; mediaType?: strin
   return (
     <div className="flex h-full w-full items-center justify-center bg-tentacle-surface-2">
       {mediaType === "tv" ? (
-        <svg className="h-10 w-10 text-white/10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={0.8}>
+        <svg className="h-10 w-10 text-tentacle-text-disabled" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={0.8}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M6 20.25h12m-7.5-3v3m3-3v3m-10.125-3h17.25c.621 0 1.125-.504 1.125-1.125V4.875c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125Z" />
         </svg>
       ) : (
-        <svg className="h-10 w-10 text-white/10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={0.8}>
+        <svg className="h-10 w-10 text-tentacle-text-disabled" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={0.8}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 0 1-1.125-1.125M3.375 19.5h1.5C5.496 19.5 6 18.996 6 18.375m-3.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-1.5A1.125 1.125 0 0 1 18 18.375M20.625 4.5H3.375m17.25 0c.621 0 1.125.504 1.125 1.125M20.625 4.5h-1.5C18.504 4.5 18 5.004 18 5.625m3.75 0v1.5c0 .621-.504 1.125-1.125 1.125M3.375 4.5c-.621 0-1.125.504-1.125 1.125M3.375 4.5h1.5C5.496 4.5 6 5.004 6 5.625m-3.75 0v1.5c0 .621.504 1.125 1.125 1.125m0 0h1.5m-1.5 0c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125m1.5-3.75C5.496 8.25 6 7.746 6 7.125v-1.5M4.875 8.25C5.496 8.25 6 8.754 6 9.375v1.5c0 .621-.504 1.125-1.125 1.125m0 0h1.5m-1.5 0c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125M19.125 12h1.5m0 0c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m0-3.75h-1.5m0 0c-.621 0-1.125-.504-1.125-1.125v-1.5c0-.621.504-1.125 1.125-1.125m0 3.75c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125" />
         </svg>
       )}
@@ -123,7 +124,8 @@ export function MediaCard({ item, onRequest, onClick, requesting, style }: Media
               <button
                 onClick={(e) => { e.stopPropagation(); onRequest(item); }}
                 disabled={requesting}
-                style={{ boxShadow: "0 8px 22px rgba(var(--brand-rgb), 0.45)" }} className="inline-flex w-full items-center justify-center rounded-lg bg-white py-2 text-xs font-bold text-black transition-all hover:bg-white/95 disabled:opacity-50 disabled:cursor-not-allowed"
+                style={CTA_PRIMARY_HALO}
+                className={`${CTA_PRIMARY} w-full py-2 text-xs`}
               >
                 {requesting ? t("seer:sending") : t("seer:request")}
               </button>
@@ -142,8 +144,8 @@ export function MediaCard({ item, onRequest, onClick, requesting, style }: Media
 
       {/* Info */}
       <div className="mt-2 px-0.5">
-        <h3 className="truncate text-sm font-semibold text-white">{title}</h3>
-        {year && <p className="text-xs text-white/40">{year}</p>}
+        <h3 className="truncate text-sm font-semibold text-tentacle-text-primary">{title}</h3>
+        {year && <p className="text-xs text-tentacle-text-tertiary">{year}</p>}
       </div>
     </div>
   );

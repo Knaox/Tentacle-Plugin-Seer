@@ -13,7 +13,7 @@ const STATUS_COLORS: Record<string, string> = {
   unavailable: "bg-tentacle-brand",
   retry_pending: "bg-orange-400",
   failed: "bg-red-500",
-  deleted: "bg-white/30",
+  deleted: "bg-tentacle-fill-strong",
 };
 
 const STATUS_TEXT: Record<string, string> = {
@@ -27,7 +27,7 @@ const STATUS_TEXT: Record<string, string> = {
   unavailable: "text-tentacle-brand-light",
   retry_pending: "text-orange-300",
   failed: "text-red-400",
-  deleted: "text-white/50",
+  deleted: "text-tentacle-text-tertiary",
 };
 
 export function RequestsStatsBar() {
@@ -46,7 +46,7 @@ export function RequestsStatsBar() {
     return (
       <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
         {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="h-20 animate-pulse rounded-2xl bg-white/5" />
+          <div key={i} className="h-20 animate-pulse rounded-2xl bg-tentacle-fill-subtle" />
         ))}
       </div>
     );
@@ -73,7 +73,7 @@ export function RequestsStatsBar() {
           label={t("seer:statsTotalRequests")}
           value={stats.total}
           accent="from-tentacle-brand/30 via-tentacle-brand/10 to-transparent"
-          valueClass="text-white"
+          valueClass="text-tentacle-text-primary"
         />
         <StatCard
           label={t("seer:statsAvailable")}
@@ -95,25 +95,25 @@ export function RequestsStatsBar() {
         />
       </div>
 
-      <div className="rounded-2xl border border-white/5 bg-white/[0.03] p-4">
+      <div className="rounded-2xl border border-tentacle-border-subtle bg-tentacle-fill-subtle p-4">
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-white/40">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-tentacle-text-tertiary">
             {t("seer:statsByStatus")}
           </h3>
           <div className="flex items-baseline gap-1.5 text-xs">
             <span className="font-bold text-emerald-300">{successRate}%</span>
-            <span className="text-white/30">{t("seer:statsSuccessRateDesc")}</span>
+            <span className="text-tentacle-text-quaternary">{t("seer:statsSuccessRateDesc")}</span>
           </div>
         </div>
 
-        <div className="flex h-2.5 overflow-hidden rounded-full bg-white/5">
+        <div className="flex h-2.5 overflow-hidden rounded-full bg-tentacle-fill-subtle">
           {Object.entries(stats.byStatus).map(([status, count]) => {
             const pct = ((count ?? 0) / stats.total) * 100;
             if (pct === 0) return null;
             return (
               <div
                 key={status}
-                className={`${STATUS_COLORS[status] ?? "bg-white/20"} transition-all`}
+                className={`${STATUS_COLORS[status] ?? "bg-tentacle-fill-strong"} transition-all`}
                 style={{ width: `${pct}%` }}
                 title={`${t(`seer:status_${status}` as never, status)}: ${count}`}
               />
@@ -126,23 +126,23 @@ export function RequestsStatsBar() {
             .filter(([, count]) => (count ?? 0) > 0)
             .map(([status, count]) => (
               <div key={status} className="flex items-center gap-1.5 text-[11px]">
-                <div className={`h-2 w-2 rounded-full ${STATUS_COLORS[status] ?? "bg-white/20"}`} />
-                <span className={`${STATUS_TEXT[status] ?? "text-white/60"} font-medium`}>{count}</span>
-                <span className="text-white/40">{t(`seer:status_${status}` as never, status)}</span>
+                <div className={`h-2 w-2 rounded-full ${STATUS_COLORS[status] ?? "bg-tentacle-fill-strong"}`} />
+                <span className={`${STATUS_TEXT[status] ?? "text-tentacle-text-secondary"} font-medium`}>{count}</span>
+                <span className="text-tentacle-text-tertiary">{t(`seer:status_${status}` as never, status)}</span>
               </div>
             ))}
         </div>
 
         {(stats.byType.movie > 0 || stats.byType.tv > 0) && (
-          <div className="mt-3 flex items-center gap-4 border-t border-white/5 pt-3 text-xs">
+          <div className="mt-3 flex items-center gap-4 border-t border-tentacle-border-subtle pt-3 text-xs">
             <div className="flex items-baseline gap-1.5">
-              <span className="text-base font-bold text-white">{stats.byType.movie}</span>
-              <span className="text-white/40">{t("seer:typeMovie")}</span>
+              <span className="text-base font-bold text-tentacle-text-primary">{stats.byType.movie}</span>
+              <span className="text-tentacle-text-tertiary">{t("seer:typeMovie")}</span>
             </div>
-            <div className="h-3 w-px bg-white/10" />
+            <div className="h-3 w-px bg-tentacle-fill-soft" />
             <div className="flex items-baseline gap-1.5">
-              <span className="text-base font-bold text-white">{stats.byType.tv}</span>
-              <span className="text-white/40">{t("seer:typeSeries")}</span>
+              <span className="text-base font-bold text-tentacle-text-primary">{stats.byType.tv}</span>
+              <span className="text-tentacle-text-tertiary">{t("seer:typeSeries")}</span>
             </div>
           </div>
         )}
@@ -160,10 +160,10 @@ function StatCard({
   valueClass: string;
 }) {
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-white/5 bg-white/[0.03] p-4">
+    <div className="relative overflow-hidden rounded-2xl border border-tentacle-border-subtle bg-tentacle-fill-subtle p-4">
       <div className={`absolute inset-0 -z-10 bg-gradient-to-br ${accent} opacity-90`} />
       <p className={`text-3xl font-bold leading-none ${valueClass}`}>{value}</p>
-      <p className="mt-2 text-[11px] font-medium uppercase tracking-wider text-white/40">{label}</p>
+      <p className="mt-2 text-[11px] font-medium uppercase tracking-wider text-tentacle-text-tertiary">{label}</p>
     </div>
   );
 }

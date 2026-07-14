@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "./EmptyState";
+import { CTA_PRIMARY, CTA_PRIMARY_HALO } from "../styles/cta";
 
 /**
  * État vide de la page Demandes. `filtered` = un filtre/recherche est actif
@@ -23,8 +24,8 @@ export function RequestsEmpty({ filtered }: { filtered: boolean }) {
       action={filtered ? undefined : (
         <button
           onClick={goDiscover}
-          style={{ boxShadow: "0 8px 22px rgba(var(--brand-rgb), 0.45)" }}
-          className="inline-flex items-center justify-center rounded-lg bg-white px-5 py-2.5 text-sm font-bold text-black transition-all hover:-translate-y-0.5 hover:bg-white/95"
+          style={CTA_PRIMARY_HALO}
+          className={`${CTA_PRIMARY} px-5 py-2.5`}
         >
           {t("discoverButton")}
         </button>

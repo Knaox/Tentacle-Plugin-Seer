@@ -17,14 +17,14 @@ export function WatchProviders({ providers }: WatchProvidersProps) {
 
   return (
     <div>
-      <h3 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-white/40">
+      <h3 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-tentacle-text-tertiary">
         {t("availableOn")}
       </h3>
       <div className="flex flex-wrap gap-2">
         {providers.map((p) => (
           <div
             key={p.provider_id}
-            className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5"
+            className="flex items-center gap-2 rounded-lg border border-tentacle-border-subtle bg-tentacle-fill-subtle px-3 py-1.5"
           >
             <img
               src={`https://image.tmdb.org/t/p/w45${p.logo_path}`}
@@ -32,7 +32,7 @@ export function WatchProviders({ providers }: WatchProvidersProps) {
               className="h-5 w-5 rounded"
               loading="lazy"
             />
-            <span className="text-xs text-white/60">{p.provider_name}</span>
+            <span className="text-xs text-tentacle-text-secondary">{p.provider_name}</span>
           </div>
         ))}
       </div>

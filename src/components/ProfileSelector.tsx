@@ -27,7 +27,7 @@ export function ProfileSelector({ mediaType, isAnime, showAll, selectedId, onCha
 
   return (
     <div className="mb-3">
-      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-white/40">
+      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-tentacle-text-tertiary">
         {t("seer:profileLabel")}
       </label>
       <div className="flex flex-wrap gap-2">
@@ -38,8 +38,8 @@ export function ProfileSelector({ mediaType, isAnime, showAll, selectedId, onCha
             onClick={() => onChange(selectedId === profile.id ? null : profile.id)}
             className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
               selectedId === profile.id
-                ? "border-tentacle-brand bg-tentacle-brand/20 text-white"
-                : "border-white/10 bg-white/5 text-white/50 hover:border-white/20 hover:bg-white/10"
+                ? "border-tentacle-brand bg-tentacle-brand/20 text-tentacle-text-primary"
+                : "border-tentacle-border-subtle bg-tentacle-fill-subtle text-tentacle-text-tertiary hover:border-tentacle-border-strong hover:bg-tentacle-fill-medium"
             }`}
           >
             {profile.name}

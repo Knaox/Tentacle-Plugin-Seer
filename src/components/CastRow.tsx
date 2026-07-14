@@ -9,7 +9,7 @@ interface CastRowProps {
 
 function AvatarFallback({ name }: { name: string }) {
   return (
-    <div className="flex h-[60px] w-[60px] items-center justify-center rounded-full bg-white/10 text-sm font-medium text-white/30">
+    <div className="flex h-[60px] w-[60px] items-center justify-center rounded-full bg-tentacle-fill-soft text-sm font-medium text-tentacle-text-quaternary">
       {name[0]?.toUpperCase() ?? "?"}
     </div>
   );
@@ -46,7 +46,7 @@ export function CastRow({ cast }: CastRowProps) {
   return (
     <div>
       <div className="mb-2.5 flex items-center justify-between">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-white/40">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-tentacle-text-tertiary">
           {t("castTitle")}
         </h3>
         {(canScrollLeft || canScrollRight) && (
@@ -54,7 +54,7 @@ export function CastRow({ cast }: CastRowProps) {
             <button
               onClick={() => scroll(-1)}
               disabled={!canScrollLeft}
-              className="flex h-6 w-6 items-center justify-center rounded-full bg-white/10 text-white/60 transition-colors hover:bg-white/20 disabled:opacity-20"
+              className="flex h-6 w-6 items-center justify-center rounded-full bg-tentacle-fill-soft text-tentacle-text-secondary transition-colors hover:bg-tentacle-fill-medium disabled:opacity-20"
             >
               <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
@@ -63,7 +63,7 @@ export function CastRow({ cast }: CastRowProps) {
             <button
               onClick={() => scroll(1)}
               disabled={!canScrollRight}
-              className="flex h-6 w-6 items-center justify-center rounded-full bg-white/10 text-white/60 transition-colors hover:bg-white/20 disabled:opacity-20"
+              className="flex h-6 w-6 items-center justify-center rounded-full bg-tentacle-fill-soft text-tentacle-text-secondary transition-colors hover:bg-tentacle-fill-medium disabled:opacity-20"
             >
               <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
@@ -92,10 +92,10 @@ export function CastRow({ cast }: CastRowProps) {
             ) : (
               <AvatarFallback name={person.name} />
             )}
-            <span className="mt-1.5 w-full text-center text-[11px] font-medium leading-tight text-white/60 line-clamp-2">
+            <span className="mt-1.5 w-full text-center text-[11px] font-medium leading-tight text-tentacle-text-secondary line-clamp-2">
               {person.name}
             </span>
-            <span className="w-full truncate text-center text-[10px] text-white/30">
+            <span className="w-full truncate text-center text-[10px] text-tentacle-text-quaternary">
               {person.character}
             </span>
           </div>

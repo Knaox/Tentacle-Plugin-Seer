@@ -12,7 +12,7 @@ export function GenreFilter({ genres, selected, onToggle }: GenreFilterProps) {
 
   return (
     <div>
-      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-white/40">
+      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-tentacle-text-tertiary">
         {t("filterGenres")}
       </h4>
       <div className="flex flex-wrap gap-2">
@@ -25,7 +25,7 @@ export function GenreFilter({ genres, selected, onToggle }: GenreFilterProps) {
               className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                 active
                   ? "bg-tentacle-brand/20 text-tentacle-brand ring-1 ring-tentacle-brand/50"
-                  : "bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/70"
+                  : "bg-tentacle-fill-subtle text-tentacle-text-tertiary hover:bg-tentacle-fill-medium hover:text-tentacle-text-secondary"
               }`}
             >
               {t(g.key)}

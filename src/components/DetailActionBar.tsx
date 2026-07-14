@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { navigateToMedia } from "../utils/navigate-media";
 import { shouldOpenYouTubeExternally, openExternal } from "../utils/external";
+import { CTA_SECONDARY, CTA_SIZE_LG } from "../styles/cta";
 import type { MediaType } from "../api/types";
 import type { RichTrailer } from "../utils/trailers";
 
@@ -73,7 +74,7 @@ export function DetailActionBar({ mediaType, tmdbId, mediaStatus, trailers, onOp
       {hasTrailers && (
         <button
           onClick={handleTrailer}
-          className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-lg border border-white/[0.14] bg-white/[0.07] px-5 text-sm font-semibold text-white backdrop-blur-sm transition-colors hover:border-white/30 hover:bg-white/[0.12] sm:flex-initial"
+          className={`${CTA_SECONDARY} ${CTA_SIZE_LG} flex-1 gap-2 backdrop-blur-sm sm:flex-initial`}
         >
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M3.375 19.5h17.25c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v12.75c0 .621.504 1.125 1.125 1.125ZM6 4.5v15m12-15v15M2.25 9h3.75m-3.75 6h3.75m12-6h3.75m-3.75 6h3.75" />

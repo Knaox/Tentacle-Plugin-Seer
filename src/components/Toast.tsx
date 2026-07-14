@@ -38,9 +38,8 @@ export function Toast({ toast, onDismiss }: ToastProps) {
 
   return (
     <div
-      className={`relative flex items-center gap-3 overflow-hidden rounded-xl border px-4 py-3 shadow-lg transition-all ${TYPE_COLORS[toast.type]}`}
+      className={`relative flex items-center gap-3 overflow-hidden rounded-xl border bg-tentacle-surface-toolbar px-4 py-3 shadow-lg transition-all ${TYPE_COLORS[toast.type]}`}
       style={{
-        background: "rgba(15,15,25,0.92)",
         backdropFilter: "blur(20px)",
         animation: "fadeSlideUp 300ms ease forwards",
       }}
@@ -65,10 +64,10 @@ export function Toast({ toast, onDismiss }: ToastProps) {
           d={TYPE_ICONS[toast.type]}
         />
       </svg>
-      <span className="flex-1 text-sm text-white/90">{toast.message}</span>
+      <span className="flex-1 text-sm text-tentacle-text-secondary">{toast.message}</span>
       <button
         onClick={() => onDismiss(toast.id)}
-        className="ml-1 flex-shrink-0 text-white/40 transition-colors hover:text-white/80"
+        className="ml-1 flex-shrink-0 text-tentacle-text-tertiary transition-colors hover:text-tentacle-text-secondary"
       >
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />

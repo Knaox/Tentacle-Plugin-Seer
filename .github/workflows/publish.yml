@@ -1,0 +1,125 @@
+# Plugin Seer — publication automatique.
+#
+# Un `git push origin main` suffit à : auto-bumper la version (selon le message
+# du commit), builder, packager, créer la Release GitHub `vX.Y.Z` prête à
+# l'emploi, puis publier sur le MARKETPLACE officiel (repo tiers
+# Knaox/tentacle-plugins-registry, lu par le backend via raw.githubusercontent).
+#
+# Bump (message du commit HEAD) : feat→mineure, fix/chore/perf/…→patch,
+# « ! »/BREAKING→majeure. Mettre « [skip release] » dans le message = ne rien
+# publier (utilisé aussi par le commit de bump reporté → pas de boucle CI).
+#
+# PRÉREQUIS (secret repo) : REGISTRY_PUSH_TOKEN = PAT fine-grained avec
+# Contents:write sur Knaox/tentacle-plugins-registry (le GITHUB_TOKEN par défaut
+# n'a pas accès au repo tiers). Voir aussi plugin.json → minTentacleVersion.
+
+name: Publish plugin
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+# Un seul run à la fois (évite les collisions de tag/registry).
+concurrency:
+  group: publish-seer
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    # Skip explicite + garde-fou anti-boucle (le commit de bump porte [skip release]).
+    if: ${{ !contains(github.event.head_commit.message, '[skip release]') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout (historique complet pour le bump/commit)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Auto-bump version (3 fichiers)
+        id: bump
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: node scripts/bump-version.mjs
+
+      - name: Install dependencies
+        if: steps.bump.outputs.skip != 'true'
+        run: npm ci || npm install
+
+      - name: Typecheck (gate qualité)
+        if: steps.bump.outputs.skip != 'true'
+        run: npm run typecheck
+
+      - name: Build + package
+        if: steps.bump.outputs.skip != 'true'
+        run: npm run package
+
+      - name: Compute checksum + release notes
+        id: meta
+        if: steps.bump.outputs.skip != 'true'
+        run: |
+          V="${{ steps.bump.outputs.version }}"
+          TARBALL="plugin-seer-v${V}.tar.gz"
+          echo "tarball=${TARBALL}" >> "$GITHUB_OUTPUT"
+          echo "checksum=sha256:$(sha256sum "$TARBALL" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "min=$(node -p "require('./plugin.json').minTentacleVersion || '1.1.0'")" >> "$GITHUB_OUTPUT"
+          echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+          node scripts/release-notes.mjs --version "$V" > notes.md || true
+          if [ ! -s notes.md ]; then git log -1 --pretty=%s > notes.md; fi
+          echo "Notes :"; cat notes.md
+
+      - name: Commit bump + tag + push
+        if: steps.bump.outputs.skip != 'true'
+        run: |
+          V="${{ steps.bump.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json plugin.json src/plugin.tsx
+          git commit -m "chore(release): seer v${V} [skip release]"
+          git tag "v${V}"
+          git push origin HEAD:main
+          git push origin "v${V}"
+
+      - name: Create GitHub Release
+        if: steps.bump.outputs.skip != 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          V="${{ steps.bump.outputs.version }}"
+          gh release create "v${V}" \
+            --title "Seer v${V}" \
+            --notes-file notes.md \
+            "${{ steps.meta.outputs.tarball }}"
+
+      - name: Checkout registry (repo tiers)
+        if: steps.bump.outputs.skip != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: Knaox/tentacle-plugins-registry
+          token: ${{ secrets.REGISTRY_PUSH_TOKEN }}
+          path: registry
+
+      - name: Update + push registry (marketplace officiel)
+        if: steps.bump.outputs.skip != 'true'
+        run: |
+          V="${{ steps.bump.outputs.version }}"
+          node scripts/update-registry.mjs \
+            --registry registry/registry.json \
+            --version "$V" \
+            --url "https://github.com/${{ github.repository }}/releases/download/v${V}/${{ steps.meta.outputs.tarball }}" \
+            --checksum "${{ steps.meta.outputs.checksum }}" \
+            --min "${{ steps.meta.outputs.min }}" \
+            --date "${{ steps.meta.outputs.date }}" \
+            --changelog-file notes.md
+          cd registry
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add registry.json
+          git commit -m "seer v${V}"
+          git push

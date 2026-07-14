@@ -12,10 +12,10 @@ export function RatingSlider({ value, onChange }: RatingSliderProps) {
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
-        <h4 className="text-xs font-semibold uppercase tracking-wider text-white/40">
+        <h4 className="text-xs font-semibold uppercase tracking-wider text-tentacle-text-tertiary">
           {t("filterRating")}
         </h4>
-        <span className="text-xs font-medium text-white/60">
+        <span className="text-xs font-medium text-tentacle-text-secondary">
           {current > 0 ? `${current.toFixed(1)}+` : t("filterRatingAny")}
         </span>
       </div>
@@ -31,7 +31,7 @@ export function RatingSlider({ value, onChange }: RatingSliderProps) {
         }}
         className="w-full accent-tentacle-brand"
       />
-      <div className="mt-1 flex justify-between text-[10px] text-white/20">
+      <div className="mt-1 flex justify-between text-[10px] text-tentacle-text-disabled">
         <span>0</span>
         <span>5</span>
         <span>10</span>

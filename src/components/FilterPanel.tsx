@@ -90,22 +90,21 @@ export function FilterPanel({
       {/* Panel */}
       <div
         ref={panelRef}
-        className={`fixed right-0 top-0 flex h-full w-full max-w-sm flex-col transition-transform duration-300 ${
+        className={`fixed right-0 top-0 flex h-full w-full max-w-sm flex-col bg-tentacle-surface-modal transition-transform duration-300 ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
         style={{
           zIndex: 101,
-          background: "rgba(18,18,26,0.92)",
           backdropFilter: "blur(24px)",
           WebkitBackdropFilter: "blur(24px)",
           boxShadow: "-8px 0 40px rgba(0,0,0,0.5), -2px 0 8px rgba(0,0,0,0.3)",
-          borderLeft: "1px solid rgba(255,255,255,0.06)",
+          borderLeft: "1px solid var(--border-subtle)",
         }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/5 px-5 py-4">
+        <div className="flex items-center justify-between border-b border-tentacle-border-subtle px-5 py-4">
           <div className="flex items-center gap-2">
-            <h3 className="text-base font-semibold text-white">{t("filterTitle")}</h3>
+            <h3 className="text-base font-semibold text-tentacle-text-primary">{t("filterTitle")}</h3>
             {activeFilterCount > 0 && (
               <span className="flex h-5 w-5 items-center justify-center rounded-full bg-tentacle-brand text-[10px] font-bold text-white">
                 {activeFilterCount}
@@ -120,7 +119,7 @@ export function FilterPanel({
             )}
             <button
               onClick={onClose}
-              className="flex h-7 w-7 items-center justify-center rounded-full bg-white/5 text-white/40 hover:text-white"
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-tentacle-fill-subtle text-tentacle-text-tertiary hover:text-tentacle-text-primary"
             >
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
@@ -133,7 +132,7 @@ export function FilterPanel({
         <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5" style={{ scrollbarWidth: "thin", scrollbarColor: "var(--brand) transparent" }}>
           {/* Sort */}
           <div>
-            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-white/40">
+            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-tentacle-text-tertiary">
               {t("filterSort")}
             </h4>
             <div className="flex flex-wrap gap-2">
@@ -143,8 +142,8 @@ export function FilterPanel({
                   onClick={() => onSortByChange(opt.value)}
                   className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
                     filters.sortBy === opt.value
-                      ? "bg-white text-black shadow-sm"
-                      : "bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/70"
+                      ? "bg-tentacle-cta-primary text-tentacle-cta-primary-fg shadow-sm"
+                      : "bg-tentacle-fill-subtle text-tentacle-text-tertiary hover:bg-tentacle-fill-medium hover:text-tentacle-text-secondary"
                   }`}
                 >
                   {t(opt.key)}
@@ -152,7 +151,7 @@ export function FilterPanel({
               ))}
               <button
                 onClick={() => onSortOrderChange(filters.sortOrder === "desc" ? "asc" : "desc")}
-                className="flex items-center gap-1 rounded-lg bg-white/5 px-2.5 py-1.5 text-xs font-medium text-white/50 transition-colors hover:bg-white/10 hover:text-white/70"
+                className="flex items-center gap-1 rounded-lg bg-tentacle-fill-subtle px-2.5 py-1.5 text-xs font-medium text-tentacle-text-tertiary transition-colors hover:bg-tentacle-fill-medium hover:text-tentacle-text-secondary"
                 title={filters.sortOrder === "desc" ? t("sortOrderDesc") : t("sortOrderAsc")}
               >
                 <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -185,13 +184,13 @@ export function FilterPanel({
 
           {/* Language */}
           <div>
-            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-white/40">
+            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-tentacle-text-tertiary">
               {t("filterLanguage")}
             </h4>
             <select
               value={filters.originalLanguage ?? ""}
               onChange={(e) => onLanguageChange(e.target.value || null)}
-              className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white outline-none focus:border-tentacle-brand/40 focus:ring-2 focus:ring-tentacle-brand/50"
+              className="w-full rounded-lg border border-tentacle-border-subtle bg-tentacle-fill-subtle px-3 py-2 text-xs text-tentacle-text-primary outline-none focus:border-tentacle-brand/40 focus:ring-2 focus:ring-tentacle-brand/50"
             >
               <option value="" className="bg-tentacle-surface-1">{t("filterLanguageAll")}</option>
               {LANGUAGES.map((l) => (
@@ -205,7 +204,7 @@ export function FilterPanel({
           {/* TV Status (only for TV) */}
           {mediaType === "tv" && (
             <div>
-              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-white/40">
+              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-tentacle-text-tertiary">
                 {t("filterTvStatus")}
               </h4>
               <div className="flex flex-wrap gap-2">
@@ -218,7 +217,7 @@ export function FilterPanel({
                       className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                         active
                           ? "bg-tentacle-brand/20 text-tentacle-brand ring-1 ring-tentacle-brand/50"
-                          : "bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/70"
+                          : "bg-tentacle-fill-subtle text-tentacle-text-tertiary hover:bg-tentacle-fill-medium hover:text-tentacle-text-secondary"
                       }`}
                     >
                       {t(s.key)}

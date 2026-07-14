@@ -61,7 +61,7 @@ export function SeriesSeasonPicker({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h4 className="text-xs font-semibold uppercase tracking-wider text-white/40">{t("seer:seasonsTitle")}</h4>
+        <h4 className="text-xs font-semibold uppercase tracking-wider text-tentacle-text-tertiary">{t("seer:seasonsTitle")}</h4>
         {selectableSeasons.length > 0 && (
           <div className="flex gap-1">
             <button
@@ -70,13 +70,13 @@ export function SeriesSeasonPicker({
                 selectableSeasons.forEach((s) => all.add(s.seasonNumber));
                 setSelected(all);
               }}
-              className="min-h-[32px] rounded-md px-2 text-[11px] font-medium text-tentacle-brand-light transition-colors hover:bg-white/[0.06]"
+              className="min-h-[32px] rounded-md px-2 text-[11px] font-medium text-tentacle-brand-light transition-colors hover:bg-tentacle-fill-soft"
             >
               {t("seer:selectAll")}
             </button>
             <button
               onClick={() => setSelected(new Set(lockedSeasons ?? []))}
-              className="min-h-[32px] rounded-md px-2 text-[11px] font-medium text-white/40 transition-colors hover:bg-white/[0.06] hover:text-white/60"
+              className="min-h-[32px] rounded-md px-2 text-[11px] font-medium text-tentacle-text-tertiary transition-colors hover:bg-tentacle-fill-soft hover:text-tentacle-text-secondary"
             >
               {t("seer:selectNone")}
             </button>

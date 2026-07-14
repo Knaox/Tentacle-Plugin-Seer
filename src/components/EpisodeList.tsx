@@ -16,7 +16,7 @@ export function EpisodeList({ tvId, seasonNumber }: { tvId: number; seasonNumber
         {[0, 1, 2].map((i) => (
           <div
             key={i}
-            className="h-9 rounded-lg bg-white/[0.04]"
+            className="h-9 rounded-lg bg-tentacle-fill-subtle"
             style={{
               background: "linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%)",
               backgroundSize: "200% 100%",
@@ -29,26 +29,26 @@ export function EpisodeList({ tvId, seasonNumber }: { tvId: number; seasonNumber
   }
 
   if (isError || !episodes || episodes.length === 0) {
-    return <p className="py-3 text-center text-xs text-white/35">{t("seer:noEpisodeDates")}</p>;
+    return <p className="py-3 text-center text-xs text-tentacle-text-quaternary">{t("seer:noEpisodeDates")}</p>;
   }
 
   return (
-    <ul className="divide-y divide-white/[0.05]">
+    <ul className="divide-y divide-tentacle-border-subtle">
       {episodes.map((ep) => {
         const days = daysUntil(ep.airDate);
         const upcoming = days != null && days >= 0;
         const relative = upcoming ? relativeAirLabel(ep.airDate, t) : "";
         return (
           <li key={ep.id} className="flex min-h-[44px] items-center gap-3 py-2">
-            <span className={`w-7 flex-shrink-0 text-right text-xs font-semibold tabular-nums ${upcoming ? "text-tentacle-brand-light" : "text-white/35"}`}>
+            <span className={`w-7 flex-shrink-0 text-right text-xs font-semibold tabular-nums ${upcoming ? "text-tentacle-brand-light" : "text-tentacle-text-quaternary"}`}>
               {ep.episodeNumber}
             </span>
             <div className="min-w-0 flex-1">
-              <p className={`truncate text-xs font-medium ${upcoming ? "text-white" : "text-white/65"}`}>
+              <p className={`truncate text-xs font-medium ${upcoming ? "text-tentacle-text-primary" : "text-tentacle-text-secondary"}`}>
                 {ep.name || t("seer:episodeFallback", { number: ep.episodeNumber })}
               </p>
               {ep.airDate && (
-                <p className="text-[11px] text-white/35">{formatAirDateShort(ep.airDate)}</p>
+                <p className="text-[11px] text-tentacle-text-quaternary">{formatAirDateShort(ep.airDate)}</p>
               )}
             </div>
             {upcoming ? (
@@ -60,7 +60,7 @@ export function EpisodeList({ tvId, seasonNumber }: { tvId: number; seasonNumber
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
               </svg>
             ) : (
-              <span className="flex-shrink-0 text-[10px] text-white/25">{t("seer:dateTba")}</span>
+              <span className="flex-shrink-0 text-[10px] text-tentacle-text-disabled">{t("seer:dateTba")}</span>
             )}
           </li>
         );

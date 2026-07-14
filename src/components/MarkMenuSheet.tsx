@@ -70,15 +70,15 @@ export function MarkMenuSheet({ request, onSelect, onClose }: MarkMenuSheetProps
       aria-label={t("seer:markAs")}
     >
       <div
-        className="w-full max-w-sm rounded-t-2xl border border-white/10 bg-[var(--surface-dropdown,#14141a)] pb-[max(env(safe-area-inset-bottom),8px)] shadow-2xl sm:mx-4 sm:rounded-2xl sm:pb-2"
+        className="w-full max-w-sm rounded-t-2xl border border-tentacle-border-subtle bg-tentacle-surface-dropdown pb-[max(env(safe-area-inset-bottom),8px)] shadow-2xl sm:mx-4 sm:rounded-2xl sm:pb-2"
         style={{ animation: "fadeSlideUp 250ms cubic-bezier(0.22,1,0.36,1) forwards" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="border-b border-white/[0.06] px-5 pb-3 pt-4">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-white/40">
+        <div className="border-b border-tentacle-border-subtle px-5 pb-3 pt-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-tentacle-text-tertiary">
             {t("seer:markAs")}
           </p>
-          <p className="mt-0.5 truncate text-sm font-semibold text-white">{request.title}</p>
+          <p className="mt-0.5 truncate text-sm font-semibold text-tentacle-text-primary">{request.title}</p>
         </div>
 
         <div className="flex flex-col py-1">
@@ -86,7 +86,7 @@ export function MarkMenuSheet({ request, onSelect, onClose }: MarkMenuSheetProps
             <button
               key={o.target}
               onClick={() => onSelect(o.target)}
-              className={`flex min-h-[48px] items-center gap-3 px-5 text-left text-sm font-medium transition-colors hover:bg-white/[0.06] active:bg-white/[0.10] focus:outline-none focus-visible:bg-white/[0.06] ${o.color}`}
+              className={`flex min-h-[48px] items-center gap-3 px-5 text-left text-sm font-medium transition-colors hover:bg-tentacle-fill-soft active:bg-tentacle-fill-medium focus:outline-none focus-visible:bg-tentacle-fill-soft ${o.color}`}
             >
               <svg className="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                 {o.iconPaths.map((d) => (
@@ -98,10 +98,10 @@ export function MarkMenuSheet({ request, onSelect, onClose }: MarkMenuSheetProps
           ))}
         </div>
 
-        <div className="border-t border-white/[0.06] p-2">
+        <div className="border-t border-tentacle-border-subtle p-2">
           <button
             onClick={onClose}
-            className="min-h-[48px] w-full rounded-xl text-sm font-medium text-white/50 transition-colors hover:bg-white/[0.06] hover:text-white/80 active:bg-white/[0.10]"
+            className="min-h-[48px] w-full rounded-xl text-sm font-medium text-tentacle-text-tertiary transition-colors hover:bg-tentacle-fill-soft hover:text-tentacle-text-secondary active:bg-tentacle-fill-medium"
           >
             {t("seer:cancel")}
           </button>

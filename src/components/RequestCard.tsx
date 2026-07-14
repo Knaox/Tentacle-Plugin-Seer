@@ -40,7 +40,7 @@ const STATUS_COLOR: Record<RequestStatus, string> = {
   unavailable: "bg-tentacle-brand/20 text-tentacle-brand-light",
   retry_pending: "bg-orange-500/20 text-orange-300", failed: "bg-red-500/20 text-red-400",
   deleting: "bg-orange-500/20 text-orange-400", delete_failed: "bg-red-500/20 text-red-400",
-  deleted: "bg-white/10 text-white/50",
+  deleted: "bg-tentacle-fill-soft text-tentacle-text-tertiary",
 };
 
 /* Boutons d'action : hauteur tactile (36px) + retour à la ligne sans débordement. */
@@ -93,18 +93,18 @@ export function RequestCard({
   });
 
   return (
-    <div className={`flex gap-3 rounded-xl bg-white/5 p-3 transition-colors hover:bg-white/8 ${
+    <div className={`flex gap-3 rounded-xl bg-tentacle-fill-subtle p-3 transition-colors hover:bg-tentacle-fill-soft ${
       selected ? "ring-2 ring-tentacle-brand/50" : ""
     }`}>
       {selectable && (
         <button onClick={() => isSelectable && onSelect?.(request.id)} disabled={!isSelectable}
           className="flex flex-shrink-0 items-center">
           <div className={`flex h-5 w-5 items-center justify-center rounded border transition-colors ${
-            !isSelectable ? "border-white/10 bg-white/5 cursor-not-allowed" :
-            selected ? "border-tentacle-brand bg-tentacle-brand" : "border-white/20 hover:border-white/40"
+            !isSelectable ? "border-tentacle-border-subtle bg-tentacle-fill-subtle cursor-not-allowed" :
+            selected ? "border-tentacle-brand bg-tentacle-brand" : "border-tentacle-border-strong hover:border-tentacle-border-strong"
           }`}>
             {selected && (
-              <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+              <svg className={`h-3 w-3 ${isSelectable ? "text-white" : "text-tentacle-text-primary"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             )}
@@ -116,7 +116,7 @@ export function RequestCard({
         {poster ? (
           <img src={poster} alt={request.title} className="h-[120px] w-[80px] rounded-lg object-cover" loading="lazy" />
         ) : (
-          <div className="flex h-[120px] w-[80px] items-center justify-center rounded-lg bg-white/5 text-white/20 text-[10px]">
+          <div className="flex h-[120px] w-[80px] items-center justify-center rounded-lg bg-tentacle-fill-subtle text-tentacle-text-disabled text-[10px]">
             {typeLabel}
           </div>
         )}
@@ -125,12 +125,12 @@ export function RequestCard({
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <h4 className="truncate text-sm font-semibold text-white">{request.title}</h4>
+            <h4 className="truncate text-sm font-semibold text-tentacle-text-primary">{request.title}</h4>
             <div className="mt-0.5 flex items-center gap-2">
-              <span className="text-[10px] text-white/40">{typeLabel}</span>
-              {request.year && <span className="text-[10px] text-white/30">{request.year}</span>}
+              <span className="text-[10px] text-tentacle-text-tertiary">{typeLabel}</span>
+              {request.year && <span className="text-[10px] text-tentacle-text-quaternary">{request.year}</span>}
               {request.seasons && (
-                <span className="text-[10px] text-white/30">
+                <span className="text-[10px] text-tentacle-text-quaternary">
                   {t("seer:seasonsLabel", { seasons: request.seasons.join(", ") })}
                 </span>
               )}
@@ -151,7 +151,7 @@ export function RequestCard({
             {PROGRESS_STEPS.map((step, i) => (
               <div key={step} className="flex flex-1 items-center">
                 <div className={`h-1 w-full rounded-full transition-colors ${
-                  i <= progressIdx && progressIdx === 4 ? "bg-emerald-500" : i <= progressIdx ? "bg-tentacle-brand" : "bg-white/10"
+                  i <= progressIdx && progressIdx === 4 ? "bg-emerald-500" : i <= progressIdx ? "bg-tentacle-brand" : "bg-tentacle-fill-soft"
                 } ${i === progressIdx && progressIdx < 4 ? "animate-pulse" : ""}`} />
               </div>
             ))}
@@ -166,14 +166,14 @@ export function RequestCard({
           <p className="mt-1 truncate text-[10px] text-red-400/70">{request.lastError}</p>
         )}
         {(request.status === "failed" || request.status === "retry_pending") && (
-          <p className="text-[10px] text-white/30">
+          <p className="text-[10px] text-tentacle-text-quaternary">
             {t("seer:retryCountLabel", { count: request.retryCount, max: request.maxRetries })}
           </p>
         )}
 
         {/* Footer : wrap sur mobile — les boutons ne débordent plus de la carte. */}
         <div className="mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 pt-2">
-          <span className="text-[10px] text-white/30" title={date}>{relativeTime}</span>
+          <span className="text-[10px] text-tentacle-text-quaternary" title={date}>{relativeTime}</span>
 
           {selectable ? null : (
             <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
@@ -193,7 +193,7 @@ export function RequestCard({
                 <button
                   onClick={() => onOpenMarkMenu(request)}
                   disabled={marking}
-                  className={`${ACTION_BTN} bg-white/[0.06] text-white/70 hover:bg-white/[0.10] hover:text-white`}
+                  className={`${ACTION_BTN} bg-tentacle-fill-soft text-tentacle-text-secondary hover:bg-tentacle-fill-medium hover:text-tentacle-text-primary`}
                 >
                   {marking ? "…" : t("seer:markAs")}
                 </button>

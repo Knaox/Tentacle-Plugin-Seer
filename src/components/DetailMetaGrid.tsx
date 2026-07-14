@@ -42,21 +42,21 @@ export function DetailMetaGrid({ detail, mediaType }: DetailMetaGridProps) {
   if (rows.length === 0 && !companies?.length) return null;
 
   return (
-    <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4">
+    <div className="rounded-xl border border-tentacle-border-subtle bg-tentacle-fill-subtle p-4">
       <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
         {rows.map((r) => (
           <div key={r.label} className="flex items-baseline gap-2">
-            <dt className="flex-shrink-0 text-white/35">{r.label}</dt>
-            <dd className="min-w-0 truncate text-white/70">{r.value}</dd>
+            <dt className="flex-shrink-0 text-tentacle-text-quaternary">{r.label}</dt>
+            <dd className="min-w-0 truncate text-tentacle-text-secondary">{r.value}</dd>
           </div>
         ))}
       </dl>
       {companies && companies.length > 0 && (
-        <div className={rows.length > 0 ? "mt-3 border-t border-white/[0.06] pt-3" : ""}>
-          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-white/30">{t("seer:detailStudios")}</p>
+        <div className={rows.length > 0 ? "mt-3 border-t border-tentacle-border-subtle pt-3" : ""}>
+          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-tentacle-text-quaternary">{t("seer:detailStudios")}</p>
           <div className="flex flex-wrap gap-1.5">
             {companies.map((co) => (
-              <span key={co.id} className="rounded-md bg-white/[0.06] px-2 py-1 text-[11px] text-white/55">{co.name}</span>
+              <span key={co.id} className="rounded-md bg-tentacle-fill-soft px-2 py-1 text-[11px] text-tentacle-text-tertiary">{co.name}</span>
             ))}
           </div>
         </div>

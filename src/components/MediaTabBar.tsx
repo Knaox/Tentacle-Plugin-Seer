@@ -23,8 +23,8 @@ export function MediaTabBar({ value, onChange }: MediaTabBarProps) {
           onClick={() => onChange(tab.value)}
           className={`rounded-md px-4 py-1.5 text-sm font-medium transition-all ${
             value === tab.value
-              ? "bg-white text-black shadow-sm"
-              : "text-white/50 hover:text-white/80"
+              ? "bg-tentacle-cta-primary text-tentacle-cta-primary-fg shadow-sm"
+              : "text-tentacle-text-tertiary hover:text-tentacle-text-secondary"
           }`}
         >
           {t(tab.key)}
