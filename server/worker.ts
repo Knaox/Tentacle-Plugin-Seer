@@ -3,8 +3,9 @@
 /* ------------------------------------------------------------------ */
 
 import type { PrismaClient } from "@prisma/client";
-import { getNextQueued, updateRequestStatus, getRequestById } from "./db";
+import { getNextQueued, updateRequestStatus, getRequestById, upsertContentClaim } from "./db";
 import { fetchMediaDetail, isAnimeFromKeywords, fetchAnimeOverrides } from "./anime";
+import { notifyAvailableSeasons, notifyMovieAvailable } from "./seer-availability-notify";
 import { syncStatuses, retryFailedRequests, type WorkerConfig } from "./worker-sync";
 import { processCleanupQueue } from "./worker-cleanup";
 import { resolveJellyseerrUserId } from "./jellyseerr-user";
@@ -227,6 +228,13 @@ async function processNextRequest(
           sentAt: new Date(),
         });
         invalidate(`seer-cache:${request.jellyfinUserId}`);
+        // Notifier la dispo MÊME si déjà présent (rien à télécharger) — sinon
+        // une demande de contenu déjà en bibliothèque ne notifie jamais.
+        if (request.mediaType === "tv") {
+          await notifyAvailableSeasons(prisma, request, detail?.mediaInfo?.seasons);
+        } else if (mediaStatus === 5) {
+          await notifyMovieAvailable(prisma, request);
+        }
         console.log(`[SeerWorker] "${request.title}" : saisons déjà présentes côté Jellyseerr — marqué ${localStatus}`);
         return request.id;
       }
@@ -242,6 +250,13 @@ async function processNextRequest(
       sentAt: new Date(),
     });
     invalidate(`seer-cache:${request.jellyfinUserId}`);
+
+    // Anti-doublon : revendiquer ce contenu dès l'envoi (couvre un téléchargement
+    // très rapide avant la 1re passe de sync). Rafraîchi ensuite par syncStatuses.
+    await upsertContentClaim(
+      prisma, request.tmdbId, request.jellyfinUserId,
+      request.mediaType, request.title, 1800,
+    ).catch(() => {});
 
     // Pas de notif « demande envoyée » : on ne notifie qu'à partir du
     // téléchargement (voir statusNotification / syncTvSeasons).

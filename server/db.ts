@@ -16,6 +16,7 @@ export {
   clearPendingCleanup, setPendingCleanup,
   type CleanupJob,
 } from "./db-cleanup";
+export { upsertContentClaim, purgeExpiredContentClaims } from "./db-claims";
 
 /* ── Schema initialisation ─────────────────────────────────────────── */
 
@@ -467,6 +468,7 @@ export async function setNotifiedSeasons(
     JSON.stringify(seasons), id,
   );
 }
+
 
 export async function getNextQueued(prisma: Prisma): Promise<SeerRequest | null> {
   const rows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(

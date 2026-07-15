@@ -25,12 +25,16 @@ auto-bumpé par le message du commit (`feat`→mineure, `fix`→patch, `!`→maj
 - Notifications enrichies : « Saison N est sortie sur Tentacle TV » (accord grammatical film/série/saison), avec une notification dès qu'une partie des saisons demandées arrive (ex. 2/3 saisons) puis pour les suivantes.
 - Réconciliation de disponibilité accélérée côté Jellyseerr (rafraîchissement de l'état par saison).
 - Notifications épurées : Seer ne notifie plus qu'aux étapes utiles — en cours de téléchargement, sortie, et échec définitif. Fini les notifications « demande envoyée », « approuvée » et les tentatives automatiques (anti-spam).
+- Anti-doublon : quand une demande devient disponible, une seule notification part (celle de Seer) — plus de doublon avec la notification « ajout bibliothèque » (nécessite le serveur ≥ 1.5.5).
+- Notification même si déjà présent : demander un contenu déjà dans la bibliothèque envoie quand même la notification « disponible » (avant : silence).
 
 ### EN
 - Per-season availability: a season request is now considered available as soon as the REQUESTED seasons are present, even if the rest of the series is missing — no more requests stuck as "partially available" with no notification.
 - Richer notifications: "Season N is now on Tentacle TV", with a notification as soon as some of the requested seasons arrive (e.g. 2 of 3) and again for the following ones.
 - Faster availability reconciliation on the Jellyseerr side (per-season status refresh).
 - Streamlined notifications: Seer now only notifies at useful stages — downloading, released, and permanent failure. No more "request sent", "approved" or auto-retry notifications (anti-spam).
+- Deduplication: when a request becomes available, only one notification is sent (Seer's) — no more duplicate with the "library added" notification (requires server ≥ 1.5.5).
+- Notify even if already present: requesting content already in the library still sends the "available" notification (previously: silent).
 
 ## [1.12.0]
 ### FR

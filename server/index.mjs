@@ -299,6 +299,23 @@ async function clearPendingCleanup(prisma, cleanupId) {
   );
 }
 
+// server/db-claims.ts
+async function upsertContentClaim(prisma, tmdbId, jellyfinUserId, mediaType, title, ttlSeconds) {
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO content_claims (tmdbId, jellyfinUserId, mediaType, title, expiresAt)
+     VALUES (?, ?, ?, ?, DATE_ADD(NOW(3), INTERVAL ? SECOND))
+     ON DUPLICATE KEY UPDATE mediaType = VALUES(mediaType), title = VALUES(title), expiresAt = VALUES(expiresAt)`,
+    tmdbId,
+    jellyfinUserId,
+    mediaType,
+    title,
+    ttlSeconds
+  );
+}
+async function purgeExpiredContentClaims(prisma) {
+  await prisma.$executeRawUnsafe(`DELETE FROM content_claims WHERE expiresAt < NOW(3)`);
+}
+
 // server/db.ts
 async function ensureTables(prisma) {
   let existingCount = 0;
@@ -782,6 +799,73 @@ async function fetchAnimeOverrides(seerrUrl, apiKey) {
   }
 }
 
+// server/season-availability.ts
+var AVAILABLE = 5;
+function releasedSuffix(gender, plural) {
+  const v = plural ? gender === "f" ? "sont sorties" : "sont sortis" : gender === "f" ? "est sortie" : "est sorti";
+  return `${v} sur Tentacle TV`;
+}
+function evaluateSeasons(requested, mediaSeasons) {
+  const req = requested ?? [];
+  const availSet = new Set(
+    (mediaSeasons ?? []).filter((s) => s.status === AVAILABLE).map((s) => s.seasonNumber)
+  );
+  const available = req.filter((s) => availSet.has(s)).sort((a, b) => a - b);
+  return {
+    requested: req,
+    available,
+    allAvailable: req.length > 0 && available.length === req.length
+  };
+}
+function seasonNotification(request, newly, totalAvailable) {
+  const sorted = [...newly].sort((a, b) => a - b);
+  const multi = sorted.length > 1;
+  const label = multi ? `Saisons ${sorted.join(", ")}` : `Saison ${sorted[0]}`;
+  const requestedCount = request.seasons?.length ?? 0;
+  const partial = requestedCount > 1 && totalAvailable < requestedCount ? ` (${totalAvailable}/${requestedCount} saisons)` : "";
+  return {
+    title: request.title,
+    message: `${label} ${releasedSuffix("f", multi)}${partial}`
+  };
+}
+
+// server/seer-availability-notify.ts
+async function notifyAvailableSeasons(prisma, request, mediaSeasons) {
+  const ev = evaluateSeasons(request.seasons, mediaSeasons);
+  if (ev.available.length === 0) return null;
+  const notified = new Set(request.notifiedSeasons ?? []);
+  const newly = ev.available.filter((s) => !notified.has(s));
+  if (newly.length > 0) {
+    const n = seasonNotification(request, newly, ev.available.length);
+    await prisma.notification.create({
+      data: {
+        jellyfinUserId: request.jellyfinUserId,
+        type: "request_status",
+        title: n.title,
+        body: n.message,
+        refId: request.id
+      }
+    });
+    await setNotifiedSeasons(prisma, request.id, ev.available);
+    console.log(`[SeerWorker] "${request.title}" saisons dispo [${newly.join(",")}] \u2192 notif`);
+  }
+  return ev.allAvailable ? "available" : "partially_available";
+}
+async function notifyMovieAvailable(prisma, request) {
+  if ((request.notifiedSeasons ?? []).length > 0) return;
+  await prisma.notification.create({
+    data: {
+      jellyfinUserId: request.jellyfinUserId,
+      type: "request_status",
+      title: request.title,
+      body: `\xAB ${request.title} \xBB ${releasedSuffix("m", false)}`,
+      refId: request.id
+    }
+  });
+  await setNotifiedSeasons(prisma, request.id, [0]);
+  console.log(`[SeerWorker] "${request.title}" (film) dispo \u2192 notif`);
+}
+
 // server/cache.ts
 var store = /* @__PURE__ */ new Map();
 var inflight = /* @__PURE__ */ new Map();
@@ -818,36 +902,6 @@ setInterval(() => {
     if (entry.expires <= now) store.delete(key);
   }
 }, 6e4).unref?.();
-
-// server/season-availability.ts
-var AVAILABLE = 5;
-function releasedSuffix(gender, plural) {
-  const v = plural ? gender === "f" ? "sont sorties" : "sont sortis" : gender === "f" ? "est sortie" : "est sorti";
-  return `${v} sur Tentacle TV`;
-}
-function evaluateSeasons(requested, mediaSeasons) {
-  const req = requested ?? [];
-  const availSet = new Set(
-    (mediaSeasons ?? []).filter((s) => s.status === AVAILABLE).map((s) => s.seasonNumber)
-  );
-  const available = req.filter((s) => availSet.has(s)).sort((a, b) => a - b);
-  return {
-    requested: req,
-    available,
-    allAvailable: req.length > 0 && available.length === req.length
-  };
-}
-function seasonNotification(request, newly, totalAvailable) {
-  const sorted = [...newly].sort((a, b) => a - b);
-  const multi = sorted.length > 1;
-  const label = multi ? `Saisons ${sorted.join(", ")}` : `Saison ${sorted[0]}`;
-  const requestedCount = request.seasons?.length ?? 0;
-  const partial = requestedCount > 1 && totalAvailable < requestedCount ? ` (${totalAvailable}/${requestedCount} saisons)` : "";
-  return {
-    title: request.title,
-    message: `${label} ${releasedSuffix("f", multi)}${partial}`
-  };
-}
 
 // server/arr-service.ts
 var sonarrCache = null;
@@ -1051,12 +1105,24 @@ async function triggerSeerrJob(seerrUrl, apiKey, jobId) {
 }
 
 // server/worker-sync.ts
+var CLAIM_TTL_SECONDS = 1800;
 async function syncStatuses(prisma, config) {
   const requests = await getRequestsToSync(prisma);
+  await purgeExpiredContentClaims(prisma).catch(() => {
+  });
   if (requests.length === 0) return;
   let availabilitySyncDone = false;
   for (const request of requests) {
     if (!request.seerrRequestId) continue;
+    await upsertContentClaim(
+      prisma,
+      request.tmdbId,
+      request.jellyfinUserId,
+      request.mediaType,
+      request.title,
+      CLAIM_TTL_SECONDS
+    ).catch(() => {
+    });
     try {
       const res = await fetch(
         `${config.seerrUrl}/api/v1/request/${request.seerrRequestId}`,
@@ -1113,35 +1179,17 @@ async function syncGlobal(prisma, request, newStatus, mediaStatus) {
 }
 async function syncTvSeasons(prisma, config, request, fallbackStatus, mediaStatus) {
   const detail = await fetchMediaDetail(config.seerrUrl, config.seerrApiKey, "tv", request.tmdbId);
-  const seasons = detail?.mediaInfo?.seasons;
-  const ev = evaluateSeasons(request.seasons, seasons);
-  if (!seasons || seasons.length === 0 || ev.available.length === 0) {
+  const newStatus = await notifyAvailableSeasons(prisma, request, detail?.mediaInfo?.seasons);
+  if (newStatus === null) {
     await syncGlobal(prisma, request, fallbackStatus, mediaStatus);
     return;
   }
-  const notified = new Set(request.notifiedSeasons ?? []);
-  const newly = ev.available.filter((s) => !notified.has(s));
-  if (newly.length > 0) {
-    const n = seasonNotification(request, newly, ev.available.length);
-    await prisma.notification.create({
-      data: {
-        jellyfinUserId: request.jellyfinUserId,
-        type: "request_status",
-        title: n.title,
-        body: n.message,
-        refId: request.id
-      }
-    });
-    await setNotifiedSeasons(prisma, request.id, ev.available);
-    console.log(`[SeerWorker] "${request.title}" saisons dispo [${newly.join(",")}] \u2192 notif`);
-  }
-  const newStatus = ev.allAvailable ? "available" : "partially_available";
   if (newStatus !== request.status) {
     const extra = { seerrMediaStatus: mediaStatus };
     if (newStatus === "available") extra.completedAt = /* @__PURE__ */ new Date();
     await updateRequestStatus(prisma, request.id, newStatus, extra);
     invalidate(`seer-cache:${request.jellyfinUserId}`);
-    console.log(`[SeerWorker] "${request.title}" status: ${request.status} \u2192 ${newStatus} (${ev.available.length}/${ev.requested.length} saisons)`);
+    console.log(`[SeerWorker] "${request.title}" status: ${request.status} \u2192 ${newStatus}`);
   }
 }
 async function handleFailedSync(prisma, config, request, data) {
@@ -1715,6 +1763,11 @@ async function processNextRequest(prisma, config, skipIds) {
           sentAt: /* @__PURE__ */ new Date()
         });
         invalidate(`seer-cache:${request.jellyfinUserId}`);
+        if (request.mediaType === "tv") {
+          await notifyAvailableSeasons(prisma, request, detail?.mediaInfo?.seasons);
+        } else if (mediaStatus === 5) {
+          await notifyMovieAvailable(prisma, request);
+        }
         console.log(`[SeerWorker] "${request.title}" : saisons d\xE9j\xE0 pr\xE9sentes c\xF4t\xE9 Jellyseerr \u2014 marqu\xE9 ${localStatus}`);
         return request.id;
       }
@@ -1728,6 +1781,15 @@ async function processNextRequest(prisma, config, skipIds) {
       sentAt: /* @__PURE__ */ new Date()
     });
     invalidate(`seer-cache:${request.jellyfinUserId}`);
+    await upsertContentClaim(
+      prisma,
+      request.tmdbId,
+      request.jellyfinUserId,
+      request.mediaType,
+      request.title,
+      1800
+    ).catch(() => {
+    });
     console.log(`[SeerWorker] Sent request for "${request.title}" (seerr #${data.id})`);
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : "Unknown error";

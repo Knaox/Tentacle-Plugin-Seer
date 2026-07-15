@@ -3,12 +3,15 @@
 /* ------------------------------------------------------------------ */
 
 import type { PrismaClient } from "@prisma/client";
-import { getRequestsToSync, updateRequestStatus, setNotifiedSeasons } from "./db";
+import { getRequestsToSync, updateRequestStatus, upsertContentClaim, purgeExpiredContentClaims } from "./db";
 import { invalidate } from "./cache";
 import { fetchMediaDetail } from "./anime";
-import { evaluateSeasons, seasonNotification, releasedSuffix } from "./season-availability";
+import { releasedSuffix } from "./season-availability";
+import { notifyAvailableSeasons } from "./seer-availability-notify";
 import { triggerSeerrJob } from "./arr-service";
 import type { SeerRequest, SeerProfile } from "./types";
+
+const CLAIM_TTL_SECONDS = 1800; // 30 min — anti-doublon notif biblio (TTL glissant)
 
 export interface WorkerConfig {
   seerrUrl: string;
@@ -22,12 +25,21 @@ export interface WorkerConfig {
 
 export async function syncStatuses(prisma: PrismaClient, config: WorkerConfig): Promise<void> {
   const requests = await getRequestsToSync(prisma);
+  await purgeExpiredContentClaims(prisma).catch(() => {});
   if (requests.length === 0) return;
 
   let availabilitySyncDone = false; // Part C : 1 availability-sync par passe max.
 
   for (const request of requests) {
     if (!request.seerrRequestId) continue;
+
+    // Anti-doublon : Seer revendique ce contenu tant que la demande est active,
+    // pour que le notifier biblio du core n'envoie pas de push doublon à cet
+    // utilisateur (TTL glissant ; expire seul quand la demande devient dispo).
+    await upsertContentClaim(
+      prisma, request.tmdbId, request.jellyfinUserId,
+      request.mediaType, request.title, CLAIM_TTL_SECONDS,
+    ).catch(() => {});
 
     try {
       const res = await fetch(
@@ -116,38 +128,21 @@ async function syncTvSeasons(
   fallbackStatus: SeerRequest["status"], mediaStatus?: number,
 ): Promise<void> {
   const detail = await fetchMediaDetail(config.seerrUrl, config.seerrApiKey, "tv", request.tmdbId);
-  const seasons = detail?.mediaInfo?.seasons;
-  const ev = evaluateSeasons(request.seasons, seasons);
+  const newStatus = await notifyAvailableSeasons(prisma, request, detail?.mediaInfo?.seasons);
 
-  // Pas de granularité exploitable ou aucune saison demandée dispo → global.
-  if (!seasons || seasons.length === 0 || ev.available.length === 0) {
+  // Aucune saison demandée encore dispo (ou pas de granularité) → repli global.
+  if (newStatus === null) {
     await syncGlobal(prisma, request, fallbackStatus, mediaStatus);
     return;
   }
 
-  // Notif delta : saisons nouvellement disponibles (jamais notifiées).
-  const notified = new Set(request.notifiedSeasons ?? []);
-  const newly = ev.available.filter((s) => !notified.has(s));
-  if (newly.length > 0) {
-    const n = seasonNotification(request, newly, ev.available.length);
-    await prisma.notification.create({
-      data: {
-        jellyfinUserId: request.jellyfinUserId, type: "request_status",
-        title: n.title, body: n.message, refId: request.id,
-      },
-    });
-    await setNotifiedSeasons(prisma, request.id, ev.available);
-    console.log(`[SeerWorker] "${request.title}" saisons dispo [${newly.join(",")}] → notif`);
-  }
-
   // Statut : toutes les saisons demandées dispo → available ; sinon partiel.
-  const newStatus: SeerRequest["status"] = ev.allAvailable ? "available" : "partially_available";
   if (newStatus !== request.status) {
     const extra: Record<string, unknown> = { seerrMediaStatus: mediaStatus };
     if (newStatus === "available") extra.completedAt = new Date();
     await updateRequestStatus(prisma, request.id, newStatus, extra as any);
     invalidate(`seer-cache:${request.jellyfinUserId}`);
-    console.log(`[SeerWorker] "${request.title}" status: ${request.status} → ${newStatus} (${ev.available.length}/${ev.requested.length} saisons)`);
+    console.log(`[SeerWorker] "${request.title}" status: ${request.status} → ${newStatus}`);
   }
 }
 
