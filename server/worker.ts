@@ -243,15 +243,8 @@ async function processNextRequest(
     });
     invalidate(`seer-cache:${request.jellyfinUserId}`);
 
-    await prisma.notification.create({
-      data: {
-        jellyfinUserId: request.jellyfinUserId, type: "request_status",
-        title: request.title,
-        body: `Votre demande pour « ${request.title} » a été envoyée à Seerr`,
-        refId: request.id,
-      },
-    });
-
+    // Pas de notif « demande envoyée » : on ne notifie qu'à partir du
+    // téléchargement (voir statusNotification / syncTvSeasons).
     console.log(`[SeerWorker] Sent request for "${request.title}" (seerr #${data.id})`);
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : "Unknown error";
@@ -274,17 +267,8 @@ async function processNextRequest(
       await updateRequestStatus(prisma, request.id, "retry_pending", {
         lastError: errMsg, retryCount: newRetryCount,
       });
-      // Notification une seule fois, au premier échec, pour ne pas spammer l'utilisateur
-      if (request.retryCount === 0) {
-        await prisma.notification.create({
-          data: {
-            jellyfinUserId: request.jellyfinUserId, type: "request_status",
-            title: request.title,
-            body: `Votre demande pour « ${request.title} » a rencontré une erreur, elle sera réessayée automatiquement`,
-            refId: request.id,
-          },
-        });
-      }
+      // Pas de notif sur les tentatives intermédiaires (anti-spam) — seul
+      // l'échec définitif (ci-dessus, après maxRetries) notifie.
       console.warn(`[SeerWorker] Request for "${request.title}" retry ${newRetryCount}/${request.maxRetries}: ${errMsg}`);
     }
   }

@@ -1166,15 +1166,6 @@ async function handleFailedSync(prisma, config, request, data) {
       retryN,
       request.id
     );
-    await prisma.notification.create({
-      data: {
-        jellyfinUserId: request.jellyfinUserId,
-        type: "request_status",
-        title: request.title,
-        body: `Nouvelle tentative automatique pour \xAB ${request.title} \xBB (${retryN}/${request.maxRetries})`,
-        refId: request.id
-      }
-    });
     console.log(`[SeerWorker] Auto-retry "${request.title}" (attempt ${retryN}/${request.maxRetries})`);
   } else {
     await updateRequestStatus(prisma, request.id, "failed", {
@@ -1224,8 +1215,6 @@ function mapSeerrStatus(requestStatus, mediaStatus, downloadStatus) {
 }
 function statusNotification(request, newStatus) {
   switch (newStatus) {
-    case "approved":
-      return { type: "request_approved", title: request.title, message: `Votre demande pour \xAB ${request.title} \xBB a \xE9t\xE9 approuv\xE9e` };
     case "downloading":
       return { type: "request_downloading", title: request.title, message: `\xAB ${request.title} \xBB est en cours de t\xE9l\xE9chargement` };
     case "available": {
@@ -1739,15 +1728,6 @@ async function processNextRequest(prisma, config, skipIds) {
       sentAt: /* @__PURE__ */ new Date()
     });
     invalidate(`seer-cache:${request.jellyfinUserId}`);
-    await prisma.notification.create({
-      data: {
-        jellyfinUserId: request.jellyfinUserId,
-        type: "request_status",
-        title: request.title,
-        body: `Votre demande pour \xAB ${request.title} \xBB a \xE9t\xE9 envoy\xE9e \xE0 Seerr`,
-        refId: request.id
-      }
-    });
     console.log(`[SeerWorker] Sent request for "${request.title}" (seerr #${data.id})`);
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : "Unknown error";
@@ -1772,17 +1752,6 @@ async function processNextRequest(prisma, config, skipIds) {
         lastError: errMsg,
         retryCount: newRetryCount
       });
-      if (request.retryCount === 0) {
-        await prisma.notification.create({
-          data: {
-            jellyfinUserId: request.jellyfinUserId,
-            type: "request_status",
-            title: request.title,
-            body: `Votre demande pour \xAB ${request.title} \xBB a rencontr\xE9 une erreur, elle sera r\xE9essay\xE9e automatiquement`,
-            refId: request.id
-          }
-        });
-      }
       console.warn(`[SeerWorker] Request for "${request.title}" retry ${newRetryCount}/${request.maxRetries}: ${errMsg}`);
     }
   }

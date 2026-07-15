@@ -175,14 +175,7 @@ async function handleFailedSync(
       retryN, request.id,
     );
 
-    await prisma.notification.create({
-      data: {
-        jellyfinUserId: request.jellyfinUserId, type: "request_status",
-        title: request.title,
-        body: `Nouvelle tentative automatique pour « ${request.title} » (${retryN}/${request.maxRetries})`,
-        refId: request.id,
-      },
-    });
+    // Pas de notif sur les tentatives auto (anti-spam) — seul l'échec définitif notifie.
     console.log(`[SeerWorker] Auto-retry "${request.title}" (attempt ${retryN}/${request.maxRetries})`);
   } else {
     await updateRequestStatus(prisma, request.id, "failed", {
@@ -272,8 +265,6 @@ function statusNotification(
   request: SeerRequest, newStatus: string,
 ): { type: string; title: string; message: string } | null {
   switch (newStatus) {
-    case "approved":
-      return { type: "request_approved", title: request.title, message: `Votre demande pour « ${request.title} » a été approuvée` };
     case "downloading":
       return { type: "request_downloading", title: request.title, message: `« ${request.title} » est en cours de téléchargement` };
     case "available": {
