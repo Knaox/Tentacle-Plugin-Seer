@@ -33,6 +33,7 @@ function rowToRequest(r) {
     overview: r.overview || null,
     year: r.year || null,
     seasons: r.seasons ? typeof r.seasons === "string" ? JSON.parse(r.seasons) : r.seasons : null,
+    notifiedSeasons: r.notified_seasons ? typeof r.notified_seasons === "string" ? JSON.parse(r.notified_seasons) : r.notified_seasons : null,
     status: r.status,
     seerrRequestId: r.seerr_request_id || null,
     seerrMediaId: r.seerr_media_id || null,
@@ -381,6 +382,7 @@ async function ensureTables(prisma) {
   await addColumn("seer_requests", "pending_cleanup_id", "VARCHAR(36) DEFAULT NULL");
   await addColumn("seer_requests", "profile_id", "VARCHAR(36) DEFAULT NULL");
   await addColumn("seer_requests", "is_anime", "TINYINT(1) NOT NULL DEFAULT 0");
+  await addColumn("seer_requests", "notified_seasons", "JSON DEFAULT NULL");
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS seer_user_settings (
       jellyfin_user_id     VARCHAR(255) NOT NULL PRIMARY KEY,
@@ -703,6 +705,13 @@ async function addSeasonsToRequest(prisma, id, seasons) {
     id
   );
 }
+async function setNotifiedSeasons(prisma, id, seasons) {
+  await prisma.$executeRawUnsafe(
+    `UPDATE seer_requests SET notified_seasons = ? WHERE id = ?`,
+    JSON.stringify(seasons),
+    id
+  );
+}
 async function getNextQueued(prisma) {
   const rows = await prisma.$queryRawUnsafe(
     `SELECT * FROM seer_requests
@@ -810,148 +819,34 @@ setInterval(() => {
   }
 }, 6e4).unref?.();
 
-// server/worker-sync.ts
-async function syncStatuses(prisma, config) {
-  const requests = await getRequestsToSync(prisma);
-  if (requests.length === 0) return;
-  for (const request of requests) {
-    if (!request.seerrRequestId) continue;
-    try {
-      const res = await fetch(
-        `${config.seerrUrl}/api/v1/request/${request.seerrRequestId}`,
-        { headers: { "X-Api-Key": config.seerrApiKey }, signal: AbortSignal.timeout(1e4) }
-      );
-      if (!res.ok) {
-        if (res.status === 404) {
-          await updateRequestStatus(prisma, request.id, "failed", {
-            lastError: "Request no longer exists on Seerr"
-          });
-        }
-        continue;
-      }
-      const data = await res.json();
-      const newStatus = mapSeerrStatus(data.status, data.media?.status, data.media?.downloadStatus);
-      const oldStatus = request.status;
-      if (newStatus !== oldStatus) {
-        if (newStatus === "failed" && request.seerrRequestId) {
-          await handleFailedSync(prisma, config, request, data);
-          invalidate(`seer-cache:${request.jellyfinUserId}`);
-          continue;
-        }
-        const extra = { seerrMediaStatus: data.media?.status };
-        if (newStatus === "available") extra.completedAt = /* @__PURE__ */ new Date();
-        await updateRequestStatus(prisma, request.id, newStatus, extra);
-        invalidate(`seer-cache:${request.jellyfinUserId}`);
-        const notif = statusNotification(request, newStatus);
-        if (notif) {
-          await prisma.notification.create({
-            data: {
-              jellyfinUserId: request.jellyfinUserId,
-              type: "request_status",
-              title: notif.title,
-              body: notif.message,
-              refId: request.id
-            }
-          });
-        }
-        console.log(`[SeerWorker] "${request.title}" status: ${oldStatus} \u2192 ${newStatus}`);
-      }
-    } catch (err) {
-      console.warn(`[SeerWorker] Failed to sync request #${request.seerrRequestId}:`, err);
-    }
-  }
+// server/season-availability.ts
+var AVAILABLE = 5;
+function releasedSuffix(gender, plural) {
+  const v = plural ? gender === "f" ? "sont sorties" : "sont sortis" : gender === "f" ? "est sortie" : "est sorti";
+  return `${v} sur Tentacle TV`;
 }
-async function handleFailedSync(prisma, config, request, data) {
-  const retryN = request.retryCount + 1;
-  if (retryN < request.maxRetries) {
-    await fetch(`${config.seerrUrl}/api/v1/request/${request.seerrRequestId}`, {
-      method: "DELETE",
-      headers: { "X-Api-Key": config.seerrApiKey },
-      signal: AbortSignal.timeout(1e4)
-    }).catch(() => {
-    });
-    if (request.seerrMediaId) {
-      await fetch(`${config.seerrUrl}/api/v1/media/${request.seerrMediaId}`, {
-        method: "DELETE",
-        headers: { "X-Api-Key": config.seerrApiKey },
-        signal: AbortSignal.timeout(1e4)
-      }).catch(() => {
-      });
-    }
-    await prisma.$executeRawUnsafe(
-      `UPDATE seer_requests SET status = 'retry_pending', seerr_request_id = NULL, seerr_media_id = NULL, seerr_media_status = NULL, retry_count = ? WHERE id = ?`,
-      retryN,
-      request.id
-    );
-    await prisma.notification.create({
-      data: {
-        jellyfinUserId: request.jellyfinUserId,
-        type: "request_status",
-        title: request.title,
-        body: `Nouvelle tentative automatique pour \xAB ${request.title} \xBB (${retryN}/${request.maxRetries})`,
-        refId: request.id
-      }
-    });
-    console.log(`[SeerWorker] Auto-retry "${request.title}" (attempt ${retryN}/${request.maxRetries})`);
-  } else {
-    await updateRequestStatus(prisma, request.id, "failed", {
-      seerrMediaStatus: data.media?.status,
-      retryCount: retryN
-    });
-    await prisma.notification.create({
-      data: {
-        jellyfinUserId: request.jellyfinUserId,
-        type: "request_status",
-        title: request.title,
-        body: `\xC9chec d\xE9finitif pour \xAB ${request.title} \xBB apr\xE8s ${request.maxRetries} tentatives`,
-        refId: request.id
-      }
-    });
-    console.log(`[SeerWorker] "${request.title}" PERMANENTLY FAILED after ${request.maxRetries} retries`);
-  }
-}
-async function retryFailedRequests(prisma) {
-  const failed = await prisma.$queryRawUnsafe(
-    `SELECT id, title, retry_count, max_retries FROM seer_requests
-     WHERE status = 'failed' AND retry_count < max_retries LIMIT 3`
+function evaluateSeasons(requested, mediaSeasons) {
+  const req = requested ?? [];
+  const availSet = new Set(
+    (mediaSeasons ?? []).filter((s) => s.status === AVAILABLE).map((s) => s.seasonNumber)
   );
-  for (const req of failed) {
-    const newRetry = req.retry_count + 1;
-    await prisma.$executeRawUnsafe(
-      `UPDATE seer_requests SET status = 'retry_pending', seerr_request_id = NULL, seerr_media_id = NULL, seerr_media_status = NULL, retry_count = ? WHERE id = ?`,
-      newRetry,
-      req.id
-    );
-    console.log(`[SeerWorker] Auto-retry "${req.title}" (attempt ${newRetry}/${req.max_retries})`);
-  }
+  const available = req.filter((s) => availSet.has(s)).sort((a, b) => a - b);
+  return {
+    requested: req,
+    available,
+    allAvailable: req.length > 0 && available.length === req.length
+  };
 }
-function mapSeerrStatus(requestStatus, mediaStatus, downloadStatus) {
-  if (requestStatus === 3) return "failed";
-  if (requestStatus === 4) return "failed";
-  if (mediaStatus === 5) return "available";
-  if (mediaStatus === 4) return "partially_available";
-  if (mediaStatus === 7) return "deleted";
-  if (mediaStatus === 1) return "unavailable";
-  if (mediaStatus === 3) {
-    if (downloadStatus?.some((d) => d.status === "failed" || d.status === "warning")) return "failed";
-    return downloadStatus && downloadStatus.length > 0 ? "downloading" : "unavailable";
-  }
-  if (requestStatus === 1) return "sent_to_seer";
-  return "approved";
-}
-function statusNotification(request, newStatus) {
-  switch (newStatus) {
-    case "approved":
-      return { type: "request_approved", title: request.title, message: `Votre demande pour \xAB ${request.title} \xBB a \xE9t\xE9 approuv\xE9e` };
-    case "downloading":
-      return { type: "request_downloading", title: request.title, message: `\xAB ${request.title} \xBB est en cours de t\xE9l\xE9chargement` };
-    case "available":
-      return { type: "request_available", title: request.title, message: `\xAB ${request.title} \xBB est maintenant disponible !` };
-    case "failed":
-      return { type: "request_declined", title: request.title, message: `Votre demande pour \xAB ${request.title} \xBB a \xE9t\xE9 refus\xE9e` };
-    default:
-      return null;
-  }
+function seasonNotification(request, newly, totalAvailable) {
+  const sorted = [...newly].sort((a, b) => a - b);
+  const multi = sorted.length > 1;
+  const label = multi ? `Saisons ${sorted.join(", ")}` : `Saison ${sorted[0]}`;
+  const requestedCount = request.seasons?.length ?? 0;
+  const partial = requestedCount > 1 && totalAvailable < requestedCount ? ` (${totalAvailable}/${requestedCount} saisons)` : "";
+  return {
+    title: request.title,
+    message: `${label} ${releasedSuffix("f", multi)}${partial}`
+  };
 }
 
 // server/arr-service.ts
@@ -1152,6 +1047,195 @@ async function triggerSeerrJob(seerrUrl, apiKey, jobId) {
     });
   } catch (err) {
     console.warn(`[ArrService] triggerSeerrJob ${jobId} failed:`, err);
+  }
+}
+
+// server/worker-sync.ts
+async function syncStatuses(prisma, config) {
+  const requests = await getRequestsToSync(prisma);
+  if (requests.length === 0) return;
+  let availabilitySyncDone = false;
+  for (const request of requests) {
+    if (!request.seerrRequestId) continue;
+    try {
+      const res = await fetch(
+        `${config.seerrUrl}/api/v1/request/${request.seerrRequestId}`,
+        { headers: { "X-Api-Key": config.seerrApiKey }, signal: AbortSignal.timeout(1e4) }
+      );
+      if (!res.ok) {
+        if (res.status === 404) {
+          await updateRequestStatus(prisma, request.id, "failed", {
+            lastError: "Request no longer exists on Seerr"
+          });
+        }
+        continue;
+      }
+      const data = await res.json();
+      const globalStatus = mapSeerrStatus(data.status, data.media?.status, data.media?.downloadStatus);
+      if (globalStatus === "failed" && request.status !== "failed") {
+        await handleFailedSync(prisma, config, request, data);
+        invalidate(`seer-cache:${request.jellyfinUserId}`);
+        continue;
+      }
+      if (request.mediaType === "tv" && (request.seasons?.length ?? 0) > 0) {
+        await syncTvSeasons(prisma, config, request, globalStatus, data.media?.status);
+      } else {
+        await syncGlobal(prisma, request, globalStatus, data.media?.status);
+      }
+      if (!availabilitySyncDone && request.mediaType === "tv" && (globalStatus === "partially_available" || globalStatus === "downloading")) {
+        availabilitySyncDone = true;
+        await triggerSeerrJob(config.seerrUrl, config.seerrApiKey, "availability-sync");
+      }
+    } catch (err) {
+      console.warn(`[SeerWorker] Failed to sync request #${request.seerrRequestId}:`, err);
+    }
+  }
+}
+async function syncGlobal(prisma, request, newStatus, mediaStatus) {
+  if (newStatus === request.status) return;
+  const extra = { seerrMediaStatus: mediaStatus };
+  if (newStatus === "available") extra.completedAt = /* @__PURE__ */ new Date();
+  await updateRequestStatus(prisma, request.id, newStatus, extra);
+  invalidate(`seer-cache:${request.jellyfinUserId}`);
+  const notif = statusNotification(request, newStatus);
+  if (notif) {
+    await prisma.notification.create({
+      data: {
+        jellyfinUserId: request.jellyfinUserId,
+        type: "request_status",
+        title: notif.title,
+        body: notif.message,
+        refId: request.id
+      }
+    });
+  }
+  console.log(`[SeerWorker] "${request.title}" status: ${request.status} \u2192 ${newStatus}`);
+}
+async function syncTvSeasons(prisma, config, request, fallbackStatus, mediaStatus) {
+  const detail = await fetchMediaDetail(config.seerrUrl, config.seerrApiKey, "tv", request.tmdbId);
+  const seasons = detail?.mediaInfo?.seasons;
+  const ev = evaluateSeasons(request.seasons, seasons);
+  if (!seasons || seasons.length === 0 || ev.available.length === 0) {
+    await syncGlobal(prisma, request, fallbackStatus, mediaStatus);
+    return;
+  }
+  const notified = new Set(request.notifiedSeasons ?? []);
+  const newly = ev.available.filter((s) => !notified.has(s));
+  if (newly.length > 0) {
+    const n = seasonNotification(request, newly, ev.available.length);
+    await prisma.notification.create({
+      data: {
+        jellyfinUserId: request.jellyfinUserId,
+        type: "request_status",
+        title: n.title,
+        body: n.message,
+        refId: request.id
+      }
+    });
+    await setNotifiedSeasons(prisma, request.id, ev.available);
+    console.log(`[SeerWorker] "${request.title}" saisons dispo [${newly.join(",")}] \u2192 notif`);
+  }
+  const newStatus = ev.allAvailable ? "available" : "partially_available";
+  if (newStatus !== request.status) {
+    const extra = { seerrMediaStatus: mediaStatus };
+    if (newStatus === "available") extra.completedAt = /* @__PURE__ */ new Date();
+    await updateRequestStatus(prisma, request.id, newStatus, extra);
+    invalidate(`seer-cache:${request.jellyfinUserId}`);
+    console.log(`[SeerWorker] "${request.title}" status: ${request.status} \u2192 ${newStatus} (${ev.available.length}/${ev.requested.length} saisons)`);
+  }
+}
+async function handleFailedSync(prisma, config, request, data) {
+  const retryN = request.retryCount + 1;
+  if (retryN < request.maxRetries) {
+    await fetch(`${config.seerrUrl}/api/v1/request/${request.seerrRequestId}`, {
+      method: "DELETE",
+      headers: { "X-Api-Key": config.seerrApiKey },
+      signal: AbortSignal.timeout(1e4)
+    }).catch(() => {
+    });
+    if (request.seerrMediaId) {
+      await fetch(`${config.seerrUrl}/api/v1/media/${request.seerrMediaId}`, {
+        method: "DELETE",
+        headers: { "X-Api-Key": config.seerrApiKey },
+        signal: AbortSignal.timeout(1e4)
+      }).catch(() => {
+      });
+    }
+    await prisma.$executeRawUnsafe(
+      `UPDATE seer_requests SET status = 'retry_pending', seerr_request_id = NULL, seerr_media_id = NULL, seerr_media_status = NULL, retry_count = ? WHERE id = ?`,
+      retryN,
+      request.id
+    );
+    await prisma.notification.create({
+      data: {
+        jellyfinUserId: request.jellyfinUserId,
+        type: "request_status",
+        title: request.title,
+        body: `Nouvelle tentative automatique pour \xAB ${request.title} \xBB (${retryN}/${request.maxRetries})`,
+        refId: request.id
+      }
+    });
+    console.log(`[SeerWorker] Auto-retry "${request.title}" (attempt ${retryN}/${request.maxRetries})`);
+  } else {
+    await updateRequestStatus(prisma, request.id, "failed", {
+      seerrMediaStatus: data.media?.status,
+      retryCount: retryN
+    });
+    await prisma.notification.create({
+      data: {
+        jellyfinUserId: request.jellyfinUserId,
+        type: "request_status",
+        title: request.title,
+        body: `\xC9chec d\xE9finitif pour \xAB ${request.title} \xBB apr\xE8s ${request.maxRetries} tentatives`,
+        refId: request.id
+      }
+    });
+    console.log(`[SeerWorker] "${request.title}" PERMANENTLY FAILED after ${request.maxRetries} retries`);
+  }
+}
+async function retryFailedRequests(prisma) {
+  const failed = await prisma.$queryRawUnsafe(
+    `SELECT id, title, retry_count, max_retries FROM seer_requests
+     WHERE status = 'failed' AND retry_count < max_retries LIMIT 3`
+  );
+  for (const req of failed) {
+    const newRetry = req.retry_count + 1;
+    await prisma.$executeRawUnsafe(
+      `UPDATE seer_requests SET status = 'retry_pending', seerr_request_id = NULL, seerr_media_id = NULL, seerr_media_status = NULL, retry_count = ? WHERE id = ?`,
+      newRetry,
+      req.id
+    );
+    console.log(`[SeerWorker] Auto-retry "${req.title}" (attempt ${newRetry}/${req.max_retries})`);
+  }
+}
+function mapSeerrStatus(requestStatus, mediaStatus, downloadStatus) {
+  if (requestStatus === 3) return "failed";
+  if (requestStatus === 4) return "failed";
+  if (mediaStatus === 5) return "available";
+  if (mediaStatus === 4) return "partially_available";
+  if (mediaStatus === 7) return "deleted";
+  if (mediaStatus === 1) return "unavailable";
+  if (mediaStatus === 3) {
+    if (downloadStatus?.some((d) => d.status === "failed" || d.status === "warning")) return "failed";
+    return downloadStatus && downloadStatus.length > 0 ? "downloading" : "unavailable";
+  }
+  if (requestStatus === 1) return "sent_to_seer";
+  return "approved";
+}
+function statusNotification(request, newStatus) {
+  switch (newStatus) {
+    case "approved":
+      return { type: "request_approved", title: request.title, message: `Votre demande pour \xAB ${request.title} \xBB a \xE9t\xE9 approuv\xE9e` };
+    case "downloading":
+      return { type: "request_downloading", title: request.title, message: `\xAB ${request.title} \xBB est en cours de t\xE9l\xE9chargement` };
+    case "available": {
+      const suffix = releasedSuffix(request.mediaType === "movie" ? "m" : "f", false);
+      return { type: "request_available", title: request.title, message: `\xAB ${request.title} \xBB ${suffix}` };
+    }
+    case "failed":
+      return { type: "request_declined", title: request.title, message: `Votre demande pour \xAB ${request.title} \xBB a \xE9t\xE9 refus\xE9e` };
+    default:
+      return null;
   }
 }
 

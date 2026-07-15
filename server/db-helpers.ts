@@ -21,6 +21,7 @@ export function rowToRequest(r: Record<string, unknown>): SeerRequest {
     overview: (r.overview as string) || null,
     year: (r.year as string) || null,
     seasons: r.seasons ? (typeof r.seasons === "string" ? JSON.parse(r.seasons) : r.seasons) as number[] : null,
+    notifiedSeasons: r.notified_seasons ? (typeof r.notified_seasons === "string" ? JSON.parse(r.notified_seasons) : r.notified_seasons) as number[] : null,
     status: r.status as RequestStatus,
     seerrRequestId: (r.seerr_request_id as number) || null,
     seerrMediaId: (r.seerr_media_id as number) || null,

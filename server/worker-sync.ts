@@ -3,8 +3,11 @@
 /* ------------------------------------------------------------------ */
 
 import type { PrismaClient } from "@prisma/client";
-import { getRequestsToSync, updateRequestStatus } from "./db";
+import { getRequestsToSync, updateRequestStatus, setNotifiedSeasons } from "./db";
 import { invalidate } from "./cache";
+import { fetchMediaDetail } from "./anime";
+import { evaluateSeasons, seasonNotification, releasedSuffix } from "./season-availability";
+import { triggerSeerrJob } from "./arr-service";
 import type { SeerRequest, SeerProfile } from "./types";
 
 export interface WorkerConfig {
@@ -20,6 +23,8 @@ export interface WorkerConfig {
 export async function syncStatuses(prisma: PrismaClient, config: WorkerConfig): Promise<void> {
   const requests = await getRequestsToSync(prisma);
   if (requests.length === 0) return;
+
+  let availabilitySyncDone = false; // Part C : 1 availability-sync par passe max.
 
   for (const request of requests) {
     if (!request.seerrRequestId) continue;
@@ -47,40 +52,102 @@ export async function syncStatuses(prisma: PrismaClient, config: WorkerConfig): 
         };
       };
 
-      const newStatus = mapSeerrStatus(data.status, data.media?.status, data.media?.downloadStatus);
-      const oldStatus = request.status;
+      const globalStatus = mapSeerrStatus(data.status, data.media?.status, data.media?.downloadStatus);
 
-      if (newStatus !== oldStatus) {
-        if (newStatus === "failed" && request.seerrRequestId) {
-          await handleFailedSync(prisma, config, request, data);
-          invalidate(`seer-cache:${request.jellyfinUserId}`);
-          continue;
-        }
-
-        const extra: Record<string, unknown> = { seerrMediaStatus: data.media?.status };
-        if (newStatus === "available") extra.completedAt = new Date();
-
-        await updateRequestStatus(prisma, request.id, newStatus, extra as any);
+      // Échec → retry/suppression (commun film/série).
+      if (globalStatus === "failed" && request.status !== "failed") {
+        await handleFailedSync(prisma, config, request, data);
         invalidate(`seer-cache:${request.jellyfinUserId}`);
+        continue;
+      }
 
-        const notif = statusNotification(request, newStatus);
-        if (notif) {
-          await prisma.notification.create({
-            data: {
-              jellyfinUserId: request.jellyfinUserId,
-              type: "request_status",
-              title: notif.title,
-              body: notif.message,
-              refId: request.id,
-            },
-          });
-        }
+      // Séries : disponibilité PAR-SAISON (le statut global reste « partiel »
+      // tant que des saisons NON demandées manquent). Films : statut global.
+      if (request.mediaType === "tv" && (request.seasons?.length ?? 0) > 0) {
+        await syncTvSeasons(prisma, config, request, globalStatus, data.media?.status);
+      } else {
+        await syncGlobal(prisma, request, globalStatus, data.media?.status);
+      }
 
-        console.log(`[SeerWorker] "${request.title}" status: ${oldStatus} → ${newStatus}`);
+      // Part C : accélérer la réconciliation par-saison côté Jellyseerr
+      // (Sonarr → mediaInfo.seasons), SANS écrire dans Sonarr. 1×/passe.
+      if (!availabilitySyncDone && request.mediaType === "tv" &&
+          (globalStatus === "partially_available" || globalStatus === "downloading")) {
+        availabilitySyncDone = true;
+        await triggerSeerrJob(config.seerrUrl, config.seerrApiKey, "availability-sync");
       }
     } catch (err) {
       console.warn(`[SeerWorker] Failed to sync request #${request.seerrRequestId}:`, err);
     }
+  }
+}
+
+/** Applique un changement de statut global + notif (film, ou série sans dispo par-saison). */
+async function syncGlobal(
+  prisma: PrismaClient, request: SeerRequest,
+  newStatus: SeerRequest["status"], mediaStatus?: number,
+): Promise<void> {
+  if (newStatus === request.status) return;
+  const extra: Record<string, unknown> = { seerrMediaStatus: mediaStatus };
+  if (newStatus === "available") extra.completedAt = new Date();
+  await updateRequestStatus(prisma, request.id, newStatus, extra as any);
+  invalidate(`seer-cache:${request.jellyfinUserId}`);
+
+  const notif = statusNotification(request, newStatus);
+  if (notif) {
+    await prisma.notification.create({
+      data: {
+        jellyfinUserId: request.jellyfinUserId, type: "request_status",
+        title: notif.title, body: notif.message, refId: request.id,
+      },
+    });
+  }
+  console.log(`[SeerWorker] "${request.title}" status: ${request.status} → ${newStatus}`);
+}
+
+/**
+ * Séries : croise les saisons DEMANDÉES avec la disponibilité par-saison de
+ * Jellyseerr, notifie le delta des saisons devenues dispo (même si le média
+ * global reste « partiel »), et passe la demande à « available » quand TOUTES
+ * les saisons demandées sont là.
+ */
+async function syncTvSeasons(
+  prisma: PrismaClient, config: WorkerConfig, request: SeerRequest,
+  fallbackStatus: SeerRequest["status"], mediaStatus?: number,
+): Promise<void> {
+  const detail = await fetchMediaDetail(config.seerrUrl, config.seerrApiKey, "tv", request.tmdbId);
+  const seasons = detail?.mediaInfo?.seasons;
+  const ev = evaluateSeasons(request.seasons, seasons);
+
+  // Pas de granularité exploitable ou aucune saison demandée dispo → global.
+  if (!seasons || seasons.length === 0 || ev.available.length === 0) {
+    await syncGlobal(prisma, request, fallbackStatus, mediaStatus);
+    return;
+  }
+
+  // Notif delta : saisons nouvellement disponibles (jamais notifiées).
+  const notified = new Set(request.notifiedSeasons ?? []);
+  const newly = ev.available.filter((s) => !notified.has(s));
+  if (newly.length > 0) {
+    const n = seasonNotification(request, newly, ev.available.length);
+    await prisma.notification.create({
+      data: {
+        jellyfinUserId: request.jellyfinUserId, type: "request_status",
+        title: n.title, body: n.message, refId: request.id,
+      },
+    });
+    await setNotifiedSeasons(prisma, request.id, ev.available);
+    console.log(`[SeerWorker] "${request.title}" saisons dispo [${newly.join(",")}] → notif`);
+  }
+
+  // Statut : toutes les saisons demandées dispo → available ; sinon partiel.
+  const newStatus: SeerRequest["status"] = ev.allAvailable ? "available" : "partially_available";
+  if (newStatus !== request.status) {
+    const extra: Record<string, unknown> = { seerrMediaStatus: mediaStatus };
+    if (newStatus === "available") extra.completedAt = new Date();
+    await updateRequestStatus(prisma, request.id, newStatus, extra as any);
+    invalidate(`seer-cache:${request.jellyfinUserId}`);
+    console.log(`[SeerWorker] "${request.title}" status: ${request.status} → ${newStatus} (${ev.available.length}/${ev.requested.length} saisons)`);
   }
 }
 
@@ -209,8 +276,10 @@ function statusNotification(
       return { type: "request_approved", title: request.title, message: `Votre demande pour « ${request.title} » a été approuvée` };
     case "downloading":
       return { type: "request_downloading", title: request.title, message: `« ${request.title} » est en cours de téléchargement` };
-    case "available":
-      return { type: "request_available", title: request.title, message: `« ${request.title} » est maintenant disponible !` };
+    case "available": {
+      const suffix = releasedSuffix(request.mediaType === "movie" ? "m" : "f", false);
+      return { type: "request_available", title: request.title, message: `« ${request.title} » ${suffix}` };
+    }
     case "failed":
       return { type: "request_declined", title: request.title, message: `Votre demande pour « ${request.title} » a été refusée` };
     default:

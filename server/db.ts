@@ -107,6 +107,7 @@ export async function ensureTables(prisma: Prisma): Promise<void> {
   await addColumn("seer_requests", "pending_cleanup_id", "VARCHAR(36) DEFAULT NULL");
   await addColumn("seer_requests", "profile_id", "VARCHAR(36) DEFAULT NULL");
   await addColumn("seer_requests", "is_anime", "TINYINT(1) NOT NULL DEFAULT 0");
+  await addColumn("seer_requests", "notified_seasons", "JSON DEFAULT NULL");
 
   // Table seer_user_settings : permissions et quotas par utilisateur Jellyfin
   await prisma.$executeRawUnsafe(`
@@ -453,6 +454,16 @@ export async function addSeasonsToRequest(
 ): Promise<void> {
   await prisma.$executeRawUnsafe(
     `UPDATE seer_requests SET seasons = ? WHERE id = ?`,
+    JSON.stringify(seasons), id,
+  );
+}
+
+/** Mémorise les saisons déjà notifiées comme disponibles (delta anti-doublon). */
+export async function setNotifiedSeasons(
+  prisma: Prisma, id: string, seasons: number[],
+): Promise<void> {
+  await prisma.$executeRawUnsafe(
+    `UPDATE seer_requests SET notified_seasons = ? WHERE id = ?`,
     JSON.stringify(seasons), id,
   );
 }

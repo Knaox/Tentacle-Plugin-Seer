@@ -6,7 +6,10 @@ export interface MediaDetail {
   keywords: { id: number; name: string }[];
   mediaInfo?: {
     id?: number;
+    status?: number;
     requests?: { id: number; status: number }[];
+    /** Disponibilité par saison (status: 5 = disponible). Renvoyé par /api/v1/tv/{id}. */
+    seasons?: { seasonNumber: number; status: number }[];
   };
 }
 

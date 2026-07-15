@@ -30,6 +30,8 @@ export interface SeerRequest {
   overview: string | null;
   year: string | null;
   seasons: number[] | null;
+  /** Saisons déjà notifiées comme disponibles (delta anti-doublon) */
+  notifiedSeasons: number[] | null;
   status: RequestStatus;
   seerrRequestId: number | null;
   seerrMediaId: number | null;

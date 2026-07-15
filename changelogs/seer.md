@@ -19,6 +19,17 @@ auto-bumpé par le message du commit (`feat`→mineure, `fix`→patch, `!`→maj
 
 ---
 
+## [1.13.0]
+### FR
+- Disponibilité par-saison : une demande de saison(s) est désormais considérée disponible dès que les saisons DEMANDÉES sont présentes, même si le reste de la série manque — fini les demandes bloquées en « partiellement disponible » sans notification.
+- Notifications enrichies : « Saison N est sortie sur Tentacle TV » (accord grammatical film/série/saison), avec une notification dès qu'une partie des saisons demandées arrive (ex. 2/3 saisons) puis pour les suivantes.
+- Réconciliation de disponibilité accélérée côté Jellyseerr (rafraîchissement de l'état par saison).
+
+### EN
+- Per-season availability: a season request is now considered available as soon as the REQUESTED seasons are present, even if the rest of the series is missing — no more requests stuck as "partially available" with no notification.
+- Richer notifications: "Season N is now on Tentacle TV", with a notification as soon as some of the requested seasons arrive (e.g. 2 of 3) and again for the following ones.
+- Faster availability reconciliation on the Jellyseerr side (per-season status refresh).
+
 ## [1.12.0]
 ### FR
 - Support complet du thème CLAIR : surfaces, textes, boutons et modales suivent désormais le thème de l'application (fini le texte blanc sur fond blanc).
