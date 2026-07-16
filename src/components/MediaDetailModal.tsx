@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useMediaDetail } from "../hooks/useMediaDetail";
+import { useLocalRequestedSeasons } from "../hooks/useLocalRequestedSeasons";
 import { useMediaSimilar } from "../hooks/useMediaSimilar";
 import { useWatchProviders } from "../hooks/useWatchProviders";
 import { useRichTrailers } from "../hooks/useRichTrailers";
@@ -42,6 +43,7 @@ export function MediaDetailModal({ item, onClose, lockedSeasons, defaultProfileI
 
   const mediaType = currentItem.mediaType === "movie" ? "movie" as const : "tv" as const;
   const { data: detail, isLoading } = useMediaDetail(mediaType, currentItem.id);
+  const { data: localSeasons } = useLocalRequestedSeasons(mediaType, currentItem.id);
   const { data: similar } = useMediaSimilar(mediaType, currentItem.id);
   const { data: providers } = useWatchProviders(mediaType, currentItem.id);
   const mediaStatus = detail?.mediaInfo?.status ?? currentItem.mediaInfo?.status ?? 0;
@@ -112,8 +114,15 @@ export function MediaDetailModal({ item, onClose, lockedSeasons, defaultProfileI
         if (existing === undefined || existing < 3) map.set(se.seasonNumber, 3);
       }
     }
+    // 3) Saisons demandées LOCALEMENT (file du plugin) : verrou immédiat et
+    //    durable, même si Jellyseerr ne connaît pas encore la demande (worker
+    //    async). Ne rétrograde pas une saison déjà disponible (garde existing<3).
+    for (const sn of localSeasons ?? []) {
+      const existing = map.get(sn);
+      if (existing === undefined || existing < 3) map.set(sn, 3);
+    }
     return map;
-  }, [tvDetail?.mediaInfo?.seasons, tvDetail?.mediaInfo?.requests]);
+  }, [tvDetail?.mediaInfo?.seasons, tvDetail?.mediaInfo?.requests, localSeasons]);
 
   const handleSeasonRequest = (seasons: number[], profileId?: string | null) => {
     requestMedia.mutate({

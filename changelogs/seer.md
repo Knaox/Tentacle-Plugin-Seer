@@ -19,6 +19,12 @@ auto-bumpé par le message du commit (`feat`→mineure, `fix`→patch, `!`→maj
 
 ---
 
+## [1.13.1]
+### FR
+- Demande de saison : une saison demandée apparaît **immédiatement** comme « Demandé » et ne peut plus être redemandée par erreur. Le verrou s'appuie désormais sur la file locale du plugin (et non sur Jellyseerr, qui accusait un décalage) : il tient dès le clic et survit au rafraîchissement de la page.
+### EN
+- Season request: a requested season now shows as “Requested” **immediately** and can no longer be re-requested by mistake. The lock now relies on the plugin's local queue (instead of Jellyseerr, which lagged behind): it holds from the moment you click and survives a page refresh.
+
 ## [1.13.0]
 ### FR
 - Disponibilité par-saison : une demande de saison(s) est désormais considérée disponible dès que les saisons DEMANDÉES sont présentes, même si le reste de la série manque — fini les demandes bloquées en « partiellement disponible » sans notification.

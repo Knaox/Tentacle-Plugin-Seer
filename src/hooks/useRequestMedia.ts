@@ -52,7 +52,21 @@ export function useRequestMedia() {
       qc.setQueriesData({ queryKey: ["seer-trending"] }, updateSimple);
       qc.setQueriesData({ queryKey: ["seer-search"] }, updateSimple);
       qc.setQueriesData({ queryKey: ["seer-discover"] }, updateInfinite);
-      qc.invalidateQueries({ queryKey: ["seer-media-detail", payload.mediaType, payload.tmdbId] });
+
+      // Verrou des saisons demandées : MàJ optimiste immédiate de la source
+      // locale (le picker les verrouille aussitôt), puis invalidation pour
+      // réconcilier avec la DB locale (qui, elle, connaît déjà la demande).
+      // On NE réinvalide PAS ["seer-media-detail"] : il est lu depuis Jellyseerr,
+      // qui ignore encore la demande (worker async) — un refetch immédiat
+      // re-cacherait l'état PRÉ-demande et « déverrouillerait » la saison.
+      if (payload.mediaType === "tv" && payload.seasons?.length) {
+        const key = ["seer-local-seasons", "tv", payload.tmdbId];
+        qc.setQueryData<number[]>(key, (old) => {
+          const merged = new Set<number>([...(old ?? []), ...payload.seasons!]);
+          return [...merged].sort((a, b) => a - b);
+        });
+        qc.invalidateQueries({ queryKey: key });
+      }
     },
   });
 }

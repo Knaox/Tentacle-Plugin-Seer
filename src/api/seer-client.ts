@@ -57,7 +57,7 @@ function authHeaders(): Record<string, string> {
 }
 
 /** Fetch from the Seer plugin backend (not Seerr proxy) */
-async function backendFetch<T>(path: string, opts?: RequestInit): Promise<T> {
+export async function backendFetch<T>(path: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(`${getSeerBackendUrl()}/api/plugins/seer${path}`, {
     ...opts,
     headers: { ...authHeaders(), ...opts?.headers },
