@@ -93,7 +93,7 @@ export function DiscoverSearchHeader({
             </svg>
             {t("filterTitle")}
             {activeFilterCount > 0 && (
-              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-tentacle-brand text-[9px] font-bold text-white">
+              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-tentacle-brand text-[9px] font-bold text-tentacle-cta-brand-fg">
                 {activeFilterCount}
               </span>
             )}

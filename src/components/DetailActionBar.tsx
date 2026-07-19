@@ -55,7 +55,7 @@ export function DetailActionBar({ mediaType, tmdbId, mediaStatus, trailers, onOp
         <button
           onClick={handleWatch}
           disabled={navigating}
-          className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-500/90 px-5 text-sm font-bold text-white shadow-lg shadow-emerald-500/20 transition-all hover:bg-emerald-500 disabled:opacity-60 sm:flex-initial"
+          className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-lg bg-tentacle-status-success px-5 text-sm font-bold text-tentacle-cta-brand-fg shadow-tentacle-elev-1 transition-all hover:opacity-90 disabled:opacity-60 sm:flex-initial"
         >
           {navigating ? (
             <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">

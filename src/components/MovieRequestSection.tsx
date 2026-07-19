@@ -26,7 +26,7 @@ export function MovieRequestSection({
 
   if (mediaStatus >= 2) {
     return (
-      <div className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-lg bg-amber-500/15 text-sm font-semibold text-amber-400">
+      <div className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-lg bg-tentacle-status-warning-bg text-sm font-semibold text-tentacle-status-warning-fg">
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
         </svg>

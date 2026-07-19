@@ -106,7 +106,7 @@ export function FilterPanel({
           <div className="flex items-center gap-2">
             <h3 className="text-base font-semibold text-tentacle-text-primary">{t("filterTitle")}</h3>
             {activeFilterCount > 0 && (
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-tentacle-brand text-[10px] font-bold text-white">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-tentacle-brand text-[10px] font-bold text-tentacle-cta-brand-fg">
                 {activeFilterCount}
               </span>
             )}

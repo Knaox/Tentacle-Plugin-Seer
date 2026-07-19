@@ -29,10 +29,10 @@ export function ProgressBar({ status }: ProgressBarProps) {
   if (status === "failed") {
     return (
       <div className="flex items-center gap-2">
-        <div className="h-1.5 flex-1 rounded-full bg-red-500/30">
-          <div className="h-full w-full rounded-full bg-red-500" />
+        <div className="h-1.5 flex-1 rounded-full bg-tentacle-status-error-bg">
+          <div className="h-full w-full rounded-full bg-tentacle-status-error" />
         </div>
-        <span className="text-xs text-red-400">{t("statusFailed")}</span>
+        <span className="text-xs text-tentacle-status-error-fg">{t("statusFailed")}</span>
       </div>
     );
   }

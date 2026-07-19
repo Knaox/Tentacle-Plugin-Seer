@@ -1,51 +1,25 @@
 /* ------------------------------------------------------------------ */
-/*  Host theme fallback — tokens Tentacle garantis sur toutes les      */
-/*  plateformes.                                                       */
+/*  Host theme — tokens Tentacle garantis sur toutes les plateformes.  */
 /*                                                                     */
 /*  Le wrapper iframe du host WEB injecte tokens.css + une config      */
-/*  Tailwind complète (bg-tentacle-surface-1, shadow-tentacle-…).      */
-/*  Le template WebView MOBILE, lui, ne définit que les anciens        */
-/*  alias (tentacle-bg/surface/accent) : toutes les classes            */
-/*  sémantiques y étaient inexistantes → modals, dropdowns et badges   */
-/*  transparents / texte invisible. On répare côté plugin :            */
-/*    1. injection des CSS variables manquantes (valeurs par défaut    */
-/*       du thème host) ;                                              */
-/*    2. fusion de la config Tailwind runtime (Play CDN) pour que      */
-/*       les classes tentacle-* compilent aussi sur mobile.            */
-/*  Sur web, les tokens existent déjà → no-op (le thème host gagne).   */
+/*  Tailwind complète. Le template WebView MOBILE récent injecte le    */
+/*  vocabulaire sémantique dérivé du thème actif ; les anciens         */
+/*  templates ne fournissent que les alias historiques. On répare      */
+/*  côté plugin :                                                      */
+/*    1. détection du schéma host (host-scheme.ts) ;                   */
+/*    2. injection du fallback CLAIR ou SOMBRE si les variables        */
+/*       manquent (host-theme-fallback.ts) ;                           */
+/*    3. injection des tokens « posé sur média » et des statuts Seer   */
+/*       (--seer-st-*) du schéma courant ;                             */
+/*    4. fusion NON destructive de la config Tailwind runtime (une     */
+/*       clé fournie par le host n'est jamais écrasée).                */
 /* ------------------------------------------------------------------ */
 
-/* Copie des valeurs par défaut de apps/web/src/theme/tokens.css. */
-const FALLBACK_TOKENS_CSS = `:root{
---surface-0:#000000;--surface-1:#0a0a0a;--surface-2:#141414;--surface-3:#1f1f1f;
---surface-overlay:rgba(0,0,0,0.7);
---brand:#8B5CF6;--brand-rgb:139,92,246;--brand-light:#A78BFA;--brand-dark:#7C3AED;
---brand-soft:rgba(139,92,246,0.15);--brand-glow:rgba(139,92,246,0.4);
---brand-accent:#EC4899;--brand-accent-rgb:236,72,153;--brand-accent-light:#F472B6;
---text-primary:#FFFFFF;--text-secondary:rgba(255,255,255,0.78);--text-tertiary:rgba(255,255,255,0.55);
---text-quaternary:rgba(255,255,255,0.34);--text-disabled:rgba(255,255,255,0.22);
---cta-primary-bg:#FFFFFF;--cta-primary-bg-hover:rgba(255,255,255,0.85);--cta-primary-fg:#000000;
---cta-secondary-bg:rgba(109,109,110,0.55);--cta-secondary-bg-hover:rgba(109,109,110,0.78);--cta-secondary-fg:#FFFFFF;
---cta-ghost-bg:rgba(255,255,255,0.08);--cta-ghost-bg-hover:rgba(255,255,255,0.14);
---border-subtle:rgba(255,255,255,0.08);--border-strong:rgba(255,255,255,0.16);--border-focus:rgba(139,92,246,0.85);
---status-success:#10b981;--status-warning:#f59e0b;--status-error:#ef4444;--status-info:#3b82f6;
---status-success-bg:rgba(16,185,129,0.15);--status-success-fg:#34D399;
---status-error-bg:rgba(239,68,68,0.15);--status-error-fg:#F87171;
---status-warning-bg:rgba(245,158,11,0.15);--status-warning-fg:#FBBF24;
---status-info-bg:rgba(59,130,246,0.15);--status-info-fg:#60A5FA;
---surface-modal:rgba(15,15,21,0.96);--surface-dropdown:rgba(20,20,26,0.95);
---surface-sheet:rgba(15,15,21,0.96);--surface-toolbar:rgba(20,20,26,0.92);
---blur-overlay:24px;--blur-modal:20px;--blur-dropdown:12px;--blur-sheet:16px;
---shadow-modal:0 25px 70px rgba(0,0,0,0.65),0 0 0 1px rgba(255,255,255,0.06);
---shadow-dropdown:0 12px 36px rgba(0,0,0,0.55),0 0 0 1px rgba(255,255,255,0.06);
---shadow-sheet:0 -8px 32px rgba(0,0,0,0.5);
---elev-1:0 4px 12px rgba(0,0,0,0.4);--elev-2:0 8px 24px rgba(0,0,0,0.55);--elev-3:0 16px 48px rgba(0,0,0,0.7);
---radius-xs:4px;--radius-sm:6px;--radius-md:8px;--radius-lg:12px;--radius-xl:16px;--radius-pill:9999px;
---ease-out:cubic-bezier(0.22,1,0.36,1);--ease-in-out:cubic-bezier(0.65,0,0.35,1);--ease-spring:cubic-bezier(0.34,1.56,0.64,1);
---duration-instant:80ms;--duration-fast:150ms;--duration-base:240ms;--duration-slow:400ms;
-}`;
+import { detectHostScheme, watchHostScheme } from "./host-scheme";
+import type { HostScheme } from "./host-scheme";
+import { buildFallbackTokensCss, buildSeerStatusCss, SEER_CONST_CSS } from "./host-theme-fallback";
 
-/* Même mapping sémantique que buildPluginHtml.ts (host web). */
+/* Même mapping sémantique que buildPluginTheme.ts (host web ≥ 1.7.1). */
 const TENTACLE_COLORS: Record<string, string> = {
   "surface-0": "var(--surface-0)", "surface-1": "var(--surface-1)",
   "surface-2": "var(--surface-2)", "surface-3": "var(--surface-3)",
@@ -53,12 +27,13 @@ const TENTACLE_COLORS: Record<string, string> = {
   "surface-toolbar": "var(--surface-toolbar)",
   brand: "var(--brand)", "brand-light": "var(--brand-light)",
   "brand-dark": "var(--brand-dark)", "brand-accent": "var(--brand-accent)",
+  "brand-soft": "var(--brand-soft)",
   "text-primary": "var(--text-primary)", "text-secondary": "var(--text-secondary)",
   "text-tertiary": "var(--text-tertiary)", "text-quaternary": "var(--text-quaternary)",
   "text-disabled": "var(--text-disabled)",
   "cta-primary": "var(--cta-primary-bg)", "cta-primary-fg": "var(--cta-primary-fg)",
   "cta-secondary": "var(--cta-secondary-bg)", "cta-secondary-fg": "var(--cta-secondary-fg)",
-  "cta-ghost": "var(--cta-ghost-bg)",
+  "cta-ghost": "var(--cta-ghost-bg)", "cta-brand-fg": "var(--cta-brand-fg)",
   "border-subtle": "var(--border-subtle)", "border-strong": "var(--border-strong)",
   "border-focus": "var(--border-focus)",
   "status-success": "var(--status-success)", "status-success-bg": "var(--status-success-bg)",
@@ -69,6 +44,11 @@ const TENTACLE_COLORS: Record<string, string> = {
   "status-error-fg": "var(--status-error-fg)",
   "status-info": "var(--status-info)", "status-info-bg": "var(--status-info-bg)",
   "status-info-fg": "var(--status-info-fg)",
+  "fill-faint": "var(--fill-faint)", "fill-subtle": "var(--fill-subtle)",
+  "fill-soft": "var(--fill-soft)", "fill-medium": "var(--fill-medium)",
+  "fill-strong": "var(--fill-strong)", "fill-shimmer": "var(--fill-shimmer)",
+  "on-media-primary": "var(--on-media-primary)", "on-media-secondary": "var(--on-media-secondary)",
+  "on-media-muted": "var(--on-media-muted)",
 };
 
 function hasCssVar(name: string): boolean {
@@ -79,17 +59,36 @@ function hasCssVar(name: string): boolean {
   }
 }
 
-/** Injecte les CSS variables du thème si le host ne les fournit pas. */
-function ensureCssVariables(): void {
-  if (hasCssVar("--surface-1") || document.getElementById("seer-theme-fallback")) return;
-  const style = document.createElement("style");
-  style.id = "seer-theme-fallback";
-  style.textContent = FALLBACK_TOKENS_CSS;
-  // En tête de <head> : si le host injecte ses tokens plus tard, ils gagnent.
-  document.head.prepend(style);
+/** Crée ou met à jour un bloc <style> identifié. `prepend` : le host gagne s'il injecte après. */
+function upsertStyle(id: string, css: string, position: "prepend" | "append"): void {
+  let style = document.getElementById(id) as HTMLStyleElement | null;
+  if (!style) {
+    style = document.createElement("style");
+    style.id = id;
+    if (position === "prepend") document.head.prepend(style);
+    else document.head.append(style);
+  }
+  style.textContent = css;
 }
 
-/** Complète la config Tailwind runtime (Play CDN) avec les tokens sémantiques. */
+/** Injecte les CSS variables du thème si le host ne les fournit pas. */
+function ensureCssVariables(scheme: HostScheme): void {
+  if (hasCssVar("--surface-1") && !document.getElementById("seer-theme-fallback")) return;
+  upsertStyle("seer-theme-fallback", buildFallbackTokensCss(scheme), "prepend");
+}
+
+/** Tokens « posé sur média » — absents des hosts < 1.7.1 et du mobile. */
+function ensureOnMediaTokens(): void {
+  if (hasCssVar("--on-media-primary") && !document.getElementById("seer-onmedia-fallback")) return;
+  upsertStyle("seer-onmedia-fallback", SEER_CONST_CSS, "prepend");
+}
+
+/** Statuts Seer — toujours injectés (vocabulaire propre au plugin). */
+function ensureStatusTokens(scheme: HostScheme): void {
+  upsertStyle("seer-status-tokens", buildSeerStatusCss(scheme), "append");
+}
+
+/** Complète la config Tailwind runtime (Play CDN) SANS écraser les clés du host. */
 function ensureTailwindConfig(): void {
   const tw = (window as unknown as Record<string, unknown>).tailwind as
     | { config?: Record<string, any> }
@@ -101,35 +100,39 @@ function ensureTailwindConfig(): void {
   const extend = (theme.extend ??= {});
   const colors = (extend.colors ??= {});
   const tentacle = (colors.tentacle ??= {});
-  if (tentacle["surface-1"]) return; // config host complète (web) → no-op
 
-  Object.assign(tentacle, TENTACLE_COLORS);
+  // Fusion non destructive clé par clé : sur un host complet (web ≥ 1.7.1)
+  // tout existe déjà ; sur un host partiel (web 1.7.0, mobile) on ne comble
+  // que les manques (fill-*, brand-soft, on-media-*, cta-brand-fg…).
+  for (const [key, value] of Object.entries(TENTACLE_COLORS)) {
+    if (!(key in tentacle)) tentacle[key] = value;
+  }
   extend.borderRadius = {
-    ...(extend.borderRadius ?? {}),
     "tentacle-xs": "var(--radius-xs)", "tentacle-sm": "var(--radius-sm)",
     "tentacle-md": "var(--radius-md)", "tentacle-lg": "var(--radius-lg)",
     "tentacle-xl": "var(--radius-xl)", "tentacle-pill": "var(--radius-pill)",
+    ...(extend.borderRadius ?? {}),
   };
   extend.boxShadow = {
-    ...(extend.boxShadow ?? {}),
     "tentacle-elev-1": "var(--elev-1)", "tentacle-elev-2": "var(--elev-2)",
     "tentacle-elev-3": "var(--elev-3)", "tentacle-modal": "var(--shadow-modal)",
     "tentacle-dropdown": "var(--shadow-dropdown)", "tentacle-sheet": "var(--shadow-sheet)",
+    ...(extend.boxShadow ?? {}),
   };
   extend.backdropBlur = {
-    ...(extend.backdropBlur ?? {}),
     "tentacle-overlay": "var(--blur-overlay)", "tentacle-modal": "var(--blur-modal)",
     "tentacle-dropdown": "var(--blur-dropdown)", "tentacle-sheet": "var(--blur-sheet)",
+    ...(extend.backdropBlur ?? {}),
   };
   extend.transitionTimingFunction = {
-    ...(extend.transitionTimingFunction ?? {}),
     "tentacle-out": "var(--ease-out)", "tentacle-in-out": "var(--ease-in-out)",
     "tentacle-spring": "var(--ease-spring)",
+    ...(extend.transitionTimingFunction ?? {}),
   };
   extend.transitionDuration = {
-    ...(extend.transitionDuration ?? {}),
     "tentacle-instant": "var(--duration-instant)", "tentacle-fast": "var(--duration-fast)",
     "tentacle-base": "var(--duration-base)", "tentacle-slow": "var(--duration-slow)",
+    ...(extend.transitionDuration ?? {}),
   };
   // Réassignation : le Play CDN relit la config au prochain rebuild
   // (déclenché par la première mutation DOM du render React).
@@ -138,12 +141,26 @@ function ensureTailwindConfig(): void {
 
 /**
  * À appeler avant le premier render du plugin. Idempotent, no-op quand le
- * host fournit déjà le thème complet (iframe web).
+ * host fournit déjà le thème complet (iframe web). Suit une bascule de
+ * schéma à chaud via `data-theme` (les blocs injectés sont mis à jour).
  */
 export function ensureHostTheme(): void {
   try {
-    ensureCssVariables();
+    const scheme = detectHostScheme();
+    ensureCssVariables(scheme);
+    ensureOnMediaTokens();
+    ensureStatusTokens(scheme);
     ensureTailwindConfig();
+    watchHostScheme((next) => {
+      try {
+        if (document.getElementById("seer-theme-fallback")) {
+          upsertStyle("seer-theme-fallback", buildFallbackTokensCss(next), "prepend");
+        }
+        ensureStatusTokens(next);
+      } catch {
+        /* jamais bloquant */
+      }
+    });
   } catch {
     /* jamais bloquant pour le render */
   }

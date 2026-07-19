@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { STATUS_STYLE } from "../styles/status";
 import type { SeerrSeason } from "../api/types";
 import { EpisodeList } from "./EpisodeList";
 
@@ -18,11 +19,11 @@ interface SeasonRowProps {
 }
 
 function statusBadge(status: number | undefined, locked: boolean | undefined, t: (k: string) => string) {
-  if (status === 5) return { label: t("seer:seasonAvailable"), cls: "bg-emerald-500/15 text-emerald-300" };
-  if (status === 4) return { label: t("seer:seasonPartial"), cls: "bg-orange-500/15 text-orange-300" };
+  if (status === 5) return { label: t("seer:seasonAvailable"), cls: STATUS_STYLE.available.chip };
+  if (status === 4) return { label: t("seer:seasonPartial"), cls: STATUS_STYLE.partially_available.chip };
   // 2 (en attente) et 3 (en acquisition) : Jellyseerr affiche « Demandé »
   // dans les deux cas — pas de « Téléchargement » sans download réellement actif.
-  if ((status !== undefined && status >= 2) || locked) return { label: t("seer:seasonRequested"), cls: "bg-amber-500/15 text-amber-300" };
+  if ((status !== undefined && status >= 2) || locked) return { label: t("seer:seasonRequested"), cls: STATUS_STYLE.requested.chip };
   return null;
 }
 
@@ -47,7 +48,7 @@ export function SeasonRow({
         <button
           type="button"
           onClick={canCheck ? onToggle : onExpandToggle}
-          className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 py-2.5 pl-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-tentacle-brand/50"
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 py-2.5 pl-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-tentacle-brand-soft"
           aria-pressed={selectable ? isChecked : undefined}
         >
           {selectable && (
@@ -57,7 +58,7 @@ export function SeasonRow({
                 : "border-tentacle-border-strong bg-transparent"
             }`}>
               {isChecked && (
-                <svg className={`h-3 w-3 ${canCheck ? "text-white" : "text-tentacle-text-primary"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <svg className={`h-3 w-3 ${canCheck ? "text-tentacle-cta-brand-fg" : "text-tentacle-text-primary"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
               )}

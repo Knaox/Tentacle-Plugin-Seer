@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import type { SeerrEpisode } from "../api/types";
 import { formatAirDateLong, relativeAirLabel, daysUntil } from "../utils/episode-dates";
 import { backdropUrl } from "../utils/media-helpers";
+import { STATUS_STYLE } from "../styles/status";
 
 /**
  * Bannière « Prochain épisode » : SxEy + titre + date complète localisée
@@ -54,8 +55,8 @@ export function NextEpisodeBanner({ episode }: { episode: SeerrEpisode }) {
           <span
             className={`flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-bold ${
               days != null && days <= 1
-                ? "bg-emerald-500/20 text-emerald-300"
-                : "bg-tentacle-brand/20 text-tentacle-brand-light"
+                ? STATUS_STYLE.available.chip
+                : STATUS_STYLE.approved.chip
             }`}
           >
             {relative}

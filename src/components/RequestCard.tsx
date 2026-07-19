@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import type { LocalRequest, RequestStatus } from "../api/types";
 import { posterUrl } from "../utils/media-helpers";
+import { STATUS_STYLE } from "../styles/status";
 
 interface RequestCardProps {
   request: LocalRequest;
@@ -31,17 +32,9 @@ const STATUS_I18N: Record<RequestStatus, string> = {
   deleted: "seer:statusDeleted",
 };
 
-const STATUS_COLOR: Record<RequestStatus, string> = {
-  queued: "bg-yellow-500/20 text-yellow-400", processing: "bg-blue-500/20 text-blue-400",
-  sent_to_seer: "bg-blue-500/20 text-blue-400", approved: "bg-tentacle-brand/20 text-tentacle-brand-light",
-  downloading: "bg-orange-500/20 text-orange-400",
-  partially_available: "bg-amber-400/20 text-amber-300",
-  available: "bg-emerald-500/20 text-emerald-400",
-  unavailable: "bg-tentacle-brand/20 text-tentacle-brand-light",
-  retry_pending: "bg-orange-500/20 text-orange-300", failed: "bg-red-500/20 text-red-400",
-  deleting: "bg-orange-500/20 text-orange-400", delete_failed: "bg-red-500/20 text-red-400",
-  deleted: "bg-tentacle-fill-soft text-tentacle-text-tertiary",
-};
+/* Couleurs de statut : dictionnaire unique thémé (styles/status.ts) — les
+ * anciennes classes en dur (amber-300 sur amber-400/20…) étaient illisibles
+ * en thème clair et les `tentacle-brand/20` ne compilaient pas en iframe. */
 
 /* Boutons d'action : hauteur tactile (36px) + retour à la ligne sans débordement. */
 const ACTION_BTN =
@@ -94,7 +87,7 @@ export function RequestCard({
 
   return (
     <div className={`flex gap-3 rounded-xl bg-tentacle-fill-subtle p-3 transition-colors hover:bg-tentacle-fill-soft ${
-      selected ? "ring-2 ring-tentacle-brand/50" : ""
+      selected ? "ring-2 ring-tentacle-brand-soft" : ""
     }`}>
       {selectable && (
         <button onClick={() => isSelectable && onSelect?.(request.id)} disabled={!isSelectable}
@@ -104,7 +97,7 @@ export function RequestCard({
             selected ? "border-tentacle-brand bg-tentacle-brand" : "border-tentacle-border-strong hover:border-tentacle-border-strong"
           }`}>
             {selected && (
-              <svg className={`h-3 w-3 ${isSelectable ? "text-white" : "text-tentacle-text-primary"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+              <svg className={`h-3 w-3 ${isSelectable ? "text-tentacle-cta-brand-fg" : "text-tentacle-text-primary"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             )}
@@ -137,7 +130,7 @@ export function RequestCard({
             </div>
           </div>
           <span
-            className={`flex-shrink-0 rounded-md px-2 py-0.5 text-[10px] font-medium ${STATUS_COLOR[request.status]}`}
+            className={`flex-shrink-0 rounded-md px-2 py-0.5 text-[10px] font-medium ${STATUS_STYLE[request.status].chip}`}
             title={request.status === "retry_pending" && request.lastError ? request.lastError : undefined}
           >
             {request.status === "retry_pending"
@@ -151,7 +144,7 @@ export function RequestCard({
             {PROGRESS_STEPS.map((step, i) => (
               <div key={step} className="flex flex-1 items-center">
                 <div className={`h-1 w-full rounded-full transition-colors ${
-                  i <= progressIdx && progressIdx === 4 ? "bg-emerald-500" : i <= progressIdx ? "bg-tentacle-brand" : "bg-tentacle-fill-soft"
+                  i <= progressIdx && progressIdx === 4 ? STATUS_STYLE.available.solid : i <= progressIdx ? "bg-tentacle-brand" : "bg-tentacle-fill-soft"
                 } ${i === progressIdx && progressIdx < 4 ? "animate-pulse" : ""}`} />
               </div>
             ))}
@@ -159,11 +152,11 @@ export function RequestCard({
         )}
 
         {request.status === "deleting" && (
-          <div className="mt-2 h-1 w-full animate-pulse rounded-full bg-orange-500/40" />
+          <div className={`mt-2 h-1 w-full animate-pulse rounded-full opacity-50 ${STATUS_STYLE.deleting.solid}`} />
         )}
 
         {(request.status === "failed" || request.status === "delete_failed") && request.lastError && (
-          <p className="mt-1 truncate text-[10px] text-red-400/70">{request.lastError}</p>
+          <p className={`mt-1 truncate text-[10px] opacity-70 ${STATUS_STYLE.failed.text}`}>{request.lastError}</p>
         )}
         {(request.status === "failed" || request.status === "retry_pending") && (
           <p className="text-[10px] text-tentacle-text-quaternary">
@@ -179,13 +172,13 @@ export function RequestCard({
             <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
               {(request.status === "delete_failed" || request.status === "deleting") && onRetryDelete && (
                 <button onClick={() => onRetryDelete(request.id)}
-                  className={`${ACTION_BTN} bg-orange-600/20 text-orange-400 hover:bg-orange-600/30`}>
+                  className={`${ACTION_BTN} ${STATUS_STYLE.deleting.chip} hover:opacity-80`}>
                   {request.status === "deleting" ? t("seer:forceDelete") : t("seer:retryDelete")}
                 </button>
               )}
               {canAddSeasons && onAddSeasons && (
                 <button onClick={() => onAddSeasons(request)}
-                  className={`${ACTION_BTN} bg-blue-600/20 text-blue-400 hover:bg-blue-600/30`}>
+                  className={`${ACTION_BTN} bg-tentacle-status-info-bg text-tentacle-status-info-fg hover:opacity-80`}>
                   + {t("seer:addSeasons")}
                 </button>
               )}
@@ -202,7 +195,7 @@ export function RequestCard({
                 <button
                   onClick={() => openModal("retry")}
                   disabled={retrying}
-                  className={`${ACTION_BTN} bg-tentacle-brand/20 text-tentacle-brand-light hover:bg-tentacle-brand/30`}>
+                  className={`${ACTION_BTN} ${STATUS_STYLE.approved.chip} hover:opacity-80`}>
                   {retrying ? "…" : t("seer:retry")}
                 </button>
               )}
@@ -210,7 +203,7 @@ export function RequestCard({
                 <button
                   onClick={() => openModal("delete")}
                   disabled={deleting}
-                  className={`${ACTION_BTN} bg-red-600/20 text-red-400 hover:bg-red-600/30`}>
+                  className={`${ACTION_BTN} bg-tentacle-status-error-bg text-tentacle-status-error-fg hover:opacity-80`}>
                   {deleting ? "…" : t("seer:delete")}
                 </button>
               )}

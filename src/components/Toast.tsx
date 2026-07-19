@@ -14,11 +14,12 @@ interface ToastProps {
   onDismiss: (id: string) => void;
 }
 
+/* Tokens status host — thémés (les *-400 en dur manquaient de contraste en clair). */
 const TYPE_COLORS: Record<ToastType, string> = {
-  success: "border-emerald-500/30 text-emerald-400",
-  error: "border-red-500/30 text-red-400",
-  info: "border-blue-500/30 text-blue-400",
-  warning: "border-amber-500/30 text-amber-400",
+  success: "border-tentacle-status-success text-tentacle-status-success-fg",
+  error: "border-tentacle-status-error text-tentacle-status-error-fg",
+  info: "border-tentacle-status-info text-tentacle-status-info-fg",
+  warning: "border-tentacle-status-warning text-tentacle-status-warning-fg",
 };
 
 const TYPE_ICONS: Record<ToastType, string> = {

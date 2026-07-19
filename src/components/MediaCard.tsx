@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { SeerrSearchResult } from "../api/types";
 import { posterUrl, mediaTitle, mediaYear, mediaTypeKey } from "../utils/media-helpers";
 import { CTA_PRIMARY, CTA_PRIMARY_HALO } from "../styles/cta";
+import { STATUS_STYLE } from "../styles/status";
 
 interface MediaCardProps {
   item: SeerrSearchResult;
@@ -14,20 +15,21 @@ interface MediaCardProps {
 
 function StatusBadge({ status }: { status: number }) {
   const { t } = useTranslation("seer");
+  // Aplats PLEINS du schéma (styles/status.ts) + texte on-media constant :
+  // badge posé sur l'affiche, lisible clair comme sombre (le `text-white`
+  // inversé par le host devenait encre sur aplat coloré).
   const config: Record<number, { cls: string; key: string }> = {
-    2: { cls: "bg-amber-500/80", key: "statusPending" },
+    2: { cls: STATUS_STYLE.pending.solid, key: "statusPending" },
     // PROCESSING = approuvé, en cours d'acquisition — Jellyseerr affiche
     // « Demandé » (pas de notion de téléchargement sans download actif).
-    // violet-500 natif (= brand par défaut #8B5CF6) : les tokens tentacle-*
-    // sont des var(--…) sur lesquelles l'opacité /80 ne compile pas en iframe.
-    3: { cls: "bg-violet-500/80", key: "statusRequested" },
-    4: { cls: "bg-orange-500/80", key: "statusPartiallyAvailable" },
-    5: { cls: "bg-emerald-500/80", key: "statusAvailable" },
+    3: { cls: STATUS_STYLE.approved.solid, key: "statusRequested" },
+    4: { cls: STATUS_STYLE.partially_available.solid, key: "statusPartiallyAvailable" },
+    5: { cls: STATUS_STYLE.available.solid, key: "statusAvailable" },
   };
   const c = config[status];
   if (!c) return null;
   return (
-    <span className={`absolute bottom-2 left-2 rounded-md px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm ${c.cls}`}>
+    <span className={`absolute bottom-2 left-2 rounded-md px-2 py-0.5 text-[10px] font-semibold text-tentacle-on-media-primary backdrop-blur-sm ${c.cls}`}>
       {t(c.key)}
     </span>
   );
@@ -61,7 +63,7 @@ export function MediaCard({ item, onRequest, onClick, requesting, style }: Media
 
   return (
     <div
-      className="group relative cursor-pointer overflow-hidden rounded-xl transition-all duration-300 focus-within:ring-2 focus-within:ring-tentacle-brand/50"
+      className="group relative cursor-pointer overflow-hidden rounded-xl transition-all duration-300 focus-within:ring-2 focus-within:ring-tentacle-brand-soft"
       style={{
         ...style,
         willChange: "transform",
@@ -72,7 +74,7 @@ export function MediaCard({ item, onRequest, onClick, requesting, style }: Media
       onMouseEnter={(e) => {
         const el = e.currentTarget;
         el.style.transform = "scale(1.05) translateY(-6px)";
-        el.style.boxShadow = "0 12px 40px rgba(139, 92, 246, 0.15)";
+        el.style.boxShadow = "0 12px 40px rgba(var(--brand-rgb), 0.15)";
       }}
       onMouseLeave={(e) => {
         const el = e.currentTarget;
@@ -94,14 +96,21 @@ export function MediaCard({ item, onRequest, onClick, requesting, style }: Media
           <PosterFallback label={t("seer:noImage")} mediaType={item.mediaType} />
         )}
 
-        {/* Type badge */}
-        <span className="absolute left-2 top-2 rounded-md bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white/80 backdrop-blur-sm">
+        {/* Type badge — assise noire constante (posé sur affiche), texte
+            on-media : lisible dans les deux thèmes, plus d'inversion host. */}
+        <span
+          className="absolute left-2 top-2 rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-tentacle-on-media-secondary backdrop-blur-sm"
+          style={{ background: "rgba(var(--scrim-media-rgb), 0.7)" }}
+        >
           {type}
         </span>
 
         {/* Rating */}
         {item.voteAverage != null && item.voteAverage > 0 && (
-          <span className="absolute right-2 top-2 flex items-center gap-0.5 rounded-md bg-black/70 px-1.5 py-0.5 text-[10px] font-bold text-amber-400 backdrop-blur-sm">
+          <span
+            className={`absolute right-2 top-2 flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-bold backdrop-blur-sm ${STATUS_STYLE.rating.text}`}
+            style={{ background: "rgba(var(--scrim-media-rgb), 0.7)" }}
+          >
             <svg className="h-2.5 w-2.5" fill="currentColor" viewBox="0 0 20 20">
               <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
             </svg>
@@ -112,10 +121,14 @@ export function MediaCard({ item, onRequest, onClick, requesting, style }: Media
         {/* Status badge */}
         {hasMediaInfo && <StatusBadge status={mediaStatus} />}
 
-        {/* Hover overlay */}
-        <div className="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+        {/* Hover overlay — scrim NOIR constant (posé sur affiche) + synopsis
+            on-media : fini le voile délavé illisible du thème clair. */}
+        <div
+          className="absolute inset-0 flex flex-col justify-end opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+          style={{ background: "linear-gradient(to top, rgba(var(--scrim-media-rgb),0.92), rgba(var(--scrim-media-rgb),0.45) 55%, transparent)" }}
+        >
           {item.overview && (
-            <p className="mx-3 mb-2 line-clamp-3 text-[11px] leading-relaxed text-white/70">
+            <p className="mx-3 mb-2 line-clamp-3 text-[11px] leading-relaxed text-tentacle-on-media-secondary">
               {item.overview}
             </p>
           )}
@@ -130,11 +143,11 @@ export function MediaCard({ item, onRequest, onClick, requesting, style }: Media
                 {requesting ? t("seer:sending") : t("seer:request")}
               </button>
             ) : item.mediaType === "tv" && !hasMediaInfo ? (
-              <div className="w-full rounded-lg bg-tentacle-brand/80 py-2 text-center text-xs font-semibold text-white">
+              <div className="w-full rounded-lg bg-tentacle-brand py-2 text-center text-xs font-semibold text-tentacle-cta-brand-fg">
                 {t("seer:viewSeasons")}
               </div>
             ) : mediaStatus === 5 ? (
-              <div className="w-full rounded-lg bg-emerald-500/25 py-2 text-center text-xs font-semibold text-emerald-300 backdrop-blur-sm">
+              <div className={`w-full rounded-lg py-2 text-center text-xs font-semibold text-tentacle-cta-brand-fg backdrop-blur-sm ${STATUS_STYLE.available.solid}`}>
                 {item.mediaType === "tv" ? t("seer:viewEpisodes") : t("seer:moreInfo")}
               </div>
             ) : null}

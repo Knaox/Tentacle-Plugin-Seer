@@ -211,7 +211,7 @@ export function DiscoverPage() {
           )}
           <button
             onClick={() => { refetch(); }}
-            className="mt-2 rounded-lg bg-tentacle-brand/80 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-tentacle-brand"
+            className="mt-2 rounded-lg bg-tentacle-brand px-4 py-2 text-xs font-semibold text-tentacle-cta-brand-fg transition-opacity hover:opacity-90"
           >
             {t("seer:retry")}
           </button>

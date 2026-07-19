@@ -19,6 +19,14 @@ auto-bumpé par le message du commit (`feat`→mineure, `fix`→patch, `!`→maj
 
 ---
 
+## [1.13.2]
+### FR
+- Thème clair 100 % lisible : le hero « Découvrir » garde une image vive avec texte blanc sur dégradé sombre (fini le titre invisible), les chips de statut, statistiques, boutons d'action et survols de cartes suivent désormais le thème avec un vrai contraste (« Partiellement dispo. » n'est plus jaune sur jaune)
+- Le repli de thème du plugin gère désormais clair ET sombre (détection du schéma de l'hôte — web, desktop et mobile) et complète les tokens manquants sur mobile (surfaces, remplissages, statuts)
+### EN
+- Fully readable light theme: the Discover hero keeps vivid artwork with white text over a dark gradient (no more invisible title); status chips, statistics, action buttons and card hovers now follow the theme with proper contrast ("Partially available" is no longer yellow-on-yellow)
+- The plugin's theme fallback now handles light AND dark (host scheme detection — web, desktop and mobile) and fills in missing tokens on mobile (surfaces, fills, statuses)
+
 ## [1.13.1]
 ### FR
 - Demande de saison : une saison demandée apparaît **immédiatement** comme « Demandé » et ne peut plus être redemandée par erreur. Le verrou s'appuie désormais sur la file locale du plugin (et non sur Jellyseerr, qui accusait un décalage) : il tient dès le clic et survit au rafraîchissement de la page.

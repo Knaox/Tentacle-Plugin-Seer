@@ -1,34 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { getRequestsStats } from "../api/seer-client";
+import { STATUS_STYLE, statAccent } from "../styles/status";
+import type { SeerStatusKey } from "../styles/status";
 
-const STATUS_COLORS: Record<string, string> = {
-  queued: "bg-yellow-500",
-  processing: "bg-blue-500",
-  sent_to_seer: "bg-blue-500",
-  approved: "bg-tentacle-brand",
-  downloading: "bg-orange-500",
-  available: "bg-emerald-500",
-  partially_available: "bg-amber-400",
-  unavailable: "bg-tentacle-brand",
-  retry_pending: "bg-orange-400",
-  failed: "bg-red-500",
-  deleted: "bg-tentacle-fill-strong",
-};
-
-const STATUS_TEXT: Record<string, string> = {
-  queued: "text-yellow-400",
-  processing: "text-blue-400",
-  sent_to_seer: "text-blue-400",
-  approved: "text-tentacle-brand-light",
-  downloading: "text-orange-400",
-  available: "text-emerald-400",
-  partially_available: "text-amber-300",
-  unavailable: "text-tentacle-brand-light",
-  retry_pending: "text-orange-300",
-  failed: "text-red-400",
-  deleted: "text-tentacle-text-tertiary",
-};
+/* Couleurs de statut : dictionnaire unique thémé (styles/status.ts) — les
+ * classes en dur (text-emerald-300…) manquaient de contraste en clair. */
+function statusStyleOf(status: string) {
+  return STATUS_STYLE[status as SeerStatusKey] as (typeof STATUS_STYLE)[SeerStatusKey] | undefined;
+}
 
 export function RequestsStatsBar() {
   const { t } = useTranslation("seer");
@@ -72,26 +52,26 @@ export function RequestsStatsBar() {
         <StatCard
           label={t("seer:statsTotalRequests")}
           value={stats.total}
-          accent="from-tentacle-brand/30 via-tentacle-brand/10 to-transparent"
+          accent={statAccent("total")}
           valueClass="text-tentacle-text-primary"
         />
         <StatCard
           label={t("seer:statsAvailable")}
           value={available}
-          accent="from-emerald-500/30 via-emerald-500/10 to-transparent"
-          valueClass="text-emerald-300"
+          accent={statAccent("available")}
+          valueClass={STATUS_STYLE.available.text}
         />
         <StatCard
           label={t("seer:statsPending")}
           value={pending + downloading}
-          accent="from-orange-500/25 via-orange-500/10 to-transparent"
-          valueClass="text-orange-300"
+          accent={statAccent("downloading")}
+          valueClass={STATUS_STYLE.downloading.text}
         />
         <StatCard
           label={t("seer:statsFailed")}
           value={failed}
-          accent="from-red-500/25 via-red-500/10 to-transparent"
-          valueClass="text-red-300"
+          accent={statAccent("failed")}
+          valueClass={STATUS_STYLE.failed.text}
         />
       </div>
 
@@ -101,7 +81,7 @@ export function RequestsStatsBar() {
             {t("seer:statsByStatus")}
           </h3>
           <div className="flex items-baseline gap-1.5 text-xs">
-            <span className="font-bold text-emerald-300">{successRate}%</span>
+            <span className={`font-bold ${STATUS_STYLE.available.text}`}>{successRate}%</span>
             <span className="text-tentacle-text-quaternary">{t("seer:statsSuccessRateDesc")}</span>
           </div>
         </div>
@@ -113,7 +93,7 @@ export function RequestsStatsBar() {
             return (
               <div
                 key={status}
-                className={`${STATUS_COLORS[status] ?? "bg-tentacle-fill-strong"} transition-all`}
+                className={`${statusStyleOf(status)?.solid ?? "bg-tentacle-fill-strong"} transition-all`}
                 style={{ width: `${pct}%` }}
                 title={`${t(`seer:status_${status}` as never, status)}: ${count}`}
               />
@@ -126,8 +106,8 @@ export function RequestsStatsBar() {
             .filter(([, count]) => (count ?? 0) > 0)
             .map(([status, count]) => (
               <div key={status} className="flex items-center gap-1.5 text-[11px]">
-                <div className={`h-2 w-2 rounded-full ${STATUS_COLORS[status] ?? "bg-tentacle-fill-strong"}`} />
-                <span className={`${STATUS_TEXT[status] ?? "text-tentacle-text-secondary"} font-medium`}>{count}</span>
+                <div className={`h-2 w-2 rounded-full ${statusStyleOf(status)?.solid ?? "bg-tentacle-fill-strong"}`} />
+                <span className={`${statusStyleOf(status)?.text ?? "text-tentacle-text-secondary"} font-medium`}>{count}</span>
                 <span className="text-tentacle-text-tertiary">{t(`seer:status_${status}` as never, status)}</span>
               </div>
             ))}
@@ -156,12 +136,12 @@ function StatCard({
 }: {
   label: string;
   value: number;
-  accent: string;
+  accent: React.CSSProperties;
   valueClass: string;
 }) {
   return (
     <div className="relative overflow-hidden rounded-2xl border border-tentacle-border-subtle bg-tentacle-fill-subtle p-4">
-      <div className={`absolute inset-0 -z-10 bg-gradient-to-br ${accent} opacity-90`} />
+      <div className="absolute inset-0 -z-10 opacity-90" style={accent} />
       <p className={`text-3xl font-bold leading-none ${valueClass}`}>{value}</p>
       <p className="mt-2 text-[11px] font-medium uppercase tracking-wider text-tentacle-text-tertiary">{label}</p>
     </div>

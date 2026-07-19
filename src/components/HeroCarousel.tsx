@@ -4,6 +4,7 @@ import type { SeerrSearchResult } from "../api/types";
 import { backdropUrl, posterUrl, mediaTitle, mediaYear } from "../utils/media-helpers";
 import { navigateToMedia } from "../utils/navigate-media";
 import { CTA_PRIMARY, CTA_PRIMARY_HALO, CTA_SECONDARY } from "../styles/cta";
+import { STATUS_STYLE } from "../styles/status";
 
 interface HeroCarouselProps {
   items: SeerrSearchResult[];
@@ -49,8 +50,18 @@ export function HeroCarousel({ items, onSelect, onRequest }: HeroCarouselProps) 
         className="absolute inset-0 bg-cover bg-center transition-opacity"
         style={{ backgroundImage: backdrop ? `url(${backdrop})` : undefined, transitionDuration: "600ms" }}
       >
-        <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0f] via-[#0a0a0f]/70 to-[#0a0a0f]/10" />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0f]/80 via-[#0a0a0f]/30 to-transparent" />
+        {/* Scrims NOIRS constants (`--scrim-media-rgb`) : image vive + texte
+            on-media blanc lisible dans les DEUX thèmes — même recette que le
+            hero du core. (Les anciens gradients #0a0a0f figés juraient en
+            clair, où l'inversion host rendait le texte encre sur fond noir.) */}
+        <div
+          className="absolute inset-0"
+          style={{ background: "linear-gradient(to top, rgba(var(--scrim-media-rgb),0.72), rgba(var(--scrim-media-rgb),0.50) 30%, rgba(var(--scrim-media-rgb),0.18) 65%, transparent)" }}
+        />
+        <div
+          className="absolute inset-0"
+          style={{ background: "linear-gradient(to right, rgba(var(--scrim-media-rgb),0.60), rgba(var(--scrim-media-rgb),0.25) 40%, transparent 70%)" }}
+        />
       </div>
 
       {/* Content */}
@@ -73,15 +84,15 @@ export function HeroCarousel({ items, onSelect, onRequest }: HeroCarouselProps) 
 
         <div className="flex min-w-0 flex-1 flex-col gap-3">
           <h2
-            className="text-3xl font-bold leading-tight text-white sm:text-4xl lg:text-5xl"
-            style={{ textShadow: "0 2px 12px rgba(0,0,0,0.8)" }}
+            className="text-3xl font-bold leading-tight text-tentacle-on-media-primary sm:text-4xl lg:text-5xl"
+            style={{ textShadow: "0 3px 12px var(--on-media-shadow)" }}
           >
             {title}
           </h2>
-          <div className="flex flex-wrap items-center gap-2 text-sm text-white/80">
+          <div className="flex flex-wrap items-center gap-2 text-sm text-tentacle-on-media-secondary">
             {year && <span>{year}</span>}
             {item.voteAverage != null && item.voteAverage > 0 && (
-              <span className="flex items-center gap-1 font-semibold text-amber-400">
+              <span className={`flex items-center gap-1 font-semibold ${STATUS_STYLE.rating.text}`}>
                 <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 20 20">
                   <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
                 </svg>
@@ -89,27 +100,29 @@ export function HeroCarousel({ items, onSelect, onRequest }: HeroCarouselProps) 
               </span>
             )}
             {item.genreIds && item.genreIds.length > 0 && (
-              <span className="text-white/60">
+              <span className="text-tentacle-on-media-secondary">
                 {item.mediaType === "movie" ? t("typeMovie") : t("typeSeries")}
               </span>
             )}
           </div>
           {item.overview && (
-            <p className="line-clamp-2 max-w-xl text-sm leading-relaxed text-white/80" style={{ textShadow: "0 1px 8px rgba(0,0,0,0.6)" }}>
+            <p className="line-clamp-2 max-w-xl text-sm leading-relaxed text-tentacle-on-media-secondary" style={{ textShadow: "0 1px 4px var(--on-media-shadow)" }}>
               {item.overview}
             </p>
           )}
           <div className="mt-1 flex items-center gap-3">
+            {/* Posés sur le scrim média : aplats PLEINS du schéma + texte blanc
+                constant (`cta-brand-fg`) — lisibles clair comme sombre. */}
             {isAvailable && (
               <button
                 onClick={(e) => { e.stopPropagation(); navigateToMedia(item.id, item.mediaType); }}
-                className="rounded-lg bg-emerald-500/20 px-5 py-2 text-sm font-semibold text-emerald-400 transition-colors hover:bg-emerald-500/30"
+                className={`rounded-lg px-5 py-2 text-sm font-semibold text-tentacle-cta-brand-fg transition-opacity hover:opacity-90 ${STATUS_STYLE.available.solid}`}
               >
                 ▶ {t("heroAvailable")}
               </button>
             )}
             {isRequested && (
-              <span className="rounded-lg bg-amber-500/20 px-4 py-2 text-sm font-semibold text-amber-400">
+              <span className={`rounded-lg px-4 py-2 text-sm font-semibold text-tentacle-cta-brand-fg ${STATUS_STYLE.requested.solid}`}>
                 {t("heroRequested")}
               </span>
             )}
@@ -124,14 +137,14 @@ export function HeroCarousel({ items, onSelect, onRequest }: HeroCarouselProps) 
                   }
                 }}
                 style={CTA_PRIMARY_HALO}
-                className={`${CTA_PRIMARY} px-5 py-2 focus:outline-none focus:ring-2 focus:ring-tentacle-brand/50`}
+                className={`${CTA_PRIMARY} px-5 py-2 focus:outline-none focus:ring-2 focus:ring-tentacle-brand-soft`}
               >
                 {item.mediaType === "tv" ? t("viewSeasons") : t("request")}
               </button>
             )}
             <button
               onClick={() => onSelect(item)}
-              className={`${CTA_SECONDARY} px-5 py-2 backdrop-blur focus:outline-none focus:ring-2 focus:ring-tentacle-brand/50`}
+              className={`${CTA_SECONDARY} px-5 py-2 backdrop-blur focus:outline-none focus:ring-2 focus:ring-tentacle-brand-soft`}
             >
               {t("moreInfo")}
             </button>
@@ -146,8 +159,8 @@ export function HeroCarousel({ items, onSelect, onRequest }: HeroCarouselProps) 
             <button
               key={i}
               onClick={() => setIndex(i)}
-              className={`h-1.5 rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-tentacle-brand/50 ${
-                i === index ? "w-6 bg-tentacle-brand" : "w-1.5 bg-white/20 hover:bg-white/40"
+              className={`h-1.5 rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-tentacle-brand-soft ${
+                i === index ? "w-6 bg-tentacle-brand" : "w-1.5 bg-tentacle-on-media-muted hover:opacity-80"
               }`}
             />
           ))}
