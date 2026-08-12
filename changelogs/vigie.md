@@ -61,6 +61,8 @@ auto-bumpé par le message du commit (`feat`→mineure, `fix`→patch, `!`→maj
 - **Le catalogue se filtre par canal de sortie** — au cinéma, en streaming, en Blu-ray
 - Les réglages de l'agenda sont tous retenus d'une visite à l'autre ; le type de média était le seul à repartir de zéro
 - Correctif : régler une note minimum et vider l'agenda annonçait « vous n'avez aucune demande à venir », ce qui était faux — c'était le filtre, pas l'absence de demandes
+- **Une demande dont toutes les saisons demandées sont arrivées s'affiche « Disponible ».** Demander les saisons 1 et 2, les recevoir toutes les deux et lire encore « Partiellement disponible » : le badge parlait de la série entière — à qui il manque la saison 3 — pas de la demande, qui était satisfaite. Le compteur du bandeau, le suivi en direct et l'agenda disent maintenant la même chose que la carte
+- **Sur mobile, la barre d'onglets ne mange plus le bas des panneaux.** Elle flotte au-dessus du plugin : le bouton « Appliquer » des filtres se retrouvait entièrement dessous, tout comme la fin de la fiche détaillée, la dernière option de « Marquer comme », les toasts et la barre de sélection multiple
 
 ### EN
 - **The plugin is now called Vigie.** It is affiliated with neither Jellyseerr nor Overseerr: it is an independent plugin connecting to your own instance. Stated in the README, on the marketplace listing and on the settings page
@@ -103,6 +105,8 @@ auto-bumpé par le message du commit (`feat`→mineure, `fix`→patch, `!`→maj
 - **The catalog can be filtered by release channel** — in theaters, streaming, Blu-ray
 - Every calendar setting is now remembered between visits; the media type was the only one starting over each time
 - Fix: setting a minimum rating and emptying the calendar announced "you have no upcoming requests", which was untrue — it was the filter, not a lack of requests
+- **A request whose requested seasons have all arrived now reads "Available".** Requesting seasons 1 and 2, getting both, and still reading "Partially available": the badge described the whole series — which is still missing season 3 — not the request, which was fulfilled. The stats bar, live progress and calendar now agree with the card
+- **On mobile, the tab bar no longer eats the bottom of panels.** It floats above the plugin: the filters' "Apply" button ended up entirely underneath it, as did the end of the detail sheet, the last "Mark as" option, toasts and the bulk selection bar
 
 ## [1.13.2]
 ### FR
