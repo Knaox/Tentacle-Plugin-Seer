@@ -27,6 +27,10 @@ export const RequestProgressBar = memo(function RequestProgressBar({
   const { percent, etaSeconds } = useInterpolatedProgress(download, receivedAt);
 
   const paused = download.status === "paused" || download.status === "delay";
+  /* Le fichier est là, il reste à le vérifier et à le ranger : ce n'est plus
+   * un téléchargement, et laisser « ≈ 0 s restantes » tourner indéfiniment
+   * était le symptôme le plus visible de la confusion. */
+  const validating = download.validating === true;
   const fill = paused ? STATUS_STYLE.retry_pending.solid : STATUS_STYLE.downloading.solid;
 
   const sizeLabel = download.size
@@ -35,9 +39,13 @@ export const RequestProgressBar = memo(function RequestProgressBar({
   const etaLabel = formatEta(etaSeconds);
 
   const parts: string[] = [];
-  if (sizeLabel) parts.push(sizeLabel);
-  if (etaLabel && !paused) parts.push(t("seer:progressRemaining", { eta: etaLabel }));
-  if (paused) parts.push(t("seer:progressPaused"));
+  if (validating) {
+    parts.push(t("seer:progressValidating"));
+  } else {
+    if (sizeLabel) parts.push(sizeLabel);
+    if (etaLabel && !paused) parts.push(t("seer:progressRemaining", { eta: etaLabel }));
+    if (paused) parts.push(t("seer:progressPaused"));
+  }
 
   const episodes = downloads?.length ?? 0;
   if (episodes > 1) parts.push(t("seer:progressEpisodes", { count: episodes }));
@@ -46,7 +54,7 @@ export const RequestProgressBar = memo(function RequestProgressBar({
     <div className="mt-2">
       <div className="mb-1 flex items-center justify-between gap-2 text-[10px] text-tentacle-text-tertiary">
         <span className="truncate">{parts.join(" · ")}</span>
-        {percent != null && (
+        {percent != null && !validating && (
           <span className="shrink-0 font-semibold tabular-nums text-tentacle-text-secondary">
             {Math.floor(percent)} %
           </span>
@@ -54,7 +62,9 @@ export const RequestProgressBar = memo(function RequestProgressBar({
       </div>
 
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-tentacle-surface-2">
-        {percent != null ? (
+        {validating ? (
+          <div className={`h-full w-full rounded-full ${STATUS_STYLE.processing.solid}`} />
+        ) : percent != null ? (
           // Seule `transform` est animée : une largeur animée repeindrait la
           // carte à chaque image (règle GPU du projet).
           <div
@@ -72,7 +82,7 @@ export const RequestProgressBar = memo(function RequestProgressBar({
         )}
       </div>
 
-      {percent == null && (
+      {percent == null && !validating && (
         <p className="mt-1 text-[10px] text-tentacle-text-quaternary">{t("seer:progressSearching")}</p>
       )}
     </div>

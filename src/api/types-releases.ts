@@ -63,6 +63,8 @@ export interface DownloadProgress {
   etaSeconds: number | null;
   estimatedCompletionAt: string | null;
   status: string;
+  /** Fichier complet, mais pas encore vérifié ni rangé dans la bibliothèque. */
+  validating: boolean;
   title: string | null;
   seasonNumber: number | null;
   episodeNumber: number | null;

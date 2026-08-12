@@ -73,6 +73,10 @@ export function RequestCard({
   const poster = posterUrl(request.posterPath);
   const typeLabel = request.mediaType === "movie" ? t("seer:typeMovie") : t("seer:typeSeries");
   const progressIdx = getProgressIndex(request.status);
+  /* Purement visuel : le statut en base reste « downloading ». Le fichier est
+   * complet, il attend d'être vérifié et rangé — et Jellyseerr affiche déjà
+   * autre chose de son côté, d'où l'incohérence signalée. */
+  const validating = progress?.download?.validating === true;
   // « Redemander » reste disponible même une fois le média disponible ou marqué
   // non disponible (re-téléchargement) — il ne disparaît plus après un mark.
   const canRetry = !["processing", "deleting", "delete_failed"].includes(request.status);
@@ -136,12 +140,22 @@ export function RequestCard({
             </div>
           </div>
           <span
-            className={`flex-shrink-0 rounded-md px-2 py-0.5 text-[10px] font-medium ${STATUS_STYLE[request.status].chip}`}
-            title={request.status === "retry_pending" && request.lastError ? request.lastError : undefined}
+            className={`flex-shrink-0 rounded-md px-2 py-0.5 text-[10px] font-medium ${
+              validating ? STATUS_STYLE.processing.chip : STATUS_STYLE[request.status].chip
+            }`}
+            title={
+              validating
+                ? t("seer:progressValidating")
+                : request.status === "retry_pending" && request.lastError
+                  ? request.lastError
+                  : undefined
+            }
           >
-            {request.status === "retry_pending"
-              ? t("seer:statusRetryPendingBadge", { count: request.retryCount, max: request.maxRetries })
-              : t(STATUS_I18N[request.status])}
+            {validating
+              ? t("seer:statusValidating")
+              : request.status === "retry_pending"
+                ? t("seer:statusRetryPendingBadge", { count: request.retryCount, max: request.maxRetries })
+                : t(STATUS_I18N[request.status])}
           </span>
         </div>
 

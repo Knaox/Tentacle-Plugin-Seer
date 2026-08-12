@@ -2317,6 +2317,10 @@ function etaFrom(item) {
   }
   return { seconds: null, at };
 }
+function isValidating(size, sizeLeft, status) {
+  if (status === "completed" || status === "importPending" || status === "importing") return true;
+  return sizeLeft === 0 && size != null && size > 0;
+}
 function toDownloadProgress(item) {
   if (!item || typeof item !== "object") return null;
   const size = Number.isFinite(item.size) && item.size > 0 ? item.size : null;
@@ -2326,13 +2330,15 @@ function toDownloadProgress(item) {
     percent = Math.min(100, Math.max(0, (size - sizeLeft) / size * 100));
   }
   const eta = etaFrom(item);
+  const status = typeof item.status === "string" ? item.status : "downloading";
   return {
     percent,
     size,
     sizeLeft,
     etaSeconds: eta.seconds,
     estimatedCompletionAt: eta.at,
-    status: typeof item.status === "string" ? item.status : "downloading",
+    status,
+    validating: isValidating(size, sizeLeft, status),
     title: item.title ?? item.episode?.title ?? null,
     seasonNumber: item.episode?.seasonNumber ?? null,
     episodeNumber: item.episode?.episodeNumber ?? null
@@ -2368,6 +2374,9 @@ function aggregateDownloads(items) {
     etaSeconds: maxEta,
     estimatedCompletionAt: latestAt,
     status: parsed.some((p) => p.status === "downloading") ? "downloading" : active.status,
+    // `every` et non `some` : tant qu'un seul épisode descend encore, la
+    // demande télécharge réellement — ce n'est pas de la validation.
+    validating: parsed.every((p) => p.validating),
     title: parsed.length === 1 ? active.title : null,
     seasonNumber: parsed.length === 1 ? active.seasonNumber : null,
     episodeNumber: parsed.length === 1 ? active.episodeNumber : null

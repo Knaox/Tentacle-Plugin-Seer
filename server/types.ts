@@ -86,6 +86,8 @@ export interface DownloadProgress {
   estimatedCompletionAt: string | null;
   /** Statut brut : downloading | queued | paused | delay | warning | failed… */
   status: string;
+  /** Fichier complet, mais pas encore vérifié ni rangé dans la bibliothèque. */
+  validating: boolean;
   title: string | null;
   seasonNumber: number | null;
   episodeNumber: number | null;

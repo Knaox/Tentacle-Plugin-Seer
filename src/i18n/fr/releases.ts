@@ -33,6 +33,10 @@ export default {
   // Progression réelle des téléchargements
   progressRemaining: "≈ {{eta}} restantes",
   progressPaused: "En pause",
+  // Le fichier est complet mais pas encore rangé dans la bibliothèque.
+  // Court dans la puce, qui partage sa ligne avec un titre tronqué.
+  statusValidating: "En cours de validation",
+  progressValidating: "Téléchargement terminé — vérification et rangement en cours",
   progressSearching: "Recherche d'une source en cours",
   progressEpisodes_one: "{{count}} épisode en cours",
   progressEpisodes_other: "{{count}} épisodes en cours",

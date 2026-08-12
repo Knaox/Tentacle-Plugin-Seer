@@ -32,6 +32,10 @@ export default {
   // Real download progress
   progressRemaining: "≈ {{eta}} left",
   progressPaused: "Paused",
+  // The file is complete but not yet filed into the library.
+  // Short in the chip, which shares its line with a truncated title.
+  statusValidating: "Validating",
+  progressValidating: "Download finished — checking and importing",
   progressSearching: "Looking for a source",
   progressEpisodes_one: "{{count}} episode in progress",
   progressEpisodes_other: "{{count}} episodes in progress",

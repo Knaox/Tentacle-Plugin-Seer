@@ -69,6 +69,21 @@ function etaFrom(item: SeerrDownloadItem): { seconds: number | null; at: string 
   return { seconds: null, at };
 }
 
+/*
+ * Fichier complet, mais pas encore rangé dans la bibliothèque.
+ *
+ * À ce moment-là Jellyseerr repasse la demande en « Demandé » — le download
+ * n'est plus actif de son point de vue — alors que l'entrée reste dans la file
+ * *arr le temps de la vérification et de l'import. D'où l'écart signalé : le
+ * plugin affichait « En téléchargement » quand Jellyseerr disait autre chose.
+ *
+ * Rien n'est écrit en base : c'est un simple indice de rendu.
+ */
+function isValidating(size: number | null, sizeLeft: number | null, status: string): boolean {
+  if (status === "completed" || status === "importPending" || status === "importing") return true;
+  return sizeLeft === 0 && size != null && size > 0;
+}
+
 /** null si l'élément n'est pas exploitable. Ne jette jamais. */
 export function toDownloadProgress(item: SeerrDownloadItem): DownloadProgress | null {
   if (!item || typeof item !== "object") return null;
@@ -83,6 +98,7 @@ export function toDownloadProgress(item: SeerrDownloadItem): DownloadProgress | 
   }
 
   const eta = etaFrom(item);
+  const status = typeof item.status === "string" ? item.status : "downloading";
 
   return {
     percent,
@@ -90,7 +106,8 @@ export function toDownloadProgress(item: SeerrDownloadItem): DownloadProgress | 
     sizeLeft,
     etaSeconds: eta.seconds,
     estimatedCompletionAt: eta.at,
-    status: typeof item.status === "string" ? item.status : "downloading",
+    status,
+    validating: isValidating(size, sizeLeft, status),
     title: item.title ?? item.episode?.title ?? null,
     seasonNumber: item.episode?.seasonNumber ?? null,
     episodeNumber: item.episode?.episodeNumber ?? null,
@@ -146,6 +163,9 @@ export function aggregateDownloads(
     etaSeconds: maxEta,
     estimatedCompletionAt: latestAt,
     status: parsed.some((p) => p.status === "downloading") ? "downloading" : active.status,
+    // `every` et non `some` : tant qu'un seul épisode descend encore, la
+    // demande télécharge réellement — ce n'est pas de la validation.
+    validating: parsed.every((p) => p.validating),
     title: parsed.length === 1 ? active.title : null,
     seasonNumber: parsed.length === 1 ? active.seasonNumber : null,
     episodeNumber: parsed.length === 1 ? active.episodeNumber : null,
