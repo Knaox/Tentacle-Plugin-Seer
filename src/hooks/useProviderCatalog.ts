@@ -9,13 +9,28 @@ import type { CalendarProvider } from "../api/types-releases";
  * vivent dans un catalogue à part, mis en cache une journée puisqu'il ne bouge
  * pratiquement jamais. Une seule requête sert toute la session, quelle que soit
  * la page.
+ *
+ * La table, elle, est PARTAGÉE. Chaque carte de la grille appelle ce hook, et
+ * chacune s'en construisait une copie : cent cartes affichées faisaient cent
+ * tables d'environ cent cinquante plateformes, soit quinze mille entrées en
+ * mémoire pour une donnée strictement identique partout. On la dérive donc une
+ * fois par réponse, dans une table faible — libérée d'elle-même quand la
+ * réponse est collectée.
  */
+const DERIVED = new WeakMap<object, Map<number, CalendarProvider>>();
+const EMPTY: Map<number, CalendarProvider> = new Map();
+
 export function useProviderCatalog(): Map<number, CalendarProvider> {
   const { data } = useCalendarProviders();
 
   return useMemo(() => {
+    if (!data) return EMPTY;
+    const cached = DERIVED.get(data);
+    if (cached) return cached;
+
     const map = new Map<number, CalendarProvider>();
-    for (const p of data?.results ?? []) map.set(p.id, p);
+    for (const p of data.results ?? []) map.set(p.id, p);
+    DERIVED.set(data, map);
     return map;
   }, [data]);
 }

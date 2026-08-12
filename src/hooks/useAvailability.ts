@@ -30,7 +30,15 @@ interface Item { mediaType?: string; id?: number }
 
 /** Tant qu'il reste des fiches à récupérer, on revient les chercher. */
 const PENDING_POLL_MS = 4_000;
+/** Les dates de sortie ne bougent pas d'une journée : rien à redemander. */
 const FRESH_MS = 24 * 60 * 60_000;
+/**
+ * En revanche on ne GARDE pas une tranche une journée : parcourir le catalogue
+ * en produit une toutes les soixante cartes, et chacune retenait ses verdicts
+ * en mémoire longtemps après être sortie de l'écran. Une demi-heure suffit à
+ * couvrir un aller-retour vers une fiche détaillée.
+ */
+const KEEP_MS = 30 * 60_000;
 
 export function useAvailability(items: readonly Item[]) {
   const refs = useMemo(() => {
@@ -60,7 +68,7 @@ export function useAvailability(items: readonly Item[]) {
       refetchInterval: (q: { state: { data?: AvailabilityResponse } }) =>
         (q.state.data?.pending ?? 0) > 0 ? PENDING_POLL_MS : (false as const),
       staleTime: FRESH_MS,
-      gcTime: FRESH_MS,
+      gcTime: KEEP_MS,
       refetchOnWindowFocus: false,
       // Filet : même si une clé changeait, l'ancienne réponse reste affichée.
       placeholderData: (prev?: AvailabilityResponse) => prev,

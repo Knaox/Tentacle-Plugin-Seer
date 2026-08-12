@@ -1,4 +1,4 @@
-import { memo, type RefObject } from "react";
+import { memo } from "react";
 import type { SeerrSearchResult } from "../api/types";
 import type { AvailabilityVerdict } from "../api/types-releases";
 import { MediaCard } from "./MediaCard";
@@ -36,8 +36,11 @@ interface Props {
   requesting: boolean;
   onRequest: (item: SeerrSearchResult) => void;
   onOpen: (item: SeerrSearchResult) => void;
-  /** Sentinelle du défilement infini — absente pendant une recherche. */
-  sentinelRef?: RefObject<HTMLDivElement | null>;
+  /**
+   * Référence de rappel de la sentinelle du défilement infini : elle s'attache
+   * à l'entrée du nœud dans le document, seul moment fiable pour l'observer.
+   */
+  sentinelRef?: (node: HTMLDivElement | null) => void;
   showSkeletons?: boolean;
 }
 

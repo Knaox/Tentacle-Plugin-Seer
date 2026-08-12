@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import { useInfiniteSentinel } from "../hooks/useInfiniteSentinel";
 import { useTranslation } from "react-i18next";
 import { useTrending } from "../hooks/useDiscoverMedia";
 import { useInfiniteDiscover } from "../hooks/useInfiniteDiscover";
@@ -40,7 +41,6 @@ export function DiscoverPage() {
   }, []);
   const [selectedItem, setSelectedItem] = useState<SeerrSearchResult | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const sentinelRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const savedScrollY = useRef(0);
   const [viewKey, setViewKey] = useState(0);
@@ -122,30 +122,10 @@ export function DiscoverPage() {
    * les attend pas : les pastilles apparaissent quand la réponse arrive. */
   const availability = useAvailability(filtered);
 
-  /* Défilement infini.
-   *
-   * `fetchMore` change d'identité à chaque rendu — l'objet que rend TanStack est
-   * un proxy neuf à chaque fois. En dépendre démontait et reconstruisait
-   * l'observateur en continu, pendant le défilement précisément. On le range
-   * donc dans une ref, et l'observateur ne se monte plus qu'une fois.
-   *
-   * Marge d'anticipation portée à 800 px, comme l'annonçait le commentaire
-   * d'origine : à six colonnes, 400 px ne font qu'une rangée d'avance, et on
-   * atteint le bas avant l'arrivée des titres suivants. */
-  const fetchMoreRef = useRef(fetchMore);
-  fetchMoreRef.current = fetchMore;
-
-  useEffect(() => {
-    if (isSearching || !sentinelRef.current) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) fetchMoreRef.current();
-      },
-      { rootMargin: "0px 0px 800px 0px" },
-    );
-    observer.observe(sentinelRef.current);
-    return () => observer.disconnect();
-  }, [isSearching]);
+  /* Défilement infini : la sentinelle s'observe par référence de rappel, donc
+   * dès qu'elle entre dans le document — au premier rendu la grille est encore
+   * vide, et un effet classique ressortirait sans rien observer. */
+  const sentinelRef = useInfiniteSentinel(fetchMore, !isSearching);
 
   const handleRequest = useCallback((item: SeerrSearchResult) => {
     if (item.mediaType === "movie" || item.mediaType === "tv") {
@@ -244,7 +224,7 @@ export function DiscoverPage() {
           requesting={requestMedia.isPending}
           onRequest={handleRequest}
           onOpen={openModal}
-          sentinelRef={isSearching ? undefined : sentinelRef}
+          sentinelRef={sentinelRef}
           showSkeletons={isLoadingMore && !isReachingEnd}
         />
       ) : (
