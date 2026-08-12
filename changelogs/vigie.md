@@ -51,6 +51,9 @@ auto-bumpé par le message du commit (`feat`→mineure, `fix`→patch, `!`→maj
 - Les pages de catalogue sont désormais **mises en cache pour tout le monde** pendant cinq minutes : deux personnes qui appliquent le même filtre ne déclenchent plus qu'un seul aller-retour
 - **Les filtres du catalogue sont rangés** : sept sections dépliées d'un coup deviennent des sections repliables, chacune avec le nombre de valeurs retenues et son propre « Effacer ». Le panneau parlait quatre langages de bouton différents, il n'en parle plus qu'un. Un bouton fixe en bas annonce combien de titres correspondent
 - Correctif : une suppression par un utilisateur ne vidait plus seulement son propre cache mais celui de tout le monde
+- **Le catalogue ne gonfle plus quand on le fait défiler longtemps.** Chaque affiche parcourue restait en mémoire jusqu'à la fin de la session, y compris des centaines d'écrans plus haut : vingt pages, c'étaient plusieurs centaines de mégaoctets retenus pour des images que personne ne regardait. Une affiche trop loin de l'écran est maintenant libérée, et récupérée bien avant de redevenir visible — le défilement, lui, ne change en rien
+- Le diaporama en tête du catalogue **ne travaille plus quand il n'est pas à l'écran**. Il faisait tourner ses cinq grandes images de fond toutes les six secondes, indéfiniment, pendant qu'on parcourait la grille bien plus bas ou qu'on regardait un autre onglet
+- Les vignettes de l'agenda et de Mes demandes **ne chargent plus des affiches cinq fois trop grandes** pour la place qu'elles occupent
 
 ### EN
 - **The plugin is now called Vigie.** It is affiliated with neither Jellyseerr nor Overseerr: it is an independent plugin connecting to your own instance. Stated in the README, on the marketplace listing and on the settings page
@@ -83,6 +86,9 @@ auto-bumpé par le message du commit (`feat`→mineure, `fix`→patch, `!`→maj
 - Catalog pages are now **cached for everyone** for five minutes: two people applying the same filter no longer trigger two round trips
 - **Catalog filters are tidied up**: seven sections unfolded at once become collapsible ones, each showing how many values are selected and its own "Clear". The panel spoke four different button languages, now just one. A fixed button at the bottom states how many titles match
 - Fix: one user deleting a request used to clear everyone's cache, not just their own
+- **The catalog no longer bloats when scrolled for a long time.** Every poster scrolled past stayed in memory until the end of the session, including ones hundreds of screens above: twenty pages meant several hundred megabytes held for images nobody was looking at. A poster far enough from the screen is now released, and fetched back well before it becomes visible again — scrolling itself is unchanged
+- The slideshow at the top of the catalog **no longer works while off-screen**. It kept cycling its five large background images every six seconds, indefinitely, while you browsed the grid far below or looked at another tab
+- Thumbnails on the calendar and My Requests **no longer load posters five times larger** than the space they occupy
 
 ## [1.13.2]
 ### FR
