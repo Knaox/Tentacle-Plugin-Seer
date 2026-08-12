@@ -29,6 +29,8 @@ import type { PrismaClient } from "@prisma/client";
 import type { WorkerCfg } from "./seerr-unified";
 import { mapLimit } from "./concurrency";
 import { toDayString } from "./tmdb-fetch";
+import { detectAnime } from "./tmdb-traits";
+import { markRequested } from "./calendar-requested";
 import { attachProviderIds, buildProviderEpisodes } from "./calendar-providers";
 import {
   type CalendarItem, type CalendarResponse, type CalendarKind,
@@ -66,6 +68,14 @@ interface DiscoverResult {
   releaseDate?: string;
   firstAirDate?: string;
   mediaInfo?: { status?: number };
+  /* Sans ces champs, le tri et les filtres seraient INERTES en mode « Tout » :
+   * cette vue ne passe pas par la mémoire des fiches, elle lit directement la
+   * découverte — qui les porte déjà, sans un appel de plus. */
+  voteAverage?: number;
+  popularity?: number;
+  originalLanguage?: string;
+  originCountry?: string[];
+  genreIds?: number[];
 }
 
 async function discover(
@@ -140,6 +150,8 @@ export async function buildGlobalCalendar(
     const items = capPerSeries(sortCalendarItems(Array.from(merged.values())), MAX_PER_SERIES);
     // Les vraies plateformes de chaque titre, lues en mémoire seulement.
     await attachProviderIds(prisma, cfg, items, opts.region);
+    // Ce qui a déjà été demandé porte sa pastille, sinon il se perd dans le flot.
+    await markRequested(prisma, items);
 
     return {
       from: opts.from,
@@ -168,6 +180,7 @@ export async function buildGlobalCalendar(
 
   const collected = await mapLimit(tasks, 2, (t) => t());
   const { items, scanned } = collectItems(collected, opts);
+  await markRequested(prisma, items);
 
   return {
     from: opts.from,
@@ -216,6 +229,10 @@ function collectItems(
         seasonNumber: null,
         episodeNumber: null,
         networks: null,
+        voteAverage: typeof r.voteAverage === "number" ? r.voteAverage : null,
+        popularity: typeof r.popularity === "number" ? r.popularity : null,
+        originalLanguage: r.originalLanguage ?? null,
+        isAnime: detectAnime(r),
         // Complété juste après depuis la mémoire des fiches : recopier ici la
         // plateforme demandée revenait à jurer qu'un film est sur les quatre
         // plateformes cochées.

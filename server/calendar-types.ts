@@ -42,6 +42,14 @@ export interface CalendarItem {
   airDateUtc?: string | null;
   networks: string | null;
   providerIds: number[];
+  /* Tri et filtres de l'agenda. FACULTATIFS, et c'est la règle du chantier :
+   * une fiche enregistrée avant leur arrivée n'en porte aucun, et un critère
+   * inconnu ne doit jamais exclure — sans quoi la page se viderait en attendant
+   * que le worker ait tout repassé. */
+  voteAverage?: number | null;
+  popularity?: number | null;
+  originalLanguage?: string | null;
+  isAnime?: boolean;
   /** Renseignés en mode personnel uniquement. */
   requestId: string | null;
   requestStatus: RequestStatus | null;

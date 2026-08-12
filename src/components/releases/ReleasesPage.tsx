@@ -1,8 +1,10 @@
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { CalendarItem, CalendarMediaFilter, CalendarMode } from "../../api/types-releases";
+import type { CalendarItem, CalendarMode } from "../../api/types-releases";
 import type { SeerrSearchResult } from "../../api/types";
 import { usePersonalCalendar, useGlobalCalendar } from "../../hooks/useReleases";
+import { useReleasesFilters } from "../../hooks/useReleasesFilters";
+import { matchesReleaseFilters, sortReleases } from "../../utils/calendar-filter";
 import { useScrollTopOnMount } from "../../hooks/useSearchHotkey";
 import { useRequestMedia } from "../../hooks/useRequestMedia";
 import { useToast } from "../../hooks/useToast";
@@ -21,18 +23,9 @@ import { applyLocalDays } from "../../utils/calendar-localtime";
 const VIEW_KEY = "seer_releases_view";
 const MODE_KEY = "seer_releases_mode";
 const SCOPE_KEY = "seer_releases_scope";
-const PROVIDERS_KEY = "seer_releases_providers";
 const WINDOW_DAYS = 90;
 
 const MODES: CalendarMode[] = ["personal", "all"];
-
-/** Sélection retenue d'une visite à l'autre, comme le mode et la vue. */
-function readProviders(): number[] {
-  try {
-    const raw = JSON.parse(localStorage.getItem(PROVIDERS_KEY) ?? "[]");
-    return Array.isArray(raw) ? raw.filter((n) => Number.isFinite(n) && n > 0) : [];
-  } catch { return []; }
-}
 
 /**
  * Les prochaines dates : celles des demandes en cours, ou celles d'une
@@ -59,7 +52,8 @@ export function ReleasesPage() {
     setMode(next);
     try { localStorage.setItem(MODE_KEY, next); } catch { /* stockage indisponible */ }
   }, []);
-  const [mediaFilter, setMediaFilter] = useState<CalendarMediaFilter>("both");
+  const releasesFilters = useReleasesFilters();
+  const { filters } = releasesFilters;
   /* Retenu comme le mode et la vue : c'était le seul réglage de la page à
    * repartir de zéro à chaque visite. */
   const [scope, setScope] = useState<ReleasesScope>(() => {
@@ -70,23 +64,8 @@ export function ReleasesPage() {
     setScope(next);
     try { localStorage.setItem(SCOPE_KEY, next); } catch { /* stockage indisponible */ }
   }, []);
-  const [providerIds, setProviderIds] = useState<number[]>(readProviders);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selected, setSelected] = useState<SeerrSearchResult | null>(null);
-
-  const changeProviders = useCallback((next: number[]) => {
-    setProviderIds(next);
-    try { localStorage.setItem(PROVIDERS_KEY, JSON.stringify(next)); }
-    catch { /* stockage indisponible */ }
-  }, []);
-  const toggleProvider = useCallback((id: number) => {
-    setProviderIds((cur) => {
-      const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
-      try { localStorage.setItem(PROVIDERS_KEY, JSON.stringify(next)); }
-      catch { /* stockage indisponible */ }
-      return next;
-    });
-  }, []);
 
   const [view, setView] = useState<ReleasesView>(() => {
     // Une valeur « list » héritée de la version précédente doit être relue
@@ -125,24 +104,23 @@ export function ReleasesPage() {
    * donnait une page vide dès que tout était arrivé. */
   const personal = usePersonalCalendar(from, to, mode === "personal", true, scope === "everyone");
   const global = useGlobalCalendar(
-    { providerIds, mediaType: mediaFilter, from, to },
+    /* Le serveur ne connaît pas « Animés » et retomberait en silence sur
+     * « tout » : on lui demande les séries, le tri fin se fait ici sur la
+     * fiche — exactement ce que fait déjà le catalogue. */
+    {
+      providerIds: filters.providerIds,
+      mediaType: filters.mediaFilter === "anime" ? "tv" : filters.mediaFilter,
+      from, to,
+    },
     mode === "all",
   );
 
   const active = mode === "personal" ? personal : global;
   const items = useMemo(() => {
     // Au bon jour d'abord : un épisode annoncé le 14 peut sortir le 13 au soir.
-    let list = applyLocalDays(active.data?.items ?? []);
-    if (mediaFilter !== "both") list = list.filter((i) => i.mediaType === mediaFilter);
-    /* Le serveur applique déjà les plateformes au mode « Tout » ; « Mes
-     * sorties » vient de vos demandes et se filtre donc ici, sur les
-     * plateformes déjà connues de chaque fiche. Un OU : cocher Netflix et
-     * Disney+ montre ce qui est sur l'une ou l'autre. */
-    if (mode === "personal" && providerIds.length > 0) {
-      list = list.filter((i) => i.providerIds.some((id) => providerIds.includes(id)));
-    }
-    return list;
-  }, [active.data, mode, mediaFilter, providerIds]);
+    const list = applyLocalDays(active.data?.items ?? []);
+    return sortReleases(list.filter((i) => matchesReleaseFilters(i, filters)), filters.sortBy);
+  }, [active.data, filters]);
 
   /* Ouvrir une sortie mène à la fiche habituelle : depuis le calendrier, on
    * peut donc demander directement un titre encore à paraître. */
@@ -181,12 +159,11 @@ export function ReleasesPage() {
     );
   }, [requestMedia, toast, t]);
 
-  const filtered = providerIds.length > 0;
-  const activeFilterCount = (filtered ? 1 : 0) + (mediaFilter === "both" ? 0 : 1);
-  const resetFilters = useCallback(() => {
-    changeProviders([]);
-    setMediaFilter("both");
-  }, [changeProviders]);
+  /* Sur `activeFilterCount` et non sur les seules plateformes : sinon régler
+   * « note ≥ 8 » et vider l'agenda annonçait « vous n'avez aucune demande à
+   * venir » — un mensonge, et le pire message possible pour un filtre. */
+  const { activeFilterCount } = releasesFilters;
+  const filtered = activeFilterCount > 0;
 
   const everyone = mode === "personal" && scope === "everyone";
 
@@ -222,12 +199,16 @@ export function ReleasesPage() {
       <ReleasesFilterSheet
         open={filtersOpen}
         onClose={() => setFiltersOpen(false)}
-        providerIds={providerIds}
-        onToggleProvider={toggleProvider}
-        onClearProviders={() => changeProviders([])}
-        mediaFilter={mediaFilter}
-        onMediaFilterChange={setMediaFilter}
-        onReset={resetFilters}
+        filters={filters}
+        onToggleProvider={releasesFilters.toggleProvider}
+        onClearProviders={releasesFilters.clearProviders}
+        onMediaFilterChange={releasesFilters.setMediaFilter}
+        onRatingMinChange={releasesFilters.setRatingMin}
+        onLanguageChange={releasesFilters.setOriginalLanguage}
+        onSortByChange={releasesFilters.setSortBy}
+        onRequestedOnlyChange={releasesFilters.setRequestedOnly}
+        showRequestedOnly={mode === "all"}
+        onReset={releasesFilters.reset}
         activeCount={activeFilterCount}
         resultCount={active.isLoading ? null : items.length}
       />

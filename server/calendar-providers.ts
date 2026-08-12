@@ -88,6 +88,10 @@ export async function buildProviderEpisodes(
       seasonNumber: m.nextSeason,
       episodeNumber: m.nextEpisode,
       networks: m.networks,
+      voteAverage: m.voteAverage ?? null,
+      popularity: m.popularity ?? null,
+      originalLanguage: m.originalLanguage ?? null,
+      isAnime: m.isAnime ?? false,
       // Les vraies plateformes de la série, pas celles qu'on a demandées.
       providerIds: m.providerIds ?? [],
       requestId: null,

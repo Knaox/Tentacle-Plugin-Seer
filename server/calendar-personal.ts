@@ -147,6 +147,10 @@ export function metaToCalendarItems(m: TmdbMeta, from: string, to: string): Bare
       episodeNumber: episode ?? null,
       networks: m.networks,
       providerIds: m.providerIds,
+      voteAverage: m.voteAverage ?? null,
+      popularity: m.popularity ?? null,
+      originalLanguage: m.originalLanguage ?? null,
+      isAnime: m.isAnime ?? false,
     });
   };
 

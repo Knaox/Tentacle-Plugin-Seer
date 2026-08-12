@@ -35,7 +35,7 @@ export default {
   filterAllType: "Tout",
   filterMovies: "Films",
   filterSeries: "Séries",
-  filterAnimes: "Animes",
+  filterAnimes: "Animés",
   filterClearSection: "Effacer",
   filterPlatformSearch: "Rechercher une plateforme…",
   filterPlatformMore_one: "+{{count}} autre",

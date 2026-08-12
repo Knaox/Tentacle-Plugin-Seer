@@ -151,6 +151,12 @@ export interface CalendarItem {
   airDateUtc?: string | null;
   networks: string | null;
   providerIds: number[];
+  /* Tri et filtres. FACULTATIFS : une fiche enregistrée avant leur arrivée n'en
+   * porte aucun, et un critère inconnu ne doit jamais exclure. */
+  voteAverage?: number | null;
+  popularity?: number | null;
+  originalLanguage?: string | null;
+  isAnime?: boolean;
   requestId: string | null;
   requestStatus: RequestStatus | null;
 }
@@ -171,7 +177,10 @@ export interface CalendarProvider {
 
 /** « provider » a disparu : les plateformes sont devenues un filtre, pas un mode. */
 export type CalendarMode = "personal" | "all";
-export type CalendarMediaFilter = "movie" | "tv" | "both";
+/** « anime » se lit sur la fiche : côté serveur, un animé reste une série. */
+export type CalendarMediaFilter = "movie" | "tv" | "both" | "anime";
+/** « date » = l'ordre historique, alphabétique à l'intérieur d'une journée. */
+export type ReleasesSort = "date" | "popularity" | "rating" | "title";
 
 /* ── Statistiques (renvoyées avec la liste) ───────────────────────── */
 

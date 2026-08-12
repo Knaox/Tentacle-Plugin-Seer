@@ -3,6 +3,7 @@
 /* ------------------------------------------------------------------ */
 
 import type { TmdbMeta, TmdbRef } from "./tmdb-cache";
+import { detectAnime } from "./tmdb-traits";
 import type { WorkerCfg } from "./seerr-unified";
 
 /**
@@ -41,6 +42,14 @@ export interface SeerrDetailRaw {
     iso_3166_1?: string;
     flatrate?: Array<{ id?: number; providerId?: number }>;
   }>;
+  /* Servent le tri et les filtres de l'agenda. La fiche détaillée les porte
+   * déjà : les lire ici ne coûte pas un appel de plus. */
+  voteAverage?: number;
+  popularity?: number;
+  originalLanguage?: string;
+  originCountry?: string[];
+  genres?: Array<{ id?: number; name?: string }>;
+  keywords?: unknown;
 }
 
 /** '2026-12-16T00:00:00.000Z' | '2026-12-16' → '2026-12-16'. null sinon. */
@@ -170,6 +179,13 @@ export function parseDetailToMeta(raw: SeerrDetailRaw, ref: TmdbRef, region: str
       .slice(0, 3)
       .join(", ") || null,
     providerIds: Array.from(new Set(providerIds)),
+    voteAverage: typeof raw.voteAverage === "number" ? raw.voteAverage : null,
+    popularity: typeof raw.popularity === "number" ? raw.popularity : null,
+    originalLanguage: raw.originalLanguage ?? null,
+    genreIds: (raw.genres ?? [])
+      .map((g) => g?.id)
+      .filter((id): id is number => typeof id === "number"),
+    isAnime: detectAnime(raw),
     expiresAt: new Date().toISOString(),
   };
 

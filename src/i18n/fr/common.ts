@@ -17,7 +17,7 @@ export default {
   // Media types
   typeMovie: "Film",
   typeSeries: "Série",
-  typeAnime: "Anime",
+  typeAnime: "Animé",
   untitled: "Sans titre",
   noImage: "Pas d'image",
 

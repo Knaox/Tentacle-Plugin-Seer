@@ -21,6 +21,8 @@
 import type { PrismaClient } from "@prisma/client";
 import { chunk } from "./concurrency";
 
+export { ensureTmdbCacheTable } from "./tmdb-cache-schema";
+
 export interface TmdbRef {
   mediaType: "movie" | "tv";
   tmdbId: number;
@@ -51,6 +53,16 @@ export interface TmdbMeta extends TmdbRef {
   networks: string | null;
   providerIds: number[];
 
+  /* Ce qu'il faut pour trier et filtrer un agenda. Tous FACULTATIFS : une fiche
+   * enregistrée avant l'ajout de ces colonnes n'en a aucun, et un critère
+   * inconnu ne doit jamais exclure — sans quoi les filtres videraient la page
+   * en attendant que le worker ait tout repassé. */
+  voteAverage?: number | null;
+  popularity?: number | null;
+  originalLanguage?: string | null;
+  genreIds?: number[];
+  isAnime?: boolean;
+
   expiresAt: string;
 }
 
@@ -73,11 +85,30 @@ function asNum(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function rowToMeta(row: Record<string, unknown>): TmdbMeta {
-  const ids = String(row.provider_ids ?? "")
+/**
+ * Comme `asNum`, mais un NULL reste un NULL.
+ *
+ * `Number(null)` vaut zéro, et `Number.isFinite(0)` est vrai : `asNum` rend donc
+ * 0 pour une colonne vide. Inoffensif pour un numéro de saison, où une date
+ * garde la porte — mais une note à zéro fausserait aussi bien le filtre
+ * « 7 et plus » que le tri, et rien ne le signalerait.
+ */
+function asNumOrNull(v: unknown): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Liste d'entiers séparés par des virgules, comme `provider_ids`. */
+function asIdList(v: unknown): number[] {
+  return String(v ?? "")
     .split(",")
     .map((s) => Number(s.trim()))
     .filter((n) => Number.isFinite(n) && n > 0);
+}
+
+function rowToMeta(row: Record<string, unknown>): TmdbMeta {
+  const ids = asIdList(row.provider_ids);
   return {
     mediaType: row.media_type === "tv" ? "tv" : "movie",
     tmdbId: Number(row.tmdb_id),
@@ -97,41 +128,15 @@ function rowToMeta(row: Record<string, unknown>): TmdbMeta {
     lastAirDate: asDate(row.last_air_date),
     networks: (row.networks as string) ?? null,
     providerIds: ids,
+    voteAverage: asNumOrNull(row.vote_average),
+    popularity: asNumOrNull(row.popularity),
+    originalLanguage: (row.original_language as string) || null,
+    genreIds: asIdList(row.genre_ids),
+    isAnime: row.is_anime === 1 || row.is_anime === true,
     expiresAt: row.expires_at instanceof Date
       ? row.expires_at.toISOString()
       : String(row.expires_at ?? ""),
   };
-}
-
-export async function ensureTmdbCacheTable(prisma: PrismaClient): Promise<void> {
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS seer_tmdb_cache (
-      media_type      VARCHAR(10)  NOT NULL,
-      tmdb_id         INT          NOT NULL,
-      title           VARCHAR(500) NOT NULL DEFAULT '',
-      poster_path     VARCHAR(500) DEFAULT NULL,
-      backdrop_path   VARCHAR(500) DEFAULT NULL,
-      overview        TEXT         DEFAULT NULL,
-      release_date    CHAR(10)     DEFAULT NULL,
-      tmdb_status     VARCHAR(40)  DEFAULT NULL,
-      digital_date    CHAR(10)     DEFAULT NULL,
-      theatrical_date CHAR(10)     DEFAULT NULL,
-      physical_date   CHAR(10)     DEFAULT NULL,
-      release_region  CHAR(2)      DEFAULT NULL,
-      next_air_date   CHAR(10)     DEFAULT NULL,
-      next_season     SMALLINT     DEFAULT NULL,
-      next_episode    SMALLINT     DEFAULT NULL,
-      last_air_date   CHAR(10)     DEFAULT NULL,
-      networks        VARCHAR(255) DEFAULT NULL,
-      provider_ids    VARCHAR(255) DEFAULT NULL,
-      fetched_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      expires_at      DATETIME     NOT NULL,
-      PRIMARY KEY (media_type, tmdb_id),
-      INDEX idx_tmdbc_expires  (expires_at),
-      INDEX idx_tmdbc_next_air (next_air_date),
-      INDEX idx_tmdbc_digital  (digital_date)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
 }
 
 /**
@@ -178,11 +183,20 @@ export async function getTmdbMetaBulk(
   return out;
 }
 
+/*
+ * L'ORDRE de cette liste est celui des valeurs poussées plus bas, et rien ne
+ * vérifie la correspondance : un décalage d'un cran écrirait le résumé dans la
+ * date de sortie sans que rien ne le signale — le code serveur n'a aucune
+ * vérification de types. Toute colonne ajoutée ici doit l'être au même rang
+ * dans `values.push`.
+ */
 const UPSERT_COLS = [
   "media_type", "tmdb_id", "title", "poster_path", "backdrop_path", "overview",
   "release_date", "tmdb_status", "digital_date", "theatrical_date", "physical_date",
   "release_region", "next_air_date", "next_season", "next_episode", "last_air_date",
-  "networks", "provider_ids", "expires_at",
+  "networks", "provider_ids",
+  "vote_average", "popularity", "original_language", "genre_ids", "is_anime",
+  "expires_at",
 ];
 
 /** Écriture groupée. Syntaxe `VALUES()` : MariaDB n'a pas l'alias MySQL 8.0.20+. */
@@ -206,7 +220,10 @@ export async function upsertTmdbMetaBulk(
         m.posterPath, m.backdropPath, m.overview,
         m.releaseDate, m.tmdbStatus, m.digitalDate, m.theatricalDate, m.physicalDate,
         m.releaseRegion, m.nextAirDate, m.nextSeason, m.nextEpisode, m.lastAirDate,
-        m.networks, m.providerIds.join(","), new Date(m.expiresAt),
+        m.networks, m.providerIds.join(","),
+        m.voteAverage ?? null, m.popularity ?? null,
+        m.originalLanguage ?? null, (m.genreIds ?? []).join(",") || null, m.isAnime ? 1 : 0,
+        new Date(m.expiresAt),
       );
     }
     await prisma.$executeRawUnsafe(
