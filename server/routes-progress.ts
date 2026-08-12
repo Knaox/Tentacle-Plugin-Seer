@@ -11,9 +11,10 @@
  * n'invalide jamais la grosse liste fusionnée.
  */
 
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { PrismaClient } from "@prisma/client";
 import type { DownloadProgress, RequestStatus } from "./types";
+import { fetchServerQueue, type QueueResponse } from "./arr-queue";
 import { cached, peek } from "./cache";
 import { getUser, type WorkerCfg, type SeerrRequestRow } from "./seerr-unified";
 import { fetchSeerrRequestsPage } from "./seerr-requests-fetch";
@@ -24,6 +25,12 @@ import { rowsCacheKey } from "./routes-requests-read";
 import type { MergedRows } from "./requests-list";
 
 const PROGRESS_TTL_MS = 10_000;
+/*
+ * La file du serveur est la même pour tout le monde : une seule entrée de
+ * cache, sans identifiant d'utilisateur. Dix onglets ouverts ne déclenchent
+ * donc qu'un appel *arr toutes les huit secondes.
+ */
+const QUEUE_TTL_MS = 8_000;
 
 export interface ProgressItem {
   /** Même identifiant que dans la liste : 'seerr-<n>' ou l'uuid local. */
@@ -39,7 +46,24 @@ export function registerProgressRoutes(
   app: FastifyInstance,
   prisma: PrismaClient,
   getWorkerConfig: () => Promise<WorkerCfg | null>,
+  requireAdmin: (req: FastifyRequest, reply: FastifyReply) => Promise<void>,
 ): void {
+
+  /* ── Tout ce que le serveur récupère, demandes des autres comprises ──
+   *
+   * Jellyseerr ne connaît que ses propres demandes : ce qu'un administrateur
+   * ajoute directement dans Sonarr ou Radarr n'apparaît nulle part. On lit donc
+   * les files en direct — ce qui expose l'activité de TOUT le serveur, d'où le
+   * garde d'administration, posé ici et pas seulement dans l'interface. */
+  app.get("/downloads", { preHandler: requireAdmin }, async () => {
+    const config = await getWorkerConfig();
+    const empty: QueueResponse = {
+      updatedAt: new Date().toISOString(), items: [], total: 0, unreachable: [],
+    };
+    if (!config) return empty;
+
+    return cached("seer:arr:queue", QUEUE_TTL_MS, () => fetchServerQueue(config));
+  });
 
   app.get("/requests/progress", async (request) => {
     const user = getUser(request);

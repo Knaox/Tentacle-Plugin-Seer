@@ -6,7 +6,7 @@ import { backendFetch } from "./seer-client";
 import { getCurrentLanguage } from "../utils/media-helpers";
 import type { MediaType } from "./types";
 import type {
-  AvailabilityResponse, RequestsProgressResponse,
+  AvailabilityResponse, RequestsProgressResponse, QueueResponse,
   CalendarResponse, CalendarProvider, CalendarMediaFilter,
 } from "./types-releases";
 
@@ -63,6 +63,11 @@ export async function getGlobalCalendar(opts: {
   if (opts.from) p.set("from", opts.from);
   if (opts.to) p.set("to", opts.to);
   return backendFetch(`/calendar/global?${p}`);
+}
+
+/** La file du serveur, demandes de tout le monde comprises. Admins seulement. */
+export async function getServerDownloads(): Promise<QueueResponse> {
+  return backendFetch("/downloads");
 }
 
 /**

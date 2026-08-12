@@ -94,10 +94,10 @@ export default async function seerBackend(
     const user = (request as any).user;
     // Admins voient toute la config (pour la page admin)
     if (user?.isAdmin) {
-      return config;
+      return { ...config, isAdmin: true };
     }
-    // Users normaux : infos non-sensibles seulement
-    return { url: config.url || "", enabled: !!config.enabled, hasApiKey: !!config.apiKey };
+    // Non-admins : infos non-sensibles. `isAdmin` dit au client quoi proposer.
+    return { url: config.url || "", enabled: !!config.enabled, hasApiKey: !!config.apiKey, isAdmin: false };
   });
 
   app.put("/config", { preHandler: ctx.requireAdmin }, async (request) => {
@@ -322,7 +322,7 @@ export default async function seerBackend(
   });
   registerUsersRoutes(app, prisma, gwc, ctx.requireAdmin);
   registerAvailabilityRoutes(app, prisma, gwc);
-  registerProgressRoutes(app, prisma, gwc);
+  registerProgressRoutes(app, prisma, gwc, ctx.requireAdmin);
   registerCalendarRoutes(app, prisma, gwc);
 
   registerMiscRoutes(app, prisma, gwc, ctx.requireAdmin);

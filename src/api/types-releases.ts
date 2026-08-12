@@ -79,6 +79,38 @@ export interface ProgressItem {
   downloads?: DownloadProgress[];
 }
 
+/* ── File de téléchargement du serveur (administrateurs) ──────────── */
+
+/**
+ * Une ligne de la file Sonarr ou Radarr — y compris ce qui n'a été demandé par
+ * personne via le plugin. Réservé aux administrateurs : cette liste expose
+ * l'activité de tout le serveur.
+ */
+export interface QueueEntry {
+  id: string;
+  source: "sonarr" | "radarr";
+  mediaType: MediaType;
+  title: string;
+  seasonNumber: number | null;
+  episodeNumber: number | null;
+  episodeTitle: string | null;
+  tmdbId: number | null;
+  percent: number | null;
+  size: number | null;
+  etaSeconds: number | null;
+  validating: boolean;
+  paused: boolean;
+  warning: string | null;
+}
+
+export interface QueueResponse {
+  updatedAt: string;
+  items: QueueEntry[];
+  total: number;
+  /** Services injoignables — à dire, plutôt que d'afficher « rien en cours ». */
+  unreachable: Array<"sonarr" | "radarr">;
+}
+
 export interface RequestsProgressResponse {
   /** Ancre d'interpolation : sans elle, impossible d'animer sans requête. */
   updatedAt: string;

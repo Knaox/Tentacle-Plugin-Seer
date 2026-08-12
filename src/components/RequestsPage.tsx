@@ -15,6 +15,8 @@ import { RequestsStatsBar } from "./RequestsStatsBar";
 import { RequestsToolbar, type StatusFilter, type TypeFilter } from "./RequestsToolbar";
 import { RequestsBulkBar, BulkRetryModal } from "./RequestsBulkUI";
 import { RequestsQueueBanner } from "./RequestsQueueBanner";
+import { DownloadsPanel } from "./DownloadsPanel";
+import { useIsAdmin } from "../hooks/useIsAdmin";
 import type { LocalRequest, SeerrSearchResult } from "../api/types";
 
 const MediaDetailModal = lazy(() =>
@@ -39,9 +41,14 @@ export function RequestsPage() {
   const [actionModal, setActionModal] = useState<{ request: LocalRequest; action: "delete" | "retry" } | null>(null);
   const [markMenuFor, setMarkMenuFor] = useState<LocalRequest | null>(null);
 
+  /* L'onglet d'administration ne filtre pas la liste : il la remplace par la
+   * file du serveur. La liste des demandes n'est alors plus interrogée. */
+  const isAdmin = useIsAdmin();
+  const serverView = isAdmin && statusFilter === "server_downloads";
+
   // « En attente » regroupe la file locale (queued) ET les demandes
   // « Demandée » (unavailable : approuvées côté Jellyseerr, pas encore acquises).
-  const backendStatus = statusFilter === "all" ? undefined
+  const backendStatus = statusFilter === "all" || serverView ? undefined
     : statusFilter === "queued" ? "queued,unavailable"
     : statusFilter;
   const backendType = typeFilter === "all" ? undefined : typeFilter;
@@ -181,9 +188,12 @@ export function RequestsPage() {
         selectionMode={selectionMode}
         onToggleSelectionMode={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}
         searchInputRef={searchInputRef}
+        showServerDownloads={isAdmin}
       />
 
-      <RequestsList
+      {/* Onglet d'administration : la file entière du serveur, pas la liste
+          des demandes — d'où la bascule de vue plutôt qu'un filtre de plus. */}
+      {serverView ? <DownloadsPanel active={serverView} /> : <RequestsList
         isLoading={isLoading}
         requests={requests}
         progressById={progress.byId}
@@ -204,10 +214,10 @@ export function RequestsPage() {
         marking={markMutation.isPending}
         deleting={deleteMutation.isPending}
         retrying={retryMutation.isPending}
-      />
+      />}
 
       {/* Bulk action bar */}
-      {selectionMode && selectedIds.size > 0 && (
+      {!serverView && selectionMode && selectedIds.size > 0 && (
         <RequestsBulkBar
           count={selectedIds.size}
           deleting={bulkDeleteMutation.isPending}

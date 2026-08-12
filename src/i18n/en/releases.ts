@@ -36,6 +36,13 @@ export default {
   // Short in the chip, which shares its line with a truncated title.
   statusValidating: "Validating",
   progressValidating: "Download finished — checking and importing",
+
+  // Server download queue (administrators)
+  downloadsTab: "Server downloads",
+  downloadsSubtitle:
+    "The Sonarr and Radarr queue: everything the server is fetching, everyone's requests included.",
+  downloadsEmpty: "Nothing coming down right now",
+  downloadsUnreachable: "{{service}} is not responding — this list may be incomplete",
   progressSearching: "Looking for a source",
   progressEpisodes_one: "{{count}} episode in progress",
   progressEpisodes_other: "{{count}} episodes in progress",

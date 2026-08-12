@@ -37,6 +37,13 @@ export default {
   // Court dans la puce, qui partage sa ligne avec un titre tronqué.
   statusValidating: "En cours de validation",
   progressValidating: "Téléchargement terminé — vérification et rangement en cours",
+
+  // File de téléchargement du serveur (administrateurs)
+  downloadsTab: "Téléchargements du serveur",
+  downloadsSubtitle:
+    "La file de Sonarr et Radarr : tout ce que le serveur récupère, demandes de tout le monde comprises.",
+  downloadsEmpty: "Rien ne descend en ce moment",
+  downloadsUnreachable: "{{service}} ne répond pas — cette liste est peut-être incomplète",
   progressSearching: "Recherche d'une source en cours",
   progressEpisodes_one: "{{count}} épisode en cours",
   progressEpisodes_other: "{{count}} épisodes en cours",

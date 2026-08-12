@@ -5,7 +5,9 @@ import { pill } from "../styles/pills";
 
 export type StatusFilter =
   | "all" | "queued" | "sent_to_seer" | "approved"
-  | "downloading" | "available" | "failed" | "deleting";
+  | "downloading" | "available" | "failed" | "deleting"
+  /** Pas un statut de demande : bascule vers la file du serveur (admins). */
+  | "server_downloads";
 
 export type TypeFilter = "all" | "movie" | "tv";
 
@@ -33,6 +35,8 @@ interface RequestsToolbarProps {
   onToggleSelectionMode: () => void;
   /** Cible du raccourci ⌘K / Ctrl+K. */
   searchInputRef?: RefObject<HTMLInputElement | null>;
+  /** Ouvre l'onglet de la file du serveur — administrateurs seulement. */
+  showServerDownloads?: boolean;
 }
 
 /** Recherche + filtres statut/type + bascule sélection de la page Demandes. */
@@ -41,9 +45,12 @@ export function RequestsToolbar({
   statusFilter, onStatusFilterChange,
   typeFilter, onTypeFilterChange,
   showSelectToggle, selectionMode, onToggleSelectionMode,
-  searchInputRef,
+  searchInputRef, showServerDownloads,
 }: RequestsToolbarProps) {
   const { t } = useTranslation("seer");
+  const tabs = showServerDownloads
+    ? [...STATUS_TABS, { value: "server_downloads" as StatusFilter, key: "seer:downloadsTab" }]
+    : STATUS_TABS;
 
   return (
     <>
@@ -82,7 +89,7 @@ export function RequestsToolbar({
 
       {/* Filtres statut */}
       <div className="mb-4 flex flex-wrap gap-2">
-        {STATUS_TABS.map((tab) => (
+        {tabs.map((tab) => (
           <button
             key={tab.value}
             onClick={() => onStatusFilterChange(tab.value)}
