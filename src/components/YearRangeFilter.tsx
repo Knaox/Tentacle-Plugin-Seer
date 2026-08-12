@@ -18,9 +18,6 @@ export function YearRangeFilter({ yearFrom, yearTo, onYearFromChange, onYearToCh
 
   return (
     <div>
-      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-tentacle-text-tertiary">
-        {t("filterYear")}
-      </h4>
       <div className="flex items-center gap-3">
         <input
           type="number"

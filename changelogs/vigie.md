@@ -34,6 +34,7 @@ auto-bumpé par le message du commit (`feat`→mineure, `fix`→patch, `!`→maj
 - Le raccourci affiche **⌘K sur Mac** au lieu de « Ctrl+K », et fonctionne aussi sur Mes demandes qui n'en avait aucun
 - Revenir sur une page du plugin la rouvre **en haut**
 - Les pages du plugin peuvent être **retirées de la barre de navigation** (menu « Bibliothèques ») ; elles y sont par défaut
+- **Les filtres du catalogue sont rangés** : sept sections dépliées d'un coup deviennent des sections repliables, chacune avec le nombre de valeurs retenues et son propre « Effacer ». Le panneau parlait quatre langages de bouton différents, il n'en parle plus qu'un. Un bouton fixe en bas annonce combien de titres correspondent
 - Correctif : une suppression par un utilisateur ne vidait plus seulement son propre cache mais celui de tout le monde
 
 ### EN
@@ -50,6 +51,7 @@ auto-bumpé par le message du commit (`feat`→mineure, `fix`→patch, `!`→maj
 - The shortcut hint shows **⌘K on Mac** instead of "Ctrl+K", and now works on My Requests too
 - Returning to a plugin page reopens it **at the top**
 - Plugin pages can be **removed from the navigation bar** (Libraries menu); they are pinned by default
+- **Catalog filters are tidied up**: seven sections unfolded at once become collapsible ones, each showing how many values are selected and its own "Clear". The panel spoke four different button languages, now just one. A fixed button at the bottom states how many titles match
 - Fix: one user deleting a request used to clear everyone's cache, not just their own
 
 ## [1.13.2]

@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { pill } from "../styles/pills";
 import { PLATFORMS } from "../utils/platforms";
 
 interface PlatformFilterProps {
@@ -6,37 +7,31 @@ interface PlatformFilterProps {
   onToggle: (id: number) => void;
 }
 
+/**
+ * Les plateformes de streaming. Même motif de pilule que les autres filtres :
+ * la grille à deux colonnes avec coche mettait onze plateformes sur six lignes
+ * pour des noms courts, et introduisait un troisième style de contrôle dans un
+ * panneau qui en comptait déjà trop.
+ */
 export function PlatformFilter({ selected, onToggle }: PlatformFilterProps) {
   const { t } = useTranslation("seer");
+  void t;
 
   return (
-    <div>
-      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-tentacle-text-tertiary">
-        {t("filterPlatforms")}
-      </h4>
-      <div className="grid grid-cols-2 gap-2">
-        {PLATFORMS.map((p) => {
-          const active = selected.includes(p.id);
-          return (
-            <button
-              key={p.id}
-              onClick={() => onToggle(p.id)}
-              className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
-                active
-                  ? "border border-[rgba(var(--brand-rgb),0.5)] bg-[rgba(var(--brand-rgb),0.1)] text-tentacle-brand"
-                  : "border border-tentacle-border-subtle bg-tentacle-fill-subtle text-tentacle-text-tertiary hover:bg-tentacle-fill-medium hover:text-tentacle-text-secondary"
-              }`}
-            >
-              {active && (
-                <svg className="h-3 w-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                </svg>
-              )}
-              <span className="truncate">{p.name}</span>
-            </button>
-          );
-        })}
-      </div>
+    <div className="flex flex-wrap gap-2">
+      {PLATFORMS.map((p) => {
+        const active = selected.includes(p.id);
+        return (
+          <button
+            key={p.id}
+            onClick={() => onToggle(p.id)}
+            aria-pressed={active}
+            className={pill(active)}
+          >
+            {p.name}
+          </button>
+        );
+      })}
     </div>
   );
 }

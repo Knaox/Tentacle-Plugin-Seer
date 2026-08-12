@@ -278,6 +278,7 @@ export function DiscoverPage() {
         onSortOrderChange={setSortOrder}
         onReset={resetFilters}
         activeFilterCount={activeFilterCount}
+        resultCount={totalResults}
       />
     </div>
   );

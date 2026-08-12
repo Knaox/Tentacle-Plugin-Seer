@@ -4,6 +4,9 @@ import { GenreFilter } from "./GenreFilter";
 import { PlatformFilter } from "./PlatformFilter";
 import { YearRangeFilter } from "./YearRangeFilter";
 import { RatingSlider } from "./RatingSlider";
+import { FilterSection } from "./filters/FilterSection";
+import { pill, ICON_BUTTON } from "../styles/pills";
+import { CTA_PRIMARY } from "../styles/cta";
 import { MOVIE_GENRES, TV_GENRES } from "../constants/genres";
 import { LANGUAGES } from "../constants/languages";
 import { TV_STATUSES } from "../constants/tv-statuses";
@@ -25,6 +28,8 @@ interface FilterPanelProps {
   onSortOrderChange: (v: SortOrder) => void;
   onReset: () => void;
   activeFilterCount: number;
+  /** Nombre de titres correspondant aux filtres, pour le bouton de sortie. */
+  resultCount?: number | null;
 }
 
 const SORT_OPTIONS: { value: SortOption; key: string }[] = [
@@ -50,6 +55,7 @@ export function FilterPanel({
   onSortOrderChange,
   onReset,
   activeFilterCount,
+  resultCount,
 }: FilterPanelProps) {
   const { t } = useTranslation("seer");
   const panelRef = useRef<HTMLDivElement>(null);
@@ -128,33 +134,33 @@ export function FilterPanel({
           </div>
         </div>
 
-        {/* Scrollable content */}
-        <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5" style={{ scrollbarWidth: "thin", scrollbarColor: "var(--brand) transparent" }}>
-          {/* Sort */}
-          <div>
-            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-tentacle-text-tertiary">
-              {t("filterSort")}
-            </h4>
-            <div className="flex flex-wrap gap-2">
+        {/* Corps — chaque famille de filtres dans une section repliable.
+            Auparavant les sept sections étaient dépliées d'un coup : plusieurs
+            écrans de défilement où tout se ressemblait, et les valeurs déjà
+            cochées se perdaient dans la masse. */}
+        <div
+          className="flex-1 overflow-y-auto px-5 py-2"
+          style={{ scrollbarWidth: "thin", scrollbarColor: "var(--brand) transparent" }}
+        >
+          <FilterSection title={t("filterSort")} alwaysOpen>
+            <div className="flex flex-wrap items-center gap-2">
               {SORT_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
                   onClick={() => onSortByChange(opt.value)}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                    filters.sortBy === opt.value
-                      ? "bg-tentacle-cta-primary text-tentacle-cta-primary-fg shadow-sm"
-                      : "bg-tentacle-fill-subtle text-tentacle-text-tertiary hover:bg-tentacle-fill-medium hover:text-tentacle-text-secondary"
-                  }`}
+                  aria-pressed={filters.sortBy === opt.value}
+                  className={pill(filters.sortBy === opt.value)}
                 >
                   {t(opt.key)}
                 </button>
               ))}
               <button
                 onClick={() => onSortOrderChange(filters.sortOrder === "desc" ? "asc" : "desc")}
-                className="flex items-center gap-1 rounded-lg bg-tentacle-fill-subtle px-2.5 py-1.5 text-xs font-medium text-tentacle-text-tertiary transition-colors hover:bg-tentacle-fill-medium hover:text-tentacle-text-secondary"
+                className={ICON_BUTTON}
                 title={filters.sortOrder === "desc" ? t("sortOrderDesc") : t("sortOrderAsc")}
+                aria-label={filters.sortOrder === "desc" ? t("sortOrderDesc") : t("sortOrderAsc")}
               >
-                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   {filters.sortOrder === "desc" ? (
                     <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 13.5 12 21m0 0-7.5-7.5M12 21V3" />
                   ) : (
@@ -163,50 +169,79 @@ export function FilterPanel({
                 </svg>
               </button>
             </div>
-          </div>
+          </FilterSection>
 
-          {/* Genres */}
-          <GenreFilter genres={genres} selected={filters.genres} onToggle={onToggleGenre} />
+          <FilterSection
+            title={t("filterGenres")}
+            count={filters.genres.length}
+            onClear={() => filters.genres.forEach(onToggleGenre)}
+          >
+            <GenreFilter genres={genres} selected={filters.genres} onToggle={onToggleGenre} />
+          </FilterSection>
 
-          {/* Platforms */}
-          <PlatformFilter selected={filters.watchProviders} onToggle={onToggleWatchProvider} />
+          <FilterSection
+            title={t("filterPlatforms")}
+            count={filters.watchProviders.length}
+            onClear={() => filters.watchProviders.forEach(onToggleWatchProvider)}
+          >
+            <PlatformFilter selected={filters.watchProviders} onToggle={onToggleWatchProvider} />
+          </FilterSection>
 
-          {/* Year */}
-          <YearRangeFilter
-            yearFrom={filters.yearFrom}
-            yearTo={filters.yearTo}
-            onYearFromChange={onYearFromChange}
-            onYearToChange={onYearToChange}
-          />
+          <FilterSection
+            title={t("filterYear")}
+            count={(filters.yearFrom ? 1 : 0) + (filters.yearTo ? 1 : 0)}
+            onClear={() => { onYearFromChange(null); onYearToChange(null); }}
+          >
+            <YearRangeFilter
+              yearFrom={filters.yearFrom}
+              yearTo={filters.yearTo}
+              onYearFromChange={onYearFromChange}
+              onYearToChange={onYearToChange}
+            />
+          </FilterSection>
 
-          {/* Rating */}
-          <RatingSlider value={filters.ratingMin} onChange={onRatingMinChange} />
+          <FilterSection
+            title={t("filterRating")}
+            count={filters.ratingMin ? 1 : 0}
+            onClear={() => onRatingMinChange(null)}
+          >
+            <RatingSlider value={filters.ratingMin} onChange={onRatingMinChange} />
+          </FilterSection>
 
-          {/* Language */}
-          <div>
-            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-tentacle-text-tertiary">
-              {t("filterLanguage")}
-            </h4>
-            <select
-              value={filters.originalLanguage ?? ""}
-              onChange={(e) => onLanguageChange(e.target.value || null)}
-              className="w-full rounded-lg border border-tentacle-border-subtle bg-tentacle-fill-subtle px-3 py-2 text-xs text-tentacle-text-primary outline-none focus:border-[rgba(var(--brand-rgb),0.4)] focus:ring-2 focus:ring-[rgba(var(--brand-rgb),0.5)]"
-            >
-              <option value="" className="bg-tentacle-surface-1">{t("filterLanguageAll")}</option>
+          <FilterSection
+            title={t("filterLanguage")}
+            count={filters.originalLanguage ? 1 : 0}
+            onClear={() => onLanguageChange(null)}
+          >
+            {/* Douze langues : des pilules se parcourent d'un regard, là où une
+                liste déroulante oblige à ouvrir puis chercher. */}
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => onLanguageChange(null)}
+                aria-pressed={!filters.originalLanguage}
+                className={pill(!filters.originalLanguage)}
+              >
+                {t("filterLanguageAll")}
+              </button>
               {LANGUAGES.map((l) => (
-                <option key={l.code} value={l.code} className="bg-tentacle-surface-1">
+                <button
+                  key={l.code}
+                  onClick={() => onLanguageChange(filters.originalLanguage === l.code ? null : l.code)}
+                  aria-pressed={filters.originalLanguage === l.code}
+                  className={pill(filters.originalLanguage === l.code)}
+                >
                   {t(l.key)}
-                </option>
+                </button>
               ))}
-            </select>
-          </div>
+            </div>
+          </FilterSection>
 
-          {/* TV Status (only for TV) */}
           {mediaType === "tv" && (
-            <div>
-              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-tentacle-text-tertiary">
-                {t("filterTvStatus")}
-              </h4>
+            <FilterSection
+              title={t("filterTvStatus")}
+              count={filters.tvStatus.length}
+              onClear={() => filters.tvStatus.forEach(onToggleTvStatus)}
+            >
               <div className="flex flex-wrap gap-2">
                 {TV_STATUSES.map((s) => {
                   const active = filters.tvStatus.includes(s.value as TvStatus);
@@ -214,19 +249,26 @@ export function FilterPanel({
                     <button
                       key={s.value}
                       onClick={() => onToggleTvStatus(s.value as TvStatus)}
-                      className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                        active
-                          ? "bg-[rgba(var(--brand-rgb),0.2)] text-tentacle-brand ring-1 ring-[rgba(var(--brand-rgb),0.5)]"
-                          : "bg-tentacle-fill-subtle text-tentacle-text-tertiary hover:bg-tentacle-fill-medium hover:text-tentacle-text-secondary"
-                      }`}
+                      aria-pressed={active}
+                      className={pill(active)}
                     >
                       {t(s.key)}
                     </button>
                   );
                 })}
               </div>
-            </div>
+            </FilterSection>
           )}
+        </div>
+
+        {/* Pied collant — le bouton de sortie reste sous le pouce, quelle que
+            soit la longueur du panneau. */}
+        <div className="border-t border-tentacle-border-subtle px-5 py-3">
+          <button onClick={onClose} className={`${CTA_PRIMARY} h-11 w-full`}>
+            {resultCount != null
+              ? t("filterShowResults", { count: resultCount })
+              : t("filterApply")}
+          </button>
         </div>
       </div>
     </>

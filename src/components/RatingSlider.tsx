@@ -12,9 +12,6 @@ export function RatingSlider({ value, onChange }: RatingSliderProps) {
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
-        <h4 className="text-xs font-semibold uppercase tracking-wider text-tentacle-text-tertiary">
-          {t("filterRating")}
-        </h4>
         <span className="text-xs font-medium text-tentacle-text-secondary">
           {current > 0 ? `${current.toFixed(1)}+` : t("filterRatingAny")}
         </span>
