@@ -70,6 +70,8 @@ jobs:
           echo "checksum=sha256:$(sha256sum "$TARBALL" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
           echo "min=$(node -p "require('./plugin.json').minTentacleVersion || '1.1.0'")" >> "$GITHUB_OUTPUT"
           echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+          # Titre de la Release : plugin.json fait foi (il portait « Seer » en dur).
+          echo "name=$(node -p "require('./plugin.json').name || 'Vigie'")" >> "$GITHUB_OUTPUT"
           node scripts/release-notes.mjs --version "$V" > notes.md || true
           if [ ! -s notes.md ]; then git log -1 --pretty=%s > notes.md; fi
           echo "Notes :"; cat notes.md
@@ -93,7 +95,7 @@ jobs:
         run: |
           V="${{ steps.bump.outputs.version }}"
           gh release create "v${V}" \
-            --title "Seer v${V}" \
+            --title "${{ steps.meta.outputs.name }} v${V}" \
             --notes-file notes.md \
             "${{ steps.meta.outputs.tarball }}"
 

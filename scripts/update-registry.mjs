@@ -15,8 +15,18 @@
  *
  * Idempotent : réécrit l'entrée si la version existe déjà. Met à jour
  * latestVersion. Préserve le reste du fichier (2 espaces + newline final).
+ *
+ * La FICHE (nom, description, auteur) est recopiée depuis plugin.json à chaque
+ * publication : ces champs avaient été saisis à la main lors de la première mise
+ * en ligne et sont restés sur « Seer - Media Requests » jusqu'à la 1.14.0, bien
+ * après le renommage en Vigie. L'`id`, lui, ne bouge jamais — c'est la clé des
+ * installations existantes.
  */
 import { readFileSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 function arg(name, def) {
   const i = process.argv.indexOf(`--${name}`);
@@ -37,6 +47,7 @@ const changelog = changelogFile
   ? readFileSync(changelogFile, "utf8").trim()
   : arg("changelog", "");
 const id = arg("id", "seer");
+const manifestPath = arg("manifest", join(ROOT, "plugin.json"));
 
 for (const [k, v] of Object.entries({ registry: registryPath, version, url: downloadUrl, checksum, date: releaseDate })) {
   if (!v) {
@@ -61,6 +72,20 @@ const entry = {
   changelog,
   releaseDate,
 };
+
+// Fiche du marketplace : plugin.json fait foi (l'id reste celui du registry).
+try {
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  for (const field of ["name", "description", "author"]) {
+    if (manifest[field] && plugin[field] !== manifest[field]) {
+      console.error(`Fiche : ${field} « ${plugin[field]} » → « ${manifest[field]} »`);
+      plugin[field] = manifest[field];
+    }
+  }
+} catch (err) {
+  // Fiche inchangée plutôt que publication bloquée.
+  console.error(`Fiche non synchronisée (${manifestPath}) : ${err.message}`);
+}
 
 plugin.versions = Array.isArray(plugin.versions) ? plugin.versions : [];
 const existing = plugin.versions.findIndex((v) => v.version === version);
