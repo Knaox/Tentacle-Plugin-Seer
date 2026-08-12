@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useTrending } from "../hooks/useDiscoverMedia";
 import { useInfiniteDiscover } from "../hooks/useInfiniteDiscover";
@@ -97,8 +97,12 @@ export function DiscoverPage() {
   const hasError = isError || trendingError;
   const errorMessage = error?.message || "";
 
-  const rawResults = isSearching ? (searchData?.results ?? []) : titles;
-  const filtered = rawResults.filter((item) => item.mediaType !== "person");
+  /* Mémoïsé : sans cela, un tableau neuf à chaque rendu relançait tout le
+   * pipeline de disponibilité et re-diffait la grille entière. */
+  const filtered = useMemo(() => {
+    const raw = isSearching ? (searchData?.results ?? []) : titles;
+    return raw.filter((item) => item.mediaType !== "person");
+  }, [isSearching, searchData, titles]);
 
   // Debounce search
   useEffect(() => {
