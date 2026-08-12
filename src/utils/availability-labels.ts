@@ -93,7 +93,24 @@ export function outlookLabel(verdict: AvailabilityVerdict, t: Translate): string
  */
 export function hasSignal(verdict: AvailabilityVerdict | null | undefined): boolean {
   if (!verdict) return false;
-  return (verdict.channels?.length ?? 0) > 0 || verdict.kind === "not_aired";
+  return (
+    (verdict.channels?.length ?? 0) > 0 ||
+    verdict.kind === "not_aired" ||
+    isUncharted(verdict)
+  );
+}
+
+/**
+ * Ni en salle, ni en streaming, ni annoncé nulle part — et pourtant rien
+ * n'empêche de le demander.
+ *
+ * Ces titres n'affichaient rien du tout, ce qui se lisait comme un oubli plutôt
+ * que comme une absence d'information. On le dit donc, mais sobrement : c'est
+ * la seule mention qui relève de la déduction et non d'une date connue.
+ */
+export function isUncharted(verdict: AvailabilityVerdict | null | undefined): boolean {
+  if (!verdict) return false;
+  return (verdict.channels?.length ?? 0) === 0 && verdict.outlook === "likely";
 }
 
 /**

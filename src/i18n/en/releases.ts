@@ -16,6 +16,11 @@ export default {
   // all we know about a running series or anime.
   availStreamingNow: "Streaming",
   availStreamingNowLong: "Watchable on a subscription platform",
+  // No known release anywhere. Say so rather than leave a silent card, which
+  // reads as an oversight rather than as missing information.
+  availUncharted: "Possibly obtainable",
+  availUnchartedLong:
+    "No known theatrical or streaming release — a request may still succeed",
   availPhysicalOut: "On Blu-ray",
   availPhysicalOutLong: "Released on DVD / Blu-ray on {{date}}",
   availPhysicalSoon: "Blu-ray {{date}}",

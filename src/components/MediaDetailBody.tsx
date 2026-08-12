@@ -169,7 +169,11 @@ export function MediaDetailBody({
       {/* Par où ce titre est sorti, et ce qu'une demande peut espérer. */}
       {hasSignal(availability) && (
         <div className="flex justify-center">
-          <AvailabilityPill verdict={availability} variant="detail" />
+          <AvailabilityPill
+            verdict={availability}
+            variant="detail"
+            inLibrary={mediaStatus >= 4}
+          />
         </div>
       )}
 

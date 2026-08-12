@@ -2,7 +2,8 @@ import { memo } from "react";
 import { useTranslation } from "react-i18next";
 import type { AvailabilityChannel, AvailabilityVerdict } from "../api/types-releases";
 import {
-  CHANNEL_STYLE, cardChannels, channelLabel, hasSignal, outlookLabel, shortDate, verdictTooltip,
+  CHANNEL_STYLE, cardChannels, channelLabel, hasSignal, isUncharted,
+  outlookLabel, shortDate, verdictTooltip,
 } from "../utils/availability-labels";
 import { STATUS_STYLE } from "../styles/status";
 
@@ -24,15 +25,30 @@ interface Props {
   verdict: AvailabilityVerdict | null | undefined;
   /** `card` : compact sous le titre. `detail` : phrase complète. */
   variant?: "card" | "detail";
+  /**
+   * Titre déjà dans la bibliothèque. On tait alors « Potentiellement
+   * disponible » : la carte porte déjà « Disponible » sur son affiche, et les
+   * deux mentions côte à côte se contrediraient.
+   */
+  inLibrary?: boolean;
 }
 
-export const AvailabilityPill = memo(function AvailabilityPill({ verdict, variant = "card" }: Props) {
+export const AvailabilityPill = memo(function AvailabilityPill({
+  verdict, variant = "card", inLibrary,
+}: Props) {
   const { t } = useTranslation("seer");
 
   /* Les séries n'ont pas de canaux : leur seul obstacle est une diffusion qui
    * n'a pas commencé, et il vaut la peine d'être dit. */
   if (!hasSignal(verdict) || !verdict) return null;
   const channels = verdict.channels ?? [];
+
+  /* Aucune sortie connue nulle part : on le dit plutôt que de laisser une carte
+   * muette, qui se lit comme un oubli. Sauf s'il est déjà dans la bibliothèque. */
+  if (isUncharted(verdict)) {
+    if (inLibrary) return null;
+    return <Uncharted t={t} long={variant === "detail"} />;
+  }
 
   if (variant === "detail") {
     return (
@@ -79,6 +95,33 @@ function Chip({ channel, t, long }: { channel: AvailabilityChannel; t: Translate
   ) : (
     <span
       className={`inline-flex max-w-full items-center gap-1 truncate rounded px-1.5 py-0.5 text-[10px] font-medium ${style}`}
+    >
+      <Dot />
+      <span className="truncate">{label}</span>
+    </span>
+  );
+}
+
+/**
+ * Aucune sortie connue — mais rien n'interdit d'essayer.
+ *
+ * Volontairement en retrait : c'est la seule mention qui relève de la déduction
+ * et non d'une date. Elle ne doit pas se disputer l'attention avec « En Blu-ray »
+ * ou « En streaming », qui reposent, eux, sur un fait.
+ */
+function Uncharted({ t, long }: { t: Translate; long?: boolean }) {
+  const label = t(long ? "seer:availUnchartedLong" : "seer:availUncharted");
+  const style = "bg-tentacle-fill-subtle text-tentacle-text-tertiary";
+
+  return long ? (
+    <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium ${style}`}>
+      <Dot />
+      {label}
+    </span>
+  ) : (
+    <span
+      className={`mt-0.5 inline-flex max-w-full items-center gap-1 truncate rounded px-1.5 py-0.5 text-[10px] font-medium ${style}`}
+      title={t("seer:availUnchartedLong")}
     >
       <Dot />
       <span className="truncate">{label}</span>

@@ -16,6 +16,11 @@ export default {
   // c'est souvent tout ce qu'on sait d'une série ou d'un animé en cours.
   availStreamingNow: "En streaming",
   availStreamingNowLong: "Regardable en streaming sur abonnement",
+  // Aucune sortie connue, nulle part. On le dit plutôt que de laisser une
+  // carte muette — qui se lit comme un oubli, pas comme une absence d'info.
+  availUncharted: "Potentiellement disponible",
+  availUnchartedLong:
+    "Aucune sortie connue en salle ni en streaming — une demande peut malgré tout aboutir",
   availPhysicalOut: "En Blu-ray",
   availPhysicalOutLong: "Sorti en DVD / Blu-ray le {{date}}",
   availPhysicalSoon: "Blu-ray le {{date}}",

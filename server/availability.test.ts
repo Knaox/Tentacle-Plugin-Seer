@@ -97,11 +97,14 @@ test("Fight Club — vieux titre sur des plateformes : « en streaming », rien 
   assert.deepEqual(v.providerIds, [8, 337, 381]);
 });
 
-test("vieux titre sur aucune plateforme — on se tait", () => {
+test("vieux titre sur aucune plateforme — aucun canal, mais récupérable", () => {
   const v = classifyAvailability(
     meta({ theatricalDate: "1999-11-10", digitalDate: "2011-09-08" }),
     TODAY,
   );
+  /* Ce couple — aucun canal ET « likely » — est ce que l'interface rend en
+   * « Potentiellement disponible » : rien de connu nulle part, mais rien qui
+   * empêche d'essayer. */
   assert.deepEqual(ids(v), []);
   assert.equal(v.outlook, "likely");
 });
@@ -135,10 +138,11 @@ test("encore en salle mais déjà sur une plateforme — les deux sont dits", ()
   assert.equal(v.outlook, "likely");
 });
 
-test("aucune date typée — on se tait et on laisse demander", () => {
+test("aucune date typée — rien de connu, mais on laisse demander", () => {
   const v = classifyAvailability(meta({ releaseDate: "2011-03-04" }), TODAY);
   assert.deepEqual(ids(v), []);
   assert.equal(v.kind, "released");
+  // Idem : l'interface en fait « Potentiellement disponible ».
   assert.equal(v.outlook, "likely");
 });
 

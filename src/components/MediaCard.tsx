@@ -197,7 +197,9 @@ export const MediaCard = memo(function MediaCard({
             </span>
           </div>
         )}
-        <AvailabilityPill verdict={availability} />
+        {/* Déjà dans la bibliothèque (partiellement ou non) : l'affiche porte
+            son badge, inutile d'ajouter une déduction en dessous. */}
+        <AvailabilityPill verdict={availability} inLibrary={mediaStatus >= 4} />
       </div>
     </div>
   );
