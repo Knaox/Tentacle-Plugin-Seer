@@ -4,7 +4,7 @@
 
 import type { FastifyRequest } from "fastify";
 import type { UnifiedRequest, SeerRequest } from "./types";
-import { mapSeerrStatus } from "./worker-sync";
+import { resolveRequestStatus } from "./request-status";
 import { aggregateDownloads, type SeerrDownloadItem } from "./download-progress";
 
 export interface JellyfinUser { userId: string; username: string; isAdmin: boolean; }
@@ -27,6 +27,10 @@ export interface SeerrRequestRow {
     tmdbId: number;
     mediaType: "movie" | "tv";
     status?: number;
+    /* Disponibilité SAISON PAR SAISON — c'est elle qui dit si une demande de
+     * deux saisons est satisfaite, là où `status` ne parle que de la série
+     * entière. Voir `request-status.ts`. */
+    seasons?: Array<{ seasonNumber: number; status?: number }>;
     /* Le tableau porte déjà taille, restant et temps restant : la progression
      * réelle ne coûte donc aucun appel supplémentaire. */
     downloadStatus?: SeerrDownloadItem[];
@@ -52,15 +56,8 @@ export function seerrRequestToUnified(
   fallbackUser: { jellyfinUserId: string; username: string },
 ): UnifiedRequest {
   const local = localById.get(sr.id);
-  let status = mapSeerrStatus(sr.status, sr.media?.status, sr.media?.downloadStatus);
-  // Épingle « Disponible » : une ligne locale "available" (posée par « Marquer
-  // comme » et exclue de la resynchro par design) l'emporte quand Jellyseerr a
-  // PERDU le média (availability-sync → UNKNOWN/DELETED, approbation fantôme).
-  // Un état réel plus actif (téléchargement, re-demande, dispo partielle…)
-  // reprend toujours la main.
-  if (local?.status === "available" && (status === "approved" || status === "unavailable" || status === "deleted")) {
-    status = "available";
-  }
+  // Épingle « Disponible » et disponibilité par-saison : voir `request-status`.
+  const status = resolveRequestStatus(sr, local);
   const seasons = sr.seasons?.map((s) => s.seasonNumber).filter((n) => typeof n === "number") ?? null;
   const mediaType = (sr.media?.mediaType ?? "movie") as "movie" | "tv";
   const title = detail?.title ?? detail?.name ?? local?.title ?? `#${sr.id}`;

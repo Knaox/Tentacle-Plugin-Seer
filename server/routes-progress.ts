@@ -20,7 +20,7 @@ import { getUser, type WorkerCfg, type SeerrRequestRow } from "./seerr-unified";
 import { fetchSeerrRequestsPage } from "./seerr-requests-fetch";
 import { resolveJellyseerrUserId } from "./jellyseerr-user";
 import { aggregateDownloads } from "./download-progress";
-import { mapSeerrStatus } from "./worker-sync";
+import { resolveRequestStatus } from "./request-status";
 import { rowsCacheKey } from "./routes-requests-read";
 import type { MergedRows } from "./requests-list";
 
@@ -92,7 +92,10 @@ export function registerProgressRoutes(
         const { summary, items: detail } = aggregateDownloads(sr.media?.downloadStatus);
         if (!summary) continue;
 
-        const status = mapSeerrStatus(sr.status, sr.media?.status, sr.media?.downloadStatus);
+        /* Même verdict que la liste : une demande dont toutes les saisons
+         * demandées sont arrivées est disponible, même si la série récupère
+         * encore des saisons que personne ici n'a demandées. */
+        const status = resolveRequestStatus(sr);
         /* Un téléchargement terminé sur une demande déjà disponible n'apprend
          * rien : l'afficher ferait une barre pleine sous un badge « Disponible »,
          * et surtout ferait poller le front pour rien. */

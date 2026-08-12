@@ -23,7 +23,7 @@ import {
 } from "./seerr-unified";
 import { fetchAllSeerrRequests } from "./seerr-requests-fetch";
 import { resolveJellyseerrUserId } from "./jellyseerr-user";
-import { mapSeerrStatus } from "./worker-sync";
+import { resolveRequestStatus } from "./request-status";
 import { rowToRequest } from "./db-helpers";
 
 /** Statuts locaux considérés comme « pas encore repris par Jellyseerr ». */
@@ -133,15 +133,9 @@ function effectiveStatus(
   deletingIds: Set<number>,
 ): RequestStatus {
   if (deletingIds.has(sr.id)) return "deleting";
-  const local = localBySeerrId.get(sr.id);
-  let status = mapSeerrStatus(sr.status, sr.media?.status, sr.media?.downloadStatus);
-  if (
-    local?.status === "available" &&
-    (status === "approved" || status === "unavailable" || status === "deleted")
-  ) {
-    status = "available";
-  }
-  return status;
+  /* Le MÊME verdict que la liste, sans quoi les compteurs du bandeau et les
+   * badges des cartes raconteraient deux histoires différentes. */
+  return resolveRequestStatus(sr, localBySeerrId.get(sr.id));
 }
 
 export function collectTmdbRefs(rows: MergedRows): TmdbRef[] {

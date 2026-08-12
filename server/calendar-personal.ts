@@ -22,7 +22,7 @@ import type { WorkerCfg, JellyfinUser } from "./seerr-unified";
 import type { MergedRows } from "./requests-list";
 import { resolveTmdbMeta, scheduleTmdbBackfill, DEFAULT_REGION } from "./tmdb-resolver";
 import { needsDateRefresh, needsTraitsRefresh } from "./calendar-freshness";
-import { mapSeerrStatus } from "./worker-sync";
+import { resolveRequestStatus } from "./request-status";
 import {
   type CalendarItem, type CalendarResponse, type CalendarKind,
   makeItemId, sortCalendarItems, capPerSeries,
@@ -70,7 +70,7 @@ export async function buildPersonalCalendar(
     if (!statusByKey.has(key)) {
       const local = rows.localBySeerrId.get(sr.id);
       statusByKey.set(key, {
-        status: mapSeerrStatus(sr.status, sr.media.status, sr.media.downloadStatus),
+        status: resolveRequestStatus(sr, local),
         requestId: local?.id ?? `seerr-${sr.id}`,
       });
     }

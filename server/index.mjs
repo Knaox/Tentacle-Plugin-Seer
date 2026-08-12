@@ -2420,6 +2420,28 @@ async function processNextRequest(prisma, config, skipIds) {
   return request.id;
 }
 
+// server/request-status.ts
+var AVAILABLE2 = 5;
+function allRequestedSeasonsAvailable(row) {
+  const requested = (row.seasons ?? []).map((s) => s.seasonNumber).filter((n) => typeof n === "number");
+  if (requested.length === 0) return false;
+  const available = new Set(
+    (row.media?.seasons ?? []).filter((s) => s.status === AVAILABLE2).map((s) => s.seasonNumber)
+  );
+  if (available.size === 0) return false;
+  return requested.every((n) => available.has(n));
+}
+function resolveRequestStatus(row, local) {
+  let status = mapSeerrStatus(row.status, row.media?.status, row.media?.downloadStatus);
+  if (local?.status === "available" && (status === "approved" || status === "unavailable" || status === "deleted")) {
+    status = "available";
+  }
+  if (status === "partially_available" && allRequestedSeasonsAvailable(row)) {
+    status = "available";
+  }
+  return status;
+}
+
 // server/download-progress.ts
 function parseTimeSpan(raw) {
   if (!raw || typeof raw !== "string") return null;
@@ -2523,10 +2545,7 @@ function getUser(request) {
 }
 function seerrRequestToUnified(sr, detail, localById, fallbackUser) {
   const local = localById.get(sr.id);
-  let status = mapSeerrStatus(sr.status, sr.media?.status, sr.media?.downloadStatus);
-  if (local?.status === "available" && (status === "approved" || status === "unavailable" || status === "deleted")) {
-    status = "available";
-  }
+  const status = resolveRequestStatus(sr, local);
   const seasons = sr.seasons?.map((s) => s.seasonNumber).filter((n) => typeof n === "number") ?? null;
   const mediaType = sr.media?.mediaType ?? "movie";
   const title = detail?.title ?? detail?.name ?? local?.title ?? `#${sr.id}`;
@@ -2701,12 +2720,7 @@ function computeStats(seerrRows, localOnly, localBySeerrId, deletingIds) {
 }
 function effectiveStatus(sr, localBySeerrId, deletingIds) {
   if (deletingIds.has(sr.id)) return "deleting";
-  const local = localBySeerrId.get(sr.id);
-  let status = mapSeerrStatus(sr.status, sr.media?.status, sr.media?.downloadStatus);
-  if (local?.status === "available" && (status === "approved" || status === "unavailable" || status === "deleted")) {
-    status = "available";
-  }
-  return status;
+  return resolveRequestStatus(sr, localBySeerrId.get(sr.id));
 }
 function collectTmdbRefs(rows) {
   const out = [];
@@ -4107,7 +4121,7 @@ function registerProgressRoutes(app, prisma, getWorkerConfig2, requireAdmin) {
       for (const sr of rows) {
         const { summary, items: detail } = aggregateDownloads(sr.media?.downloadStatus);
         if (!summary) continue;
-        const status = mapSeerrStatus(sr.status, sr.media?.status, sr.media?.downloadStatus);
+        const status = resolveRequestStatus(sr);
         if (status === "available" && (summary.percent ?? 0) >= 100) continue;
         items.push({
           id: localIds.get(sr.id) ?? `seerr-${sr.id}`,
@@ -4202,7 +4216,7 @@ async function buildPersonalCalendar(prisma, cfg, user, rows, opts) {
     if (!statusByKey.has(key)) {
       const local = rows.localBySeerrId.get(sr.id);
       statusByKey.set(key, {
-        status: mapSeerrStatus(sr.status, sr.media.status, sr.media.downloadStatus),
+        status: resolveRequestStatus(sr, local),
         requestId: local?.id ?? `seerr-${sr.id}`
       });
     }
