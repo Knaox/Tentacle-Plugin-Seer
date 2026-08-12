@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from "react";
 import type { DiscoverFilters, SortOption, SortOrder, TvStatus } from "../api/types";
-import type { ChannelId } from "../api/types-releases";
+import type { ChannelChoice } from "../utils/channel-filter";
 
 const DEFAULT_FILTERS: DiscoverFilters = {
   genres: [],
@@ -57,7 +57,7 @@ export function useDiscoverFilters() {
     }));
   }, []);
 
-  const toggleChannel = useCallback((c: ChannelId) => {
+  const toggleChannel = useCallback((c: ChannelChoice) => {
     setFilters((f) => ({
       ...f,
       channels: f.channels.includes(c) ? f.channels.filter((x) => x !== c) : [...f.channels, c],

@@ -15,11 +15,38 @@ import type { AvailabilityVerdict, ChannelId } from "../api/types-releases";
  * ne sait pas — viderait l'écran à chaque page chargée, le temps d'un
  * aller-retour, sur une grille qui défile à l'infini.
  */
+
+/** Ce que l'utilisateur coche. Trois choix, pas les quatre canaux internes. */
+export type ChannelChoice = "theatrical" | "streaming" | "physical";
+
+/**
+ * Ce que chaque choix recouvre réellement.
+ *
+ * « En streaming » en couvre DEUX, et c'est tout sauf un détail : une série n'a
+ * jamais de dates typées — elles ne se calculent que pour les films — donc
+ * `digital` ne la décrit jamais. Le seul canal qu'une série puisse porter est
+ * `streaming`, celui qui dit « c'est sur une plateforme en ce moment ».
+ * Ne retenir que `digital` masquait donc TOUTES les séries et tous les animés
+ * dès qu'on cochait quoi que ce soit.
+ *
+ * Les deux portent de toute façon le même libellé à l'écran : pour qui regarde,
+ * « sorti en streaming » et « disponible en streaming » sont la même chose.
+ */
+const COUVRE: Record<ChannelChoice, readonly ChannelId[]> = {
+  theatrical: ["theatrical"],
+  streaming: ["digital", "streaming"],
+  physical: ["physical"],
+};
+
 export function matchesChannels(
   verdict: AvailabilityVerdict | undefined,
-  wanted: readonly ChannelId[],
+  wanted: readonly ChannelChoice[],
 ): boolean {
   if (wanted.length === 0) return true;
   if (!verdict) return true;
-  return verdict.channels.some((c) => wanted.includes(c.id));
+
+  const acceptes = new Set<ChannelId>();
+  for (const choix of wanted) for (const id of COUVRE[choix]) acceptes.add(id);
+
+  return verdict.channels.some((c) => acceptes.has(c.id));
 }

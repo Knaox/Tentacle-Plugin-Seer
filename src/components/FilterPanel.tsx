@@ -10,7 +10,7 @@ import { MOVIE_GENRES, TV_GENRES } from "../constants/genres";
 import { LANGUAGES } from "../constants/languages";
 import { TV_STATUSES } from "../constants/tv-statuses";
 import type { DiscoverMediaType, DiscoverFilters, SortOption, SortOrder, TvStatus } from "../api/types";
-import type { ChannelId } from "../api/types-releases";
+import type { ChannelChoice } from "../utils/channel-filter";
 
 interface FilterPanelProps {
   open: boolean;
@@ -24,7 +24,7 @@ interface FilterPanelProps {
   onRatingMinChange: (v: number | null) => void;
   onLanguageChange: (v: string | null) => void;
   onToggleTvStatus: (s: TvStatus) => void;
-  onToggleChannel: (c: ChannelId) => void;
+  onToggleChannel: (c: ChannelChoice) => void;
   onSortByChange: (v: SortOption) => void;
   onSortOrderChange: (v: SortOrder) => void;
   onReset: () => void;
@@ -33,12 +33,13 @@ interface FilterPanelProps {
   resultCount?: number | null;
 }
 
-/* Les canaux, dans l'ordre où une sortie les franchit. « En streaming en ce
- * moment » n'y figure pas : c'est un état présent, pas une sortie — et il
- * doublonnerait avec le filtre par plateforme. */
-const CHANNELS: { value: ChannelId; key: string }[] = [
+/* Les canaux, dans l'ordre où une sortie les franchit. « En streaming » couvre
+ * à la fois la sortie numérique d'un film et la présence actuelle sur une
+ * plateforme : une série n'a jamais de date typée, c'est sa seule façon d'être
+ * en streaming (cf. `channel-filter.ts`). */
+const CHANNELS: { value: ChannelChoice; key: string }[] = [
   { value: "theatrical", key: "releasesKindTheatrical" },
-  { value: "digital", key: "releasesKindDigital" },
+  { value: "streaming", key: "releasesKindDigital" },
   { value: "physical", key: "releasesKindPhysical" },
 ];
 

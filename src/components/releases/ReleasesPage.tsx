@@ -119,8 +119,14 @@ export function ReleasesPage() {
   const items = useMemo(() => {
     // Au bon jour d'abord : un épisode annoncé le 14 peut sortir le 13 au soir.
     const list = applyLocalDays(active.data?.items ?? []);
-    return sortReleases(list.filter((i) => matchesReleaseFilters(i, filters)), filters.sortBy);
-  }, [active.data, filters]);
+    /* En mode « Tout », le serveur a DÉJÀ trié par plateforme — il interroge
+     * TMDB avec elles. Repasser le filtre ici écartait les séries et les
+     * animés : ils arrivent par le calendrier des prochains épisodes, dont les
+     * plateformes ne sont renseignées que si la mémoire des fiches les connaît.
+     * Le serveur les avait retenus à juste titre, on les jetait juste après. */
+    const aAppliquer = mode === "all" ? { ...filters, providerIds: [] } : filters;
+    return sortReleases(list.filter((i) => matchesReleaseFilters(i, aAppliquer)), filters.sortBy);
+  }, [active.data, mode, filters]);
 
   /* Ouvrir une sortie mène à la fiche habituelle : depuis le calendrier, on
    * peut donc demander directement un titre encore à paraître. */
