@@ -127,7 +127,8 @@ export interface CalendarProvider {
   logoPath: string | null;
 }
 
-export type CalendarMode = "personal" | "all" | "provider";
+/** « provider » a disparu : les plateformes sont devenues un filtre, pas un mode. */
+export type CalendarMode = "personal" | "all";
 export type CalendarMediaFilter = "movie" | "tv" | "both";
 
 /* ── Statistiques (renvoyées avec la liste) ───────────────────────── */

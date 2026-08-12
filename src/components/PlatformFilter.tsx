@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { pill } from "../styles/pills";
 import { PLATFORMS } from "../utils/platforms";
 import { useCalendarProviders } from "../hooks/useReleases";
+import { providerInitials, providerLogoUrl } from "../hooks/useProviderCatalog";
 
 interface PlatformFilterProps {
   selected: number[];
@@ -69,13 +70,29 @@ export function PlatformFilter({ selected, onToggle }: PlatformFilterProps) {
       <div className="flex flex-wrap gap-2">
         {shown.map((p) => {
           const active = selected.includes(p.id);
+          const logo = providerLogoUrl(p.logoPath);
           return (
             <button
               key={p.id}
               onClick={() => onToggle(p.id)}
               aria-pressed={active}
-              className={pill(active)}
+              className={`${pill(active)} inline-flex items-center gap-1.5`}
             >
+              {/* Le logo se reconnaît avant que le nom ne se lise ; les
+                  initiales évitent le trou quand TMDB n'en fournit pas. */}
+              {logo ? (
+                <img
+                  src={logo} alt="" aria-hidden loading="lazy"
+                  className="h-4 w-4 shrink-0 rounded-[3px] object-cover ring-1 ring-tentacle-border-subtle"
+                />
+              ) : (
+                <span
+                  aria-hidden
+                  className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[3px] bg-tentacle-fill-medium text-[7px] font-bold text-tentacle-text-secondary ring-1 ring-tentacle-border-subtle"
+                >
+                  {providerInitials(p.name)}
+                </span>
+              )}
               {p.name}
             </button>
           );

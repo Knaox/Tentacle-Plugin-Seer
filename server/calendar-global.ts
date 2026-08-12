@@ -27,11 +27,9 @@
 
 import type { PrismaClient } from "@prisma/client";
 import type { WorkerCfg } from "./seerr-unified";
-import type { TmdbRef } from "./tmdb-cache";
-import { tmdbKey } from "./tmdb-cache";
-import { resolveTmdbMeta, scheduleTmdbBackfill } from "./tmdb-resolver";
 import { mapLimit } from "./concurrency";
 import { toDayString } from "./tmdb-fetch";
+import { attachProviderIds, buildProviderEpisodes } from "./calendar-providers";
 import {
   type CalendarItem, type CalendarResponse, type CalendarKind,
   makeItemId, sortCalendarItems, capPerSeries,
@@ -39,16 +37,18 @@ import {
 
 const PAGES = 3;
 const MAX_PER_SERIES = 2;
-/** Fiches récupérées en direct pour un calendrier plateforme encore froid. */
-const EPISODE_FETCH_BUDGET = 30;
 /** Statut Jellyseerr d'un média bloqué par tags — retiré comme sur le catalogue. */
 const MEDIA_STATUS_BLOCKLISTED = 6;
 /** TMDB `status=0` = « Returning Series » : la série diffuse encore. */
 const TMDB_STATUS_RETURNING = "0";
 
 export interface GlobalCalendarOpts {
-  scope: "all" | "provider";
-  providerId?: number;
+  /**
+   * Plateformes retenues. Vide = « tout ce qui sort ». Plusieurs valeurs se
+   * lisent comme un OU — TMDB accepte le tube, et le multi coûte donc
+   * exactement le même nombre d'appels que le mono.
+   */
+  providerIds: number[];
   mediaType: "movie" | "tv" | "both";
   region: string;
   from: string;
@@ -106,9 +106,10 @@ export async function buildGlobalCalendar(
 
   const tasks: Array<() => Promise<{ rows: DiscoverResult[]; type: "movie" | "tv" }>> = [];
 
-  if (opts.scope === "provider" && opts.providerId) {
+  if (opts.providerIds.length > 0) {
     const shared = {
-      watchProviders: String(opts.providerId),
+      // Le tube est un OU côté TMDB : « 8|337 » = Netflix ou Disney+.
+      watchProviders: opts.providerIds.join("|"),
       watchRegion: opts.region,
     };
 
@@ -136,10 +137,14 @@ export async function buildGlobalCalendar(
     const merged = new Map<string, CalendarItem>();
     for (const it of [...episodes.items, ...movies.items]) if (!merged.has(it.id)) merged.set(it.id, it);
 
+    const items = capPerSeries(sortCalendarItems(Array.from(merged.values())), MAX_PER_SERIES);
+    // Les vraies plateformes de chaque titre, lues en mémoire seulement.
+    await attachProviderIds(prisma, cfg, items, opts.region);
+
     return {
       from: opts.from,
       to: opts.to,
-      items: capPerSeries(sortCalendarItems(Array.from(merged.values())), MAX_PER_SERIES),
+      items,
       partial: episodes.partial,
       scanned: seriesRows.length + movies.scanned,
     };
@@ -211,7 +216,10 @@ function collectItems(
         seasonNumber: null,
         episodeNumber: null,
         networks: null,
-        providerIds: opts.providerId ? [opts.providerId] : [],
+        // Complété juste après depuis la mémoire des fiches : recopier ici la
+        // plateforme demandée revenait à jurer qu'un film est sur les quatre
+        // plateformes cochées.
+        providerIds: [],
         requestId: null,
         requestStatus: null,
       });
@@ -221,57 +229,3 @@ function collectItems(
   return { items: Array.from(unique.values()), scanned };
 }
 
-/**
- * Prochains épisodes des séries en cours de diffusion sur une plateforme.
- * Les dates viennent de la mémoire des fiches : gratuit une fois chaude, et
- * ce qui manque est complété en tâche de fond pour la prochaine consultation.
- */
-async function buildProviderEpisodes(
-  prisma: PrismaClient,
-  cfg: WorkerCfg,
-  rows: DiscoverResult[],
-  opts: GlobalCalendarOpts,
-): Promise<{ items: CalendarItem[]; partial: boolean }> {
-  const refs: TmdbRef[] = [];
-  const posters = new Map<number, DiscoverResult>();
-  for (const r of rows) {
-    if (!r.id || r.mediaInfo?.status === MEDIA_STATUS_BLOCKLISTED) continue;
-    refs.push({ mediaType: "tv", tmdbId: r.id });
-    posters.set(r.id, r);
-  }
-  if (refs.length === 0) return { items: [], partial: false };
-
-  const { meta, missing } = await resolveTmdbMeta(prisma, cfg, refs, {
-    maxFetch: EPISODE_FETCH_BUDGET,
-    region: opts.region,
-  });
-  if (missing.length > 0) scheduleTmdbBackfill(prisma, cfg, missing, opts.region);
-
-  const items: CalendarItem[] = [];
-  for (const ref of refs) {
-    const m = meta.get(tmdbKey(ref));
-    const date = m?.nextAirDate;
-    if (!m || !date || date < opts.from || date > opts.to) continue;
-
-    const src = posters.get(ref.tmdbId);
-    items.push({
-      id: makeItemId("tv", ref.tmdbId, "episode", date),
-      date,
-      mediaType: "tv",
-      tmdbId: ref.tmdbId,
-      title: m.title || src?.name || "",
-      posterPath: m.posterPath ?? src?.posterPath ?? null,
-      backdropPath: m.backdropPath ?? src?.backdropPath ?? null,
-      overview: m.overview ?? src?.overview ?? null,
-      kind: "episode",
-      seasonNumber: m.nextSeason,
-      episodeNumber: m.nextEpisode,
-      networks: m.networks,
-      providerIds: opts.providerId ? [opts.providerId] : [],
-      requestId: null,
-      requestStatus: null,
-    });
-  }
-
-  return { items, partial: missing.length > 0 };
-}

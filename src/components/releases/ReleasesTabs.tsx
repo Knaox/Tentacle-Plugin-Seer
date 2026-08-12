@@ -1,7 +1,6 @@
 import { useTranslation } from "react-i18next";
-import type { CalendarMediaFilter, CalendarMode } from "../../api/types-releases";
+import type { CalendarMode } from "../../api/types-releases";
 import { segment, SEGMENT_GROUP } from "../../styles/pills";
-import { PlatformPicker } from "./PlatformPicker";
 
 export type ReleasesView = "week" | "month";
 /** Mes sorties : uniquement ce qui reste à venir, ou toutes les demandes. */
@@ -12,24 +11,16 @@ interface Props {
   onModeChange: (mode: CalendarMode) => void;
   view: ReleasesView;
   onViewChange: (view: ReleasesView) => void;
-  mediaFilter: CalendarMediaFilter;
-  onMediaFilterChange: (value: CalendarMediaFilter) => void;
   scope: ReleasesScope;
   onScopeChange: (value: ReleasesScope) => void;
-  providerId: number | null;
-  onProviderChange: (id: number | null) => void;
+  /** Familles de filtres actives — pastille du bouton. */
+  activeFilterCount: number;
+  onOpenFilters: () => void;
 }
 
 const MODES: Array<{ value: CalendarMode; key: string }> = [
   { value: "personal", key: "seer:releasesTabPersonal" },
   { value: "all", key: "seer:releasesTabAll" },
-  { value: "provider", key: "seer:releasesTabProvider" },
-];
-
-const MEDIA: Array<{ value: CalendarMediaFilter; key: string }> = [
-  { value: "both", key: "seer:releasesFilterAll" },
-  { value: "movie", key: "seer:releasesFilterMovies" },
-  { value: "tv", key: "seer:releasesFilterTv" },
 ];
 
 const SCOPES: Array<{ value: ReleasesScope; key: string }> = [
@@ -40,16 +31,15 @@ const SCOPES: Array<{ value: ReleasesScope; key: string }> = [
 /**
  * Une seule barre d'outils, en segments.
  *
- * Elle empilait jusqu'à trois rangées — modes, filtre média, puis quarante
- * pilules de plateformes — soit un mur qui repoussait l'agenda hors de l'écran.
- * Tout tient maintenant sur une ligne (deux en écran étroit), chaque groupe
- * lisible comme un interrupteur, et la plateforme derrière un menu.
+ * Le mode « Par plateforme » a disparu : il imposait de choisir UNE plateforme
+ * et faisait perdre au passage l'affichage de ses propres demandes. Les
+ * plateformes sont maintenant un filtre à sélection multiple, derrière le même
+ * bouton que sur le catalogue — donc combinable avec n'importe quel mode.
  */
 export function ReleasesTabs({
   mode, onModeChange, view, onViewChange,
-  mediaFilter, onMediaFilterChange,
   scope, onScopeChange,
-  providerId, onProviderChange,
+  activeFilterCount, onOpenFilters,
 }: Props) {
   const { t } = useTranslation("seer");
 
@@ -88,25 +78,22 @@ export function ReleasesTabs({
         </div>
       )}
 
-      {mode === "provider" && (
-        <PlatformPicker value={providerId} onChange={onProviderChange} />
-      )}
-
-      {mode !== "personal" && (
-        <div className={SEGMENT_GROUP} role="group">
-          {MEDIA.map((m) => (
-            <button
-              key={m.value}
-              type="button"
-              aria-pressed={mediaFilter === m.value}
-              onClick={() => onMediaFilterChange(m.value)}
-              className={segment(mediaFilter === m.value)}
-            >
-              {t(m.key)}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Même bouton que sur le catalogue : un filtre s'ouvre partout pareil. */}
+      <button
+        type="button"
+        onClick={onOpenFilters}
+        className="relative flex items-center gap-1.5 rounded-lg border border-tentacle-border-subtle bg-tentacle-fill-subtle px-3 py-1.5 text-xs font-medium text-tentacle-text-secondary transition-colors hover:bg-tentacle-fill-medium hover:text-tentacle-text-secondary"
+      >
+        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" />
+        </svg>
+        {t("filterTitle")}
+        {activeFilterCount > 0 && (
+          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-tentacle-brand text-[9px] font-bold text-tentacle-cta-brand-fg">
+            {activeFilterCount}
+          </span>
+        )}
+      </button>
 
       {/* Poussé à droite : c'est un réglage d'affichage, pas un filtre. */}
       <div className={`${SEGMENT_GROUP} ml-auto`} role="tablist">

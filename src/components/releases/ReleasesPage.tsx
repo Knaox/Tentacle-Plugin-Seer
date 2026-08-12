@@ -11,6 +11,7 @@ import { mediaTitle, mediaYear } from "../../utils/media-helpers";
 import { ReleaseMonthView } from "./ReleaseMonthView";
 import { ReleaseWeekView } from "./ReleaseWeekView";
 import { ReleasesTabs, type ReleasesView, type ReleasesScope } from "./ReleasesTabs";
+import { ReleasesFilterSheet } from "./ReleasesFilterSheet";
 import { EmptyState } from "../EmptyState";
 import { SkeletonList } from "../SkeletonList";
 import { MediaDetailModal } from "../MediaDetailModal";
@@ -18,9 +19,18 @@ import { today, addDays } from "../../utils/calendar-groups";
 
 const VIEW_KEY = "seer_releases_view";
 const MODE_KEY = "seer_releases_mode";
+const PROVIDERS_KEY = "seer_releases_providers";
 const WINDOW_DAYS = 90;
 
-const MODES: CalendarMode[] = ["personal", "all", "provider"];
+const MODES: CalendarMode[] = ["personal", "all"];
+
+/** Sélection retenue d'une visite à l'autre, comme le mode et la vue. */
+function readProviders(): number[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(PROVIDERS_KEY) ?? "[]");
+    return Array.isArray(raw) ? raw.filter((n) => Number.isFinite(n) && n > 0) : [];
+  } catch { return []; }
+}
 
 /**
  * Les prochaines dates : celles des demandes en cours, ou celles d'une
@@ -36,7 +46,10 @@ export function ReleasesPage() {
    * pas à repasser par « Mes sorties » à chaque visite. */
   const [mode, setMode] = useState<CalendarMode>(() => {
     try {
+      // Un « provider » hérité de la version précédente doit être relu comme
+      // « all » : le mode par plateforme est devenu un filtre.
       const saved = localStorage.getItem(MODE_KEY) as CalendarMode | null;
+      if (saved === ("provider" as CalendarMode)) return "all";
       return saved && MODES.includes(saved) ? saved : "personal";
     } catch { return "personal"; }
   });
@@ -46,8 +59,23 @@ export function ReleasesPage() {
   }, []);
   const [mediaFilter, setMediaFilter] = useState<CalendarMediaFilter>("both");
   const [scope, setScope] = useState<ReleasesScope>("upcoming");
-  const [providerId, setProviderId] = useState<number | null>(null);
+  const [providerIds, setProviderIds] = useState<number[]>(readProviders);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [selected, setSelected] = useState<SeerrSearchResult | null>(null);
+
+  const changeProviders = useCallback((next: number[]) => {
+    setProviderIds(next);
+    try { localStorage.setItem(PROVIDERS_KEY, JSON.stringify(next)); }
+    catch { /* stockage indisponible */ }
+  }, []);
+  const toggleProvider = useCallback((id: number) => {
+    setProviderIds((cur) => {
+      const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
+      try { localStorage.setItem(PROVIDERS_KEY, JSON.stringify(next)); }
+      catch { /* stockage indisponible */ }
+      return next;
+    });
+  }, []);
 
   const [view, setView] = useState<ReleasesView>(() => {
     // Une valeur « list » héritée de la version précédente doit être relue
@@ -84,16 +112,23 @@ export function ReleasesPage() {
 
   const personal = usePersonalCalendar(from, to, mode === "personal", scope === "all");
   const global = useGlobalCalendar(
-    { providerId: mode === "provider" ? providerId ?? undefined : undefined, mediaType: mediaFilter, from, to },
-    mode === "all" || (mode === "provider" && providerId !== null),
+    { providerIds, mediaType: mediaFilter, from, to },
+    mode === "all",
   );
 
   const active = mode === "personal" ? personal : global;
   const items = useMemo(() => {
-    const list = active.data?.items ?? [];
-    if (mode === "personal" || mediaFilter === "both") return list;
-    return list.filter((i) => i.mediaType === mediaFilter);
-  }, [active.data, mode, mediaFilter]);
+    let list = active.data?.items ?? [];
+    if (mediaFilter !== "both") list = list.filter((i) => i.mediaType === mediaFilter);
+    /* Le serveur applique déjà les plateformes au mode « Tout » ; « Mes
+     * sorties » vient de vos demandes et se filtre donc ici, sur les
+     * plateformes déjà connues de chaque fiche. Un OU : cocher Netflix et
+     * Disney+ montre ce qui est sur l'une ou l'autre. */
+    if (mode === "personal" && providerIds.length > 0) {
+      list = list.filter((i) => i.providerIds.some((id) => providerIds.includes(id)));
+    }
+    return list;
+  }, [active.data, mode, mediaFilter, providerIds]);
 
   /* Ouvrir une sortie mène à la fiche habituelle : depuis le calendrier, on
    * peut donc demander directement un titre encore à paraître. */
@@ -132,12 +167,20 @@ export function ReleasesPage() {
     );
   }, [requestMedia, toast, t]);
 
-  const emptyKey =
-    mode === "personal" ? "seer:releasesEmptyPersonal"
-    : mode === "provider" ? "seer:releasesEmptyProvider"
-    : "seer:releasesEmptyGlobal";
+  const filtered = providerIds.length > 0;
+  const activeFilterCount = (filtered ? 1 : 0) + (mediaFilter === "both" ? 0 : 1);
+  const resetFilters = useCallback(() => {
+    changeProviders([]);
+    setMediaFilter("both");
+  }, [changeProviders]);
 
-  const waitingForPlatform = mode === "provider" && providerId === null;
+  const emptyKey = filtered
+    ? "seer:releasesEmptyFiltered"
+    : mode === "personal" ? "seer:releasesEmptyPersonal" : "seer:releasesEmptyGlobal";
+
+  const emptyHint = filtered
+    ? t("seer:releasesEmptyFilteredHint")
+    : mode === "personal" ? t("seer:releasesEmptyPersonalHint") : undefined;
 
   return (
     <div className="px-4 pt-4 md:px-8">
@@ -149,27 +192,33 @@ export function ReleasesPage() {
         onModeChange={changeMode}
         view={view}
         onViewChange={changeView}
-        mediaFilter={mediaFilter}
-        onMediaFilterChange={setMediaFilter}
         scope={scope}
         onScopeChange={setScope}
-        providerId={providerId}
-        onProviderChange={setProviderId}
+        activeFilterCount={activeFilterCount}
+        onOpenFilters={() => setFiltersOpen(true)}
+      />
+
+      <ReleasesFilterSheet
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        providerIds={providerIds}
+        onToggleProvider={toggleProvider}
+        onClearProviders={() => changeProviders([])}
+        mediaFilter={mediaFilter}
+        onMediaFilterChange={setMediaFilter}
+        onReset={resetFilters}
+        activeCount={activeFilterCount}
+        resultCount={active.isLoading ? null : items.length}
       />
 
       {active.data?.partial && (
         <p className="mb-3 text-xs text-tentacle-text-quaternary">{t("seer:releasesPartial")}</p>
       )}
 
-      {waitingForPlatform ? (
-        <EmptyState title={t("seer:releasesPickPlatform")} />
-      ) : active.isLoading ? (
+      {active.isLoading ? (
         <SkeletonList count={6} />
       ) : items.length === 0 ? (
-        <EmptyState
-          title={t(emptyKey)}
-          subtitle={mode === "personal" ? t("seer:releasesEmptyPersonalHint") : undefined}
-        />
+        <EmptyState title={t(emptyKey)} subtitle={emptyHint} />
       ) : view === "month" ? (
         <ReleaseMonthView items={items} onOpen={openItem} onRangeChange={coverRange} />
       ) : (

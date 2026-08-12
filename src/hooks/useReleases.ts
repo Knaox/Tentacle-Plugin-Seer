@@ -23,13 +23,19 @@ export function usePersonalCalendar(
  * bougent au mieux qu'une fois par jour : on les garde longtemps.
  */
 export function useGlobalCalendar(
-  opts: { providerId?: number; mediaType: CalendarMediaFilter; from?: string; to?: string },
+  opts: { providerIds?: readonly number[]; mediaType: CalendarMediaFilter; from?: string; to?: string },
   enabled = true,
 ) {
+  /* Clé triée, comme côté serveur : cocher Netflix puis Disney+ doit tomber
+   * sur la même entrée de cache que l'ordre inverse. */
+  const scope = opts.providerIds?.length
+    ? [...opts.providerIds].sort((a, b) => a - b).join("-")
+    : "all";
+
   return useQuery({
     queryKey: [
       "seer-calendar-global",
-      opts.providerId ?? "all", opts.mediaType, opts.from ?? "", opts.to ?? "", currentRegion(),
+      scope, opts.mediaType, opts.from ?? "", opts.to ?? "", currentRegion(),
     ],
     queryFn: () => getGlobalCalendar(opts),
     enabled,

@@ -4074,11 +4074,65 @@ function metaToCalendarItems(m, from, to) {
   return out;
 }
 
+// server/calendar-providers.ts
+var EPISODE_FETCH_BUDGET = 30;
+var MEDIA_STATUS_BLOCKLISTED = 6;
+async function buildProviderEpisodes(prisma, cfg, rows, opts) {
+  const refs = [];
+  const posters = /* @__PURE__ */ new Map();
+  for (const r of rows) {
+    if (!r.id || r.mediaInfo?.status === MEDIA_STATUS_BLOCKLISTED) continue;
+    refs.push({ mediaType: "tv", tmdbId: r.id });
+    posters.set(r.id, r);
+  }
+  if (refs.length === 0) return { items: [], partial: false };
+  const { meta, missing } = await resolveTmdbMeta(prisma, cfg, refs, {
+    maxFetch: EPISODE_FETCH_BUDGET,
+    region: opts.region
+  });
+  if (missing.length > 0) scheduleTmdbBackfill(prisma, cfg, missing, opts.region);
+  const items = [];
+  for (const ref of refs) {
+    const m = meta.get(tmdbKey(ref));
+    const date = m?.nextAirDate;
+    if (!m || !date || date < opts.from || date > opts.to) continue;
+    const src = posters.get(ref.tmdbId);
+    items.push({
+      id: makeItemId("tv", ref.tmdbId, "episode", date),
+      date,
+      mediaType: "tv",
+      tmdbId: ref.tmdbId,
+      title: m.title || src?.name || "",
+      posterPath: m.posterPath ?? src?.posterPath ?? null,
+      backdropPath: m.backdropPath ?? src?.backdropPath ?? null,
+      overview: m.overview ?? src?.overview ?? null,
+      kind: "episode",
+      seasonNumber: m.nextSeason,
+      episodeNumber: m.nextEpisode,
+      networks: m.networks,
+      // Les vraies plateformes de la série, pas celles qu'on a demandées.
+      providerIds: m.providerIds ?? [],
+      requestId: null,
+      requestStatus: null
+    });
+  }
+  return { items, partial: missing.length > 0 };
+}
+async function attachProviderIds(prisma, cfg, items, region) {
+  const refs = items.filter((i) => i.providerIds.length === 0).map((i) => ({ mediaType: i.mediaType, tmdbId: i.tmdbId }));
+  if (refs.length === 0) return;
+  const { meta } = await resolveTmdbMeta(prisma, cfg, refs, { maxFetch: 0, region });
+  for (const item of items) {
+    if (item.providerIds.length > 0) continue;
+    const m = meta.get(tmdbKey({ mediaType: item.mediaType, tmdbId: item.tmdbId }));
+    if (m?.providerIds?.length) item.providerIds = m.providerIds;
+  }
+}
+
 // server/calendar-global.ts
 var PAGES = 3;
 var MAX_PER_SERIES2 = 2;
-var EPISODE_FETCH_BUDGET = 30;
-var MEDIA_STATUS_BLOCKLISTED = 6;
+var MEDIA_STATUS_BLOCKLISTED2 = 6;
 var TMDB_STATUS_RETURNING = "0";
 async function discover(cfg, path, params, page) {
   const qs = new URLSearchParams({ ...params, page: String(page) });
@@ -4106,9 +4160,10 @@ async function buildGlobalCalendar(prisma, cfg, opts) {
   const wantMovies = opts.mediaType === "movie" || opts.mediaType === "both";
   const wantTv = opts.mediaType === "tv" || opts.mediaType === "both";
   const tasks = [];
-  if (opts.scope === "provider" && opts.providerId) {
+  if (opts.providerIds.length > 0) {
     const shared = {
-      watchProviders: String(opts.providerId),
+      // Le tube est un OU côté TMDB : « 8|337 » = Netflix ou Disney+.
+      watchProviders: opts.providerIds.join("|"),
       watchRegion: opts.region
     };
     const seriesRows = wantTv ? await discoverPages(cfg, "tv", {
@@ -4127,10 +4182,12 @@ async function buildGlobalCalendar(prisma, cfg, opts) {
     const movies = collectItems(movieBuckets, opts);
     const merged = /* @__PURE__ */ new Map();
     for (const it of [...episodes.items, ...movies.items]) if (!merged.has(it.id)) merged.set(it.id, it);
+    const items2 = capPerSeries(sortCalendarItems(Array.from(merged.values())), MAX_PER_SERIES2);
+    await attachProviderIds(prisma, cfg, items2, opts.region);
     return {
       from: opts.from,
       to: opts.to,
-      items: capPerSeries(sortCalendarItems(Array.from(merged.values())), MAX_PER_SERIES2),
+      items: items2,
       partial: episodes.partial,
       scanned: seriesRows.length + movies.scanned
     };
@@ -4168,7 +4225,7 @@ function collectItems(buckets, opts) {
     for (const r of bucket.rows) {
       scanned++;
       if (!r.id) continue;
-      if (r.mediaInfo?.status === MEDIA_STATUS_BLOCKLISTED) continue;
+      if (r.mediaInfo?.status === MEDIA_STATUS_BLOCKLISTED2) continue;
       const date = toDayString(r.releaseDate ?? r.firstAirDate);
       if (!date || date < opts.from || date > opts.to) continue;
       const mediaType = r.mediaType === "tv" || r.mediaType === "movie" ? r.mediaType : bucket.type;
@@ -4188,53 +4245,16 @@ function collectItems(buckets, opts) {
         seasonNumber: null,
         episodeNumber: null,
         networks: null,
-        providerIds: opts.providerId ? [opts.providerId] : [],
+        // Complété juste après depuis la mémoire des fiches : recopier ici la
+        // plateforme demandée revenait à jurer qu'un film est sur les quatre
+        // plateformes cochées.
+        providerIds: [],
         requestId: null,
         requestStatus: null
       });
     }
   }
   return { items: Array.from(unique.values()), scanned };
-}
-async function buildProviderEpisodes(prisma, cfg, rows, opts) {
-  const refs = [];
-  const posters = /* @__PURE__ */ new Map();
-  for (const r of rows) {
-    if (!r.id || r.mediaInfo?.status === MEDIA_STATUS_BLOCKLISTED) continue;
-    refs.push({ mediaType: "tv", tmdbId: r.id });
-    posters.set(r.id, r);
-  }
-  if (refs.length === 0) return { items: [], partial: false };
-  const { meta, missing } = await resolveTmdbMeta(prisma, cfg, refs, {
-    maxFetch: EPISODE_FETCH_BUDGET,
-    region: opts.region
-  });
-  if (missing.length > 0) scheduleTmdbBackfill(prisma, cfg, missing, opts.region);
-  const items = [];
-  for (const ref of refs) {
-    const m = meta.get(tmdbKey(ref));
-    const date = m?.nextAirDate;
-    if (!m || !date || date < opts.from || date > opts.to) continue;
-    const src = posters.get(ref.tmdbId);
-    items.push({
-      id: makeItemId("tv", ref.tmdbId, "episode", date),
-      date,
-      mediaType: "tv",
-      tmdbId: ref.tmdbId,
-      title: m.title || src?.name || "",
-      posterPath: m.posterPath ?? src?.posterPath ?? null,
-      backdropPath: m.backdropPath ?? src?.backdropPath ?? null,
-      overview: m.overview ?? src?.overview ?? null,
-      kind: "episode",
-      seasonNumber: m.nextSeason,
-      episodeNumber: m.nextEpisode,
-      networks: m.networks,
-      providerIds: opts.providerId ? [opts.providerId] : [],
-      requestId: null,
-      requestStatus: null
-    });
-  }
-  return { items, partial: missing.length > 0 };
 }
 
 // server/routes-calendar.ts
@@ -4243,6 +4263,7 @@ var PERSONAL_STALE_MS = 6 * 36e5;
 var GLOBAL_TTL_MS = 6 * 36e5;
 var GLOBAL_STALE_MS = 24 * 36e5;
 var PROVIDER_TTL_MS = 12 * 36e5;
+var MAX_PROVIDERS = 8;
 var DEFAULT_WINDOW_DAYS = 90;
 var MAX_WINDOW_DAYS = 370;
 function readWindow(q) {
@@ -4282,23 +4303,16 @@ function registerCalendarRoutes(app, prisma, getWorkerConfig2) {
     const { from, to } = readWindow(q);
     const config = await getWorkerConfig2();
     if (!config) return EMPTY(from, to);
-    const providerId = Number(q.providerId);
-    const scope = q.scope === "provider" && Number.isFinite(providerId) && providerId > 0 ? "provider" : "all";
+    const providerIds = String(q.providerIds ?? "").split(",").map(Number).filter((n) => Number.isFinite(n) && n > 0).slice(0, MAX_PROVIDERS);
     const mediaType = q.mediaType === "movie" || q.mediaType === "tv" ? q.mediaType : "both";
     const region = typeof q.region === "string" && /^[a-z]{2}$/i.test(q.region) ? q.region.toUpperCase() : DEFAULT_REGION;
-    const key = `seer:cal:${scope}:${scope === "provider" ? providerId : "all"}:${mediaType}:${region}:${from}:${to}`;
-    const ttl = scope === "provider" ? PROVIDER_TTL_MS : GLOBAL_TTL_MS;
+    const scope = providerIds.length > 0 ? [...providerIds].sort((a, b) => a - b).join("-") : "all";
+    const key = `seer:cal:${scope}:${mediaType}:${region}:${from}:${to}`;
+    const ttl = providerIds.length > 0 ? PROVIDER_TTL_MS : GLOBAL_TTL_MS;
     return cached(
       key,
       ttl,
-      () => buildGlobalCalendar(prisma, config, {
-        scope,
-        providerId: scope === "provider" ? providerId : void 0,
-        mediaType,
-        region,
-        from,
-        to
-      }),
+      () => buildGlobalCalendar(prisma, config, { providerIds, mediaType, region, from, to }),
       { staleMs: GLOBAL_STALE_MS }
     );
   });
@@ -4398,7 +4412,7 @@ function registerMiscRoutes(app, prisma, getWorkerConfig2, requireAdmin) {
 }
 
 // server/blocklist.ts
-var MEDIA_STATUS_BLOCKLISTED2 = 6;
+var MEDIA_STATUS_BLOCKLISTED3 = 6;
 var KEYWORD_FETCH_CONCURRENCY = 8;
 async function getBlocklistedTags(seerrUrl, apiKey) {
   return cached(`seerr:blocklistedTags:${seerrUrl}`, 5 * 6e4, async () => {
@@ -4439,7 +4453,7 @@ async function getItemKeywordIds(seerrUrl, apiKey, mediaType, id) {
   });
 }
 async function filterResultsByTags(seerrUrl, apiKey, results, blockedSet) {
-  const afterStatus = results.filter((r) => r?.mediaInfo?.status !== MEDIA_STATUS_BLOCKLISTED2);
+  const afterStatus = results.filter((r) => r?.mediaInfo?.status !== MEDIA_STATUS_BLOCKLISTED3);
   let blockedCount = results.length - afterStatus.length;
   const blockedFlags = new Array(afterStatus.length).fill(false);
   const checkable = afterStatus.map((item, idx) => ({ item, idx })).filter(({ item }) => (item.mediaType === "movie" || item.mediaType === "tv") && typeof item.id === "number");
@@ -4629,7 +4643,7 @@ async function seerBackend(app, ctx) {
           } else {
             const before = data.results.length;
             data.results = data.results.filter(
-              (item) => item?.mediaInfo?.status !== MEDIA_STATUS_BLOCKLISTED2
+              (item) => item?.mediaInfo?.status !== MEDIA_STATUS_BLOCKLISTED3
             );
             data.blockedCount = before - data.results.length;
           }

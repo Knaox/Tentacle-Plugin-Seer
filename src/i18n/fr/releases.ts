@@ -51,7 +51,6 @@ export default {
   releasesSubtitle: "Les prochaines dates de vos demandes et des plateformes",
   releasesTabPersonal: "Mes sorties",
   releasesTabAll: "Tout",
-  releasesTabProvider: "Par plateforme",
   releasesScopeUpcoming: "À venir",
   releasesScopeAll: "Toutes mes demandes",
   releasesViewWeek: "Semaine",
@@ -60,10 +59,17 @@ export default {
   releasesEmptyPersonalHint:
     "Les titres déjà dans votre bibliothèque n'apparaissent pas ici.",
   releasesEmptyGlobal: "Aucune sortie annoncée sur cette période",
-  releasesEmptyProvider: "Aucune sortie annoncée pour cette plateforme",
   releasesPartial: "Chargement des dates en cours…",
-  releasesPickPlatform: "Choisir une plateforme",
-  releasesSearchPlatform: "Rechercher une plateforme…",
+  // Filtres de l'agenda — plusieurs plateformes à la fois
+  releasesFiltersTitle: "Filtres des sorties",
+  filterType: "Type",
+  releasesFilterPlatformsHint:
+    "Une sortie apparaît si au moins une des plateformes cochées la propose.",
+  releasesEmptyFiltered: "Aucune sortie sur les plateformes choisies",
+  releasesEmptyFilteredHint:
+    "Un titre pas encore sorti n'est proposé par aucune plateforme : il n'apparaît donc pas ici.",
+  releasesShowResults_one: "Voir {{count}} sortie",
+  releasesShowResults_other: "Voir {{count}} sorties",
   releasesFilterAll: "Tout",
   releasesFilterMovies: "Films",
   releasesFilterTv: "Séries",

@@ -20,6 +20,8 @@ const PERSONAL_STALE_MS = 6 * 3_600_000;
 const GLOBAL_TTL_MS = 6 * 3_600_000;
 const GLOBAL_STALE_MS = 24 * 3_600_000;
 const PROVIDER_TTL_MS = 12 * 3_600_000;
+/** Plafond de plateformes combinables — au-delà, le filtre ne filtre plus. */
+const MAX_PROVIDERS = 8;
 
 const DEFAULT_WINDOW_DAYS = 90;
 /** Fenêtre plafonnée : sans borne, un `to=2099-01-01` déclencherait un scan inutile. */
@@ -73,7 +75,7 @@ export function registerCalendarRoutes(
   /* ── Tout ce qui sort — indépendant des demandes ── */
   app.get("/calendar/global", async (request) => {
     const q = request.query as {
-      scope?: string; providerId?: string; mediaType?: string;
+      providerIds?: string; mediaType?: string;
       region?: string; from?: string; to?: string;
     };
     const { from, to } = readWindow(q);
@@ -81,26 +83,30 @@ export function registerCalendarRoutes(
     const config = await getWorkerConfig();
     if (!config) return EMPTY(from, to);
 
-    const providerId = Number(q.providerId);
-    const scope = q.scope === "provider" && Number.isFinite(providerId) && providerId > 0
-      ? "provider" as const
-      : "all" as const;
+    /* Au-delà d'une poignée de plateformes, le OU ne veut plus rien dire — et
+     * chacune ajoute des séries à résoudre pour un agenda encore froid. */
+    const providerIds = String(q.providerIds ?? "")
+      .split(",")
+      .map(Number)
+      .filter((n) => Number.isFinite(n) && n > 0)
+      .slice(0, MAX_PROVIDERS);
+
     const mediaType = q.mediaType === "movie" || q.mediaType === "tv" ? q.mediaType : "both";
     const region = typeof q.region === "string" && /^[a-z]{2}$/i.test(q.region)
       ? q.region.toUpperCase()
       : DEFAULT_REGION;
 
-    // Clé sans utilisateur : le résultat est le même pour tout le monde.
-    const key = `seer:cal:${scope}:${scope === "provider" ? providerId : "all"}:${mediaType}:${region}:${from}:${to}`;
-    const ttl = scope === "provider" ? PROVIDER_TTL_MS : GLOBAL_TTL_MS;
+    /* Clé sans utilisateur : le résultat est le même pour tout le monde. Elle
+     * est TRIÉE, sans quoi « 8,337 » et « 337,8 » occuperaient deux entrées
+     * pour un résultat identique. */
+    const scope = providerIds.length > 0 ? [...providerIds].sort((a, b) => a - b).join("-") : "all";
+    const key = `seer:cal:${scope}:${mediaType}:${region}:${from}:${to}`;
+    const ttl = providerIds.length > 0 ? PROVIDER_TTL_MS : GLOBAL_TTL_MS;
 
     return cached(
       key,
       ttl,
-      () => buildGlobalCalendar(prisma, config, {
-        scope, providerId: scope === "provider" ? providerId : undefined,
-        mediaType, region, from, to,
-      }),
+      () => buildGlobalCalendar(prisma, config, { providerIds, mediaType, region, from, to }),
       { staleMs: GLOBAL_STALE_MS },
     );
   });

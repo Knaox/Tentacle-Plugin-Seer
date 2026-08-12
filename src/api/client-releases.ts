@@ -49,17 +49,17 @@ export async function getPersonalCalendar(
 }
 
 export async function getGlobalCalendar(opts: {
-  providerId?: number;
+  /** Vide = tout ce qui sort. Plusieurs valeurs se lisent comme un OU. */
+  providerIds?: readonly number[];
   mediaType: CalendarMediaFilter;
   from?: string;
   to?: string;
 }): Promise<CalendarResponse> {
   const p = new URLSearchParams({
-    scope: opts.providerId ? "provider" : "all",
     mediaType: opts.mediaType,
     region: currentRegion(),
   });
-  if (opts.providerId) p.set("providerId", String(opts.providerId));
+  if (opts.providerIds?.length) p.set("providerIds", opts.providerIds.join(","));
   if (opts.from) p.set("from", opts.from);
   if (opts.to) p.set("to", opts.to);
   return backendFetch(`/calendar/global?${p}`);

@@ -1,12 +1,11 @@
-import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { GenreFilter } from "./GenreFilter";
 import { PlatformFilter } from "./PlatformFilter";
 import { YearRangeFilter } from "./YearRangeFilter";
 import { RatingSlider } from "./RatingSlider";
 import { FilterSection } from "./filters/FilterSection";
+import { FilterSheet } from "./filters/FilterSheet";
 import { pill, ICON_BUTTON } from "../styles/pills";
-import { CTA_PRIMARY } from "../styles/cta";
 import { MOVIE_GENRES, TV_GENRES } from "../constants/genres";
 import { LANGUAGES } from "../constants/languages";
 import { TV_STATUSES } from "../constants/tv-statuses";
@@ -58,90 +57,22 @@ export function FilterPanel({
   resultCount,
 }: FilterPanelProps) {
   const { t } = useTranslation("seer");
-  const panelRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const bridge = (window as unknown as Record<string, unknown>).__tentacle_bridge as
-      { setOverlay?: (open: boolean) => void } | undefined;
-    bridge?.setOverlay?.(true);
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      bridge?.setOverlay?.(false);
-    };
-  }, [open, onClose]);
-
   const genres = mediaType === "movies" ? MOVIE_GENRES : TV_GENRES;
 
   return (
-    <>
-      {/* Backdrop */}
-      {open && (
-        <div
-          onClick={onClose}
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 100,
-            background: "rgba(0,0,0,0.4)",
-            backdropFilter: "blur(4px)",
-            WebkitBackdropFilter: "blur(4px)",
-            animation: "fadeIn 300ms ease forwards",
-          }}
-        />
-      )}
-
-      {/* Panel */}
-      <div
-        ref={panelRef}
-        className={`fixed right-0 top-0 flex h-full w-full max-w-sm flex-col bg-tentacle-surface-modal transition-transform duration-300 ${
-          open ? "translate-x-0" : "translate-x-full"
-        }`}
-        style={{
-          zIndex: 101,
-          backdropFilter: "blur(24px)",
-          WebkitBackdropFilter: "blur(24px)",
-          boxShadow: "-8px 0 40px rgba(0,0,0,0.5), -2px 0 8px rgba(0,0,0,0.3)",
-          borderLeft: "1px solid var(--border-subtle)",
-        }}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-tentacle-border-subtle px-5 py-4">
-          <div className="flex items-center gap-2">
-            <h3 className="text-base font-semibold text-tentacle-text-primary">{t("filterTitle")}</h3>
-            {activeFilterCount > 0 && (
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-tentacle-brand text-[10px] font-bold text-tentacle-cta-brand-fg">
-                {activeFilterCount}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            {activeFilterCount > 0 && (
-              <button onClick={onReset} className="text-xs text-tentacle-brand hover:text-tentacle-brand-light">
-                {t("resetFilters")}
-              </button>
-            )}
-            <button
-              onClick={onClose}
-              className="flex h-7 w-7 items-center justify-center rounded-full bg-tentacle-fill-subtle text-tentacle-text-tertiary hover:text-tentacle-text-primary"
-            >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        {/* Corps — chaque famille de filtres dans une section repliable.
-            Auparavant les sept sections étaient dépliées d'un coup : plusieurs
-            écrans de défilement où tout se ressemblait, et les valeurs déjà
-            cochées se perdaient dans la masse. */}
-        <div
-          className="flex-1 overflow-y-auto px-5 py-2"
-          style={{ scrollbarWidth: "thin", scrollbarColor: "var(--brand) transparent" }}
-        >
+    <FilterSheet
+      open={open}
+      onClose={onClose}
+      title={t("filterTitle")}
+      activeCount={activeFilterCount}
+      onReset={onReset}
+      footerLabel={resultCount != null ? t("filterShowResults", { count: resultCount }) : undefined}
+    >
+      {/* Chaque famille de filtres dans une section repliable. Auparavant les
+          sept sections étaient dépliées d'un coup : plusieurs écrans de
+          défilement où tout se ressemblait, et les valeurs déjà cochées se
+          perdaient dans la masse. */}
+      <>
           <FilterSection title={t("filterSort")} alwaysOpen>
             <div className="flex flex-wrap items-center gap-2">
               {SORT_OPTIONS.map((opt) => (
@@ -259,18 +190,7 @@ export function FilterPanel({
               </div>
             </FilterSection>
           )}
-        </div>
-
-        {/* Pied collant — le bouton de sortie reste sous le pouce, quelle que
-            soit la longueur du panneau. */}
-        <div className="border-t border-tentacle-border-subtle px-5 py-3">
-          <button onClick={onClose} className={`${CTA_PRIMARY} h-11 w-full`}>
-            {resultCount != null
-              ? t("filterShowResults", { count: resultCount })
-              : t("filterApply")}
-          </button>
-        </div>
-      </div>
-    </>
+      </>
+    </FilterSheet>
   );
 }
