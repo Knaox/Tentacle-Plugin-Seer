@@ -18,7 +18,10 @@ import { MediaDetailModal } from "../MediaDetailModal";
 import { today, addDays } from "../../utils/calendar-groups";
 
 const VIEW_KEY = "seer_releases_view";
+const MODE_KEY = "seer_releases_mode";
 const WINDOW_DAYS = 90;
+
+const MODES: CalendarMode[] = ["personal", "all", "provider"];
 
 /**
  * Les prochaines dates : celles des demandes en cours, ou celles d'une
@@ -30,7 +33,18 @@ export function ReleasesPage() {
   const requestMedia = useRequestMedia();
   useScrollTopOnMount();
 
-  const [mode, setMode] = useState<CalendarMode>("personal");
+  /* Le mode consulté est retenu : quelqu'un qui suit surtout une plateforme n'a
+   * pas à repasser par « Mes sorties » à chaque visite. */
+  const [mode, setMode] = useState<CalendarMode>(() => {
+    try {
+      const saved = localStorage.getItem(MODE_KEY) as CalendarMode | null;
+      return saved && MODES.includes(saved) ? saved : "personal";
+    } catch { return "personal"; }
+  });
+  const changeMode = useCallback((next: CalendarMode) => {
+    setMode(next);
+    try { localStorage.setItem(MODE_KEY, next); } catch { /* stockage indisponible */ }
+  }, []);
   const [mediaFilter, setMediaFilter] = useState<CalendarMediaFilter>("both");
   const [providerId, setProviderId] = useState<number | null>(null);
   const [selected, setSelected] = useState<SeerrSearchResult | null>(null);
@@ -111,7 +125,7 @@ export function ReleasesPage() {
 
       <ReleasesTabs
         mode={mode}
-        onModeChange={setMode}
+        onModeChange={changeMode}
         view={view}
         onViewChange={changeView}
         mediaFilter={mediaFilter}
