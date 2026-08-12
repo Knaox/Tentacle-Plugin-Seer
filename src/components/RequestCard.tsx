@@ -1,10 +1,15 @@
 import { useTranslation } from "react-i18next";
 import type { LocalRequest, RequestStatus } from "../api/types";
+import type { ProgressItem } from "../api/types-releases";
 import { posterUrl } from "../utils/media-helpers";
 import { STATUS_STYLE } from "../styles/status";
+import { RequestProgressBar } from "./RequestProgressBar";
 
 interface RequestCardProps {
   request: LocalRequest;
+  /** Avancement réel du téléchargement, si Jellyseerr en signale un. */
+  progress?: ProgressItem;
+  progressAt?: string | null;
   onDelete?: (id: string, seasons?: number[]) => void;
   onRetry?: (id: string, seasons?: number[], profileId?: string | null) => void;
   onRetryDelete?: (id: string) => void;
@@ -49,7 +54,8 @@ function getProgressIndex(status: RequestStatus): number {
 }
 
 export function RequestCard({
-  request, onDelete, onRetry, onRetryDelete, onAddSeasons, onOpenModal, onOpenMarkMenu,
+  request, progress, progressAt, onDelete, onRetry, onRetryDelete, onAddSeasons,
+  onOpenModal, onOpenMarkMenu,
   marking, deleting, retrying, selectable, selected, onSelect,
 }: RequestCardProps) {
   const { t } = useTranslation("seer");
@@ -139,7 +145,15 @@ export function RequestCard({
           </span>
         </div>
 
-        {progressIdx >= 0 && (
+        {/* Avancement RÉEL quand Jellyseerr en fournit un ; sinon la barre
+            d'étapes, qui indique seulement où en est la demande. */}
+        {progress?.download ? (
+          <RequestProgressBar
+            download={progress.download}
+            downloads={progress.downloads}
+            receivedAt={progressAt ?? null}
+          />
+        ) : progressIdx >= 0 && (
           <div className="mt-2 flex items-center gap-1">
             {PROGRESS_STEPS.map((step, i) => (
               <div key={step} className="flex flex-1 items-center">

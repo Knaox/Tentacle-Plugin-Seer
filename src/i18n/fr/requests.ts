@@ -1,0 +1,109 @@
+export default {
+  // Request actions
+  sending: "Envoi...",
+  request: "Demander",
+  viewSeasons: "Voir les saisons",
+  alreadyRequested: "Déjà demandé",
+  requestingMovie: "Envoi de la demande...",
+  requestMovie: "Demander ce film",
+  requestAdded: "Ajouté à la file d'attente",
+  requestError: "Échec de la demande",
+  requestDeleted: "Demande supprimée",
+  requestDeleteError: "Échec de la suppression",
+  requestRetried: "Demande relancée",
+  requestRetryError: "Échec de la relance",
+  requestDeleting: "Suppression en cours...",
+  deleteFailedRetry: "Relancer la suppression",
+  retryDelete: "Relancer la suppression",
+  forceDelete: "Forcer la suppression",
+
+  // Bulk actions
+  bulkSelect: "Sélectionner",
+  bulkCancel: "Annuler",
+  bulkDelete: "Supprimer ({{count}})",
+  bulkRetry: "Redemander ({{count}})",
+  bulkDeleteSuccess_one: "{{count}} demande en suppression",
+  bulkDeleteSuccess_other: "{{count}} demandes en suppression",
+  bulkRetrySuccess_one: "{{count}} demande relancée",
+  bulkRetrySuccess_other: "{{count}} demandes relancées",
+  bulkError: "Erreur lors de l'opération",
+
+  // Requests page
+  myRequestsTitle: "Mes demandes",
+  noRequestsAll: "Vous n'avez aucune demande",
+  noRequestsFiltered: "Aucune demande avec ce statut",
+  noRequestsHint: "Découvrez du contenu et demandez vos films et séries préférés",
+  addSeasons: "Saisons",
+  seasonsLabel: "S{{seasons}}",
+  retry: "Redemander",
+  delete: "Supprimer",
+  confirm: "Oui",
+  cancel: "Annuler",
+  confirmDelete: "Supprimer ?",
+  confirmRetry: "Redemander ?",
+  notAvailable: "N/A",
+  retryCountLabel: "Tentative {{count}}/{{max}}",
+  today: "Aujourd'hui",
+  yesterday: "Hier",
+  daysAgo_one: "Il y a {{count}} jour",
+  daysAgo_other: "Il y a {{count}} jours",
+
+  // Queue
+  queueProcessing: "En cours : {{title}}",
+  queuePending_one: "{{count}} demande en attente",
+  queuePending_other: "{{count}} demandes en attente",
+  queueWaiting_one: "{{count}} demande en file d'attente",
+  queueWaiting_other: "{{count}} demandes en file d'attente",
+
+  // Notifications
+  notificationsTitle: "Notifications",
+  markAllRead: "Tout marquer comme lu",
+  noNotifications: "Aucune notification",
+
+  // Season action modal
+  seasonActionDeleteTitle: "Supprimer quelles saisons ?",
+  seasonActionRetryTitle: "Redemander quelles saisons ?",
+  seasonActionAll: "Toute la série",
+  seasonActionSelected: "Saisons sélectionnées",
+  seasonActionConfirm: "Confirmer",
+  seasonActionDeleteWarn: "Les fichiers téléchargés seront supprimés (pour tous les utilisateurs). La série/le film reste dans Sonarr/Radarr.",
+  seasonActionRetryWarn: "Les données Sonarr/Radarr seront supprimées",
+
+  // Permissions / quotas (erreurs métier renvoyées par le backend)
+  errUserBlocked: "Tu n'as pas la permission de faire des demandes",
+  errMoviesDenied: "Tu n'as pas le droit de demander des films",
+  errTvDenied: "Tu n'as pas le droit de demander des séries",
+  errAnimeDenied: "Tu n'as pas le droit de demander des animés",
+  errQuotaReached: "Tu as atteint ta limite de {{limit}} demande(s) par jour",
+  errJellyseerrUserSync: "Impossible de synchroniser ton compte Jellyseerr — la demande sera retentée",
+  statusRetryPendingBadge: "Échec — nouvelle tentative {{count}}/{{max}}",
+  requestRetryNotice: "Une de tes demandes a échoué et va être renvoyée automatiquement",
+
+  // Marquer manuellement le statut sur Jellyseerr
+  markAs: "Marquer comme",
+  markAsAvailable: "Disponible",
+  markAsPartial: "Partiellement disponible",
+  markAsUnknown: "Demandée",
+  markAsProcessing: "En traitement",
+  markedSuccess: "Statut mis à jour sur Jellyseerr",
+  markedError: "Échec de la mise à jour du statut",
+
+  // Options destructives sur delete/retry
+  deleteAlsoFiles: "Supprimer aussi le contenu (Sonarr/Radarr)",
+  deleteAlsoFilesHint: "Décoché : on arrête le suivi (Sonarr/Radarr ne re-télécharge plus), le contenu déjà téléchargé est conservé. Coché : les fichiers sont aussi supprimés. La série/le film n'est jamais retiré de Sonarr/Radarr.",
+  forceRedownload: "Forcer le re-téléchargement",
+  forceRedownloadHint: "Décoché : on relance simplement la demande dans Jellyseerr. Coché : on supprime le média existant et on redemande.",
+
+  // Stats
+  statsTitle: "Statistiques",
+  statsTotalRequests: "Total demandes",
+  statsAvailable: "Disponibles",
+  statsPending: "En attente",
+  statsFailed: "Échecs",
+  statsByStatus: "Par statut",
+  statsByType: "Par type",
+  statsSuccessRate: "Taux de réussite",
+  statsSuccessRateDesc: "des demandes complétées",
+  statsTopRequested: "Les plus demandés",
+  statsTopUsers: "Top demandeurs",
+} as const;

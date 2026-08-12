@@ -16,6 +16,8 @@ import { SkeletonList } from "./SkeletonList";
 import { EmptyState } from "./EmptyState";
 import { mediaTitle, mediaYear } from "../utils/media-helpers";
 import { useToast } from "../hooks/useToast";
+import { useAvailability } from "../hooks/useAvailability";
+import { useSearchHotkey, useScrollTopOnMount } from "../hooks/useSearchHotkey";
 import type { SeerrSearchResult, DiscoverMediaType } from "../api/types";
 
 export function DiscoverPage() {
@@ -105,17 +107,16 @@ export function DiscoverPage() {
     return () => clearTimeout(debounceRef.current);
   }, [query]);
 
-  // Keyboard shortcut Ctrl+K
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        searchInputRef.current?.focus();
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
+  // ⌘K / Ctrl+K → barre de recherche ; Échap → efface.
+  const clearQuery = useCallback(() => setQuery(""), []);
+  useSearchHotkey(searchInputRef, clearQuery);
+
+  // Revenir sur le catalogue le rouvre en haut, pas à mi-hauteur.
+  useScrollTopOnMount();
+
+  /* Verdicts de sortie pour la grille entière, en une requête. La grille ne
+   * les attend pas : les pastilles apparaissent quand la réponse arrive. */
+  const availability = useAvailability(filtered);
 
   // Seerr-style scroll: IntersectionObserver at 800px from bottom
   useEffect(() => {
@@ -226,6 +227,7 @@ export function DiscoverPage() {
                 onRequest={handleRequest}
                 onClick={openModal}
                 requesting={requestMedia.isPending}
+                availability={availability.get(`${item.mediaType}:${item.id}`)}
                 style={{
                   opacity: 0,
                   animation: `fadeSlideUp 400ms cubic-bezier(0.25,0.46,0.45,0.94) ${Math.min(i, 19) * 50}ms forwards`,

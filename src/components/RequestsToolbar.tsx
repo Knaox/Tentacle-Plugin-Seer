@@ -1,4 +1,6 @@
+import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
+import { searchShortcutLabel, showsKeyboardHints } from "../utils/host-env";
 
 export type StatusFilter =
   | "all" | "queued" | "sent_to_seer" | "approved"
@@ -28,6 +30,8 @@ interface RequestsToolbarProps {
   showSelectToggle: boolean;
   selectionMode: boolean;
   onToggleSelectionMode: () => void;
+  /** Cible du raccourci ⌘K / Ctrl+K. */
+  searchInputRef?: RefObject<HTMLInputElement | null>;
 }
 
 /** Recherche + filtres statut/type + bascule sélection de la page Demandes. */
@@ -36,6 +40,7 @@ export function RequestsToolbar({
   statusFilter, onStatusFilterChange,
   typeFilter, onTypeFilterChange,
   showSelectToggle, selectionMode, onToggleSelectionMode,
+  searchInputRef,
 }: RequestsToolbarProps) {
   const { t } = useTranslation("seer");
 
@@ -52,9 +57,10 @@ export function RequestsToolbar({
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder={t("seer:searchRequestsPlaceholder")}
           aria-label={t("seer:searchRequestsPlaceholder")}
+          ref={searchInputRef}
           className="w-full rounded-xl border border-tentacle-border-subtle bg-transparent py-3 pl-12 pr-12 text-sm text-tentacle-text-primary placeholder-tentacle-text-quaternary outline-none transition-all focus:border-tentacle-brand/30 focus:ring-2 focus:ring-tentacle-brand/50"
         />
-        {search && (
+        {search ? (
           <button
             onClick={() => onSearchChange("")}
             aria-label={t("seer:cancel")}
@@ -64,7 +70,13 @@ export function RequestsToolbar({
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
             </svg>
           </button>
-        )}
+        ) : showsKeyboardHints() ? (
+          /* Même raccourci que sur le catalogue : cette page a la même barre
+             de recherche, elle n'avait aucune indication. */
+          <kbd className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 rounded border border-tentacle-border-subtle bg-tentacle-fill-subtle px-1.5 py-0.5 text-[10px] text-tentacle-text-quaternary">
+            {searchShortcutLabel()}
+          </kbd>
+        ) : null}
       </div>
 
       {/* Filtres statut */}

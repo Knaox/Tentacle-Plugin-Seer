@@ -8,6 +8,10 @@ export default defineConfig({
       entry: "src/plugin.tsx",
       name: "TentaclePluginSeer",
       formats: ["iife"],
+      // Nom IMPOSÉ par Tentacle TV : la route qui sert le bundle construit
+      // le chemin `plugin-<id>.iife.js` en dur et ignore le champ `entry`
+      // du manifeste. Renommer ce fichier casse le plugin sur toutes les
+      // installations existantes. Seul le nom affiché devient « Vigie ».
       fileName: () => "plugin-seer.iife.js",
     },
     rollupOptions: {

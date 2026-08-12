@@ -26,6 +26,8 @@ export interface CleanupJob {
   status: string;
   nextRetryAt: string;
   requestId: string | null;
+  /** Propriétaire de la demande — sert à n'invalider QUE son cache. */
+  jellyfinUserId: string | null;
 }
 
 /** Parse défensif de la colonne JSON `seasons`. */
@@ -55,6 +57,7 @@ export async function enqueueCleanup(
     deleteFiles?: boolean;
     seasons?: number[] | null;
     requestId?: string | null;
+    jellyfinUserId?: string | null;
     /** Exécution différée (ex. re-synchro de dispo après un délai) */
     delaySeconds?: number;
   },
@@ -62,12 +65,13 @@ export async function enqueueCleanup(
   const id = uuid();
   const delay = Math.max(0, Math.floor(job.delaySeconds ?? 0));
   await prisma.$executeRawUnsafe(
-    `INSERT INTO seer_cleanup_queue (id, action, media_type, tmdb_id, title, seerr_request_id, seerr_media_id, delete_files, seasons, request_id, next_retry_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? SECOND))`,
+    `INSERT INTO seer_cleanup_queue (id, action, media_type, tmdb_id, title, seerr_request_id, seerr_media_id, delete_files, seasons, request_id, jellyfin_user_id, next_retry_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? SECOND))`,
     id, job.action, job.mediaType, job.tmdbId, job.title,
     job.seerrRequestId ?? null, job.seerrMediaId ?? null, job.deleteFiles ? 1 : 0,
     job.seasons && job.seasons.length > 0 ? JSON.stringify(job.seasons) : null,
     job.requestId ?? null,
+    job.jellyfinUserId ?? null,
     delay,
   );
   return id;
@@ -95,6 +99,7 @@ export async function getPendingCleanups(prisma: Prisma, limit = 25): Promise<Cl
     status: r.status as string,
     nextRetryAt: toIso(r.next_retry_at),
     requestId: (r.request_id as string) || null,
+    jellyfinUserId: (r.jellyfin_user_id as string) || null,
   }));
 }
 

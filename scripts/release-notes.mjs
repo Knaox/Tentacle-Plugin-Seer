@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Extrait le bloc de changelog d'une version depuis changelogs/seer.md.
+ * Extrait le bloc de changelog d'une version depuis changelogs/vigie.md.
  *
  *   node scripts/release-notes.mjs --version 1.12.0
  *
@@ -34,7 +34,7 @@ if (!version) {
 
 let md = "";
 try {
-  md = readFileSync(join(ROOT, "changelogs/seer.md"), "utf8");
+  md = readFileSync(join(ROOT, "changelogs/vigie.md"), "utf8");
 } catch {
   process.exit(0); // pas de changelog → rien
 }

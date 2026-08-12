@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { getMovieDetail, getTvDetail } from "../api/seer-client";
+import { getMovieDetail, getTvDetail } from "../api/client-catalog";
 import type { MediaType, SeerrMovieDetail, SeerrTvDetail } from "../api/types";
 
 export function useMediaDetail(mediaType: MediaType, tmdbId: number) {

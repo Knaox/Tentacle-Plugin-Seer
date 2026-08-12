@@ -17,7 +17,11 @@ export function useMyRequests(
     queryFn: () => getMyRequests(page, limit, status, mediaType, q),
     staleTime: 60_000,        // 1 min — backend cache de toute façon la liste 60s par user
     gcTime: 30 * 60_000,      // 30 min en mémoire après dernière utilisation
-    refetchInterval: 60_000,
+    /* Au tout premier chargement d'une grosse instance, les titres et affiches
+     * arrivent par vagues (remplissage en tâche de fond). On repasse plus vite
+     * tant qu'il en manque, puis on revient au rythme normal. */
+    refetchInterval: (query) =>
+      ((query.state.data as LocalRequestsResponse | undefined)?.metaPending ?? 0) > 0 ? 4_000 : 60_000,
     refetchOnWindowFocus: false,
     placeholderData: (prev) => prev,  // pas de flash blanc au changement de filtre/page
   });

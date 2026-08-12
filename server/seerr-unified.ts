@@ -5,6 +5,7 @@
 import type { FastifyRequest } from "fastify";
 import type { UnifiedRequest, SeerRequest } from "./types";
 import { mapSeerrStatus } from "./worker-sync";
+import { aggregateDownloads, type SeerrDownloadItem } from "./download-progress";
 
 export interface JellyfinUser { userId: string; username: string; isAdmin: boolean; }
 
@@ -26,7 +27,9 @@ export interface SeerrRequestRow {
     tmdbId: number;
     mediaType: "movie" | "tv";
     status?: number;
-    downloadStatus?: Array<{ externalId: number; status: string }>;
+    /* Le tableau porte déjà taille, restant et temps restant : la progression
+     * réelle ne coûte donc aucun appel supplémentaire. */
+    downloadStatus?: SeerrDownloadItem[];
   };
   requestedBy?: { id: number; jellyfinUserId?: string; jellyfinUsername?: string };
 }
@@ -62,8 +65,11 @@ export function seerrRequestToUnified(
   const mediaType = (sr.media?.mediaType ?? "movie") as "movie" | "tv";
   const title = detail?.title ?? detail?.name ?? local?.title ?? `#${sr.id}`;
   const year = (detail?.releaseDate ?? detail?.firstAirDate ?? "").slice(0, 4) || null;
+  const { summary, items } = aggregateDownloads(sr.media?.downloadStatus);
 
   return {
+    download: summary,
+    downloads: items.length > 1 ? items : undefined,
     id: local?.id ?? `seerr-${sr.id}`,
     source: "seerr",
     jellyfinUserId: sr.requestedBy?.jellyfinUserId ?? fallbackUser.jellyfinUserId,

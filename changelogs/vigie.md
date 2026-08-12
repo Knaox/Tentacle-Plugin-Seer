@@ -1,4 +1,4 @@
-# Changelog — Seer
+# Changelog — Vigie
 
 Notes de version du plugin, lues par le workflow de publication (`.github/workflows/publish.yml`)
 pour la Release GitHub ET le champ `changelog` du marketplace.
@@ -18,6 +18,31 @@ sujet du commit (publication sans friction). Le numéro de version est
 auto-bumpé par le message du commit (`feat`→mineure, `fix`→patch, `!`→majeure).
 
 ---
+
+## [1.14.0]
+### FR
+- **Le plugin s'appelle désormais Vigie.** Il n'est affilié ni à Jellyseerr ni à Overseerr : c'est un plugin indépendant qui se connecte à votre propre instance. La mention figure dans le README, sur la fiche de la marketplace et sur la page de configuration
+- **Pages renommées** : « Découvrir » devient **Catalogue** (ce qui n'est pas encore dans votre bibliothèque et que vous pouvez demander), « Demandes » devient **Mes demandes** partout — le même écran portait jusqu'ici trois noms différents
+- **Nouvelle page Sorties** : les prochaines dates de vos demandes en attente (sortie en ligne des films, prochain épisode des séries), plus un mode « Tout ce qui sort » et un mode par plateforme (Crunchyroll, Netflix, Disney+, ADN, Canal+… 80 disponibles en France). Vue liste ou vue mois, et on peut demander un titre directement depuis le calendrier
+- **On sait enfin si un titre est vraiment sorti.** Un film annoncé « 2026 » peut être au cinéma sans exister nulle part ailleurs : le catalogue signale désormais « Au cinéma », « En ligne le 3 sept. » ou « Sortie le 16 déc. ». Rien ne s'affiche quand le titre est récupérable — le mot « Disponible » reste réservé à votre bibliothèque. Le bouton devient « Demander quand même », avec l'explication
+- **Progression réelle des téléchargements** : pourcentage, taille et temps restant remontés par Sonarr / Radarr, à la place de la barre d'étapes symbolique. La barre avance en continu entre deux rafraîchissements, sans requête supplémentaire, et rien n'est interrogé quand aucun téléchargement n'est en cours ou que l'onglet est en arrière-plan
+- **Mes demandes s'ouvre en une fraction de seconde** au lieu de plusieurs dizaines de secondes. Les fiches (titres, affiches, dates) sont mémorisées durablement et survivent au redémarrage du serveur ; les statistiques arrivent avec la liste au lieu de la recharger une seconde fois ; l'expiration du cache ne fait plus attendre personne
+- Le raccourci affiche **⌘K sur Mac** au lieu de « Ctrl+K », et fonctionne aussi sur Mes demandes qui n'en avait aucun
+- Revenir sur une page du plugin la rouvre **en haut**
+- Les pages du plugin peuvent être **retirées de la barre de navigation** (menu « Bibliothèques ») ; elles y sont par défaut
+- Correctif : une suppression par un utilisateur ne vidait plus seulement son propre cache mais celui de tout le monde
+
+### EN
+- **The plugin is now called Vigie.** It is affiliated with neither Jellyseerr nor Overseerr: it is an independent plugin connecting to your own instance. Stated in the README, on the marketplace listing and on the settings page
+- **Pages renamed**: "Discover" becomes **Catalog** (what is not yet in your library and can be requested), "Requests" becomes **My Requests** everywhere — the same screen used to carry three different names
+- **New Releases page**: upcoming dates for your pending requests (digital release for movies, next episode for shows), plus an "Everything" mode and a per-platform mode (Crunchyroll, Netflix, Disney+, ADN, Canal+… 80 available in France). List or month view, and titles can be requested straight from the calendar
+- **You can finally tell whether a title is actually out.** A movie labelled "2026" may be in theaters and nowhere else: the catalog now says "In theaters", "Online Sept 3" or "Out Dec 16". Nothing is shown when the title is obtainable — "Available" stays reserved for your library. The button becomes "Request anyway", with an explanation
+- **Real download progress**: percentage, size and time left reported by Sonarr / Radarr, replacing the symbolic step bar. The bar advances smoothly between refreshes with no extra request, and nothing is polled when no download is running or the tab is in the background
+- **My Requests opens in a fraction of a second** instead of tens of seconds. Metadata (titles, posters, dates) is stored durably and survives a server restart; stats come with the list instead of reloading it a second time; cache expiry no longer makes anyone wait
+- The shortcut hint shows **⌘K on Mac** instead of "Ctrl+K", and now works on My Requests too
+- Returning to a plugin page reopens it **at the top**
+- Plugin pages can be **removed from the navigation bar** (Libraries menu); they are pinned by default
+- Fix: one user deleting a request used to clear everyone's cache, not just their own
 
 ## [1.13.2]
 ### FR

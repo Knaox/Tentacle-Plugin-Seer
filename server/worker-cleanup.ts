@@ -37,6 +37,15 @@ export async function processCleanupQueue(prisma: PrismaClient, config: WorkerCo
   }
 }
 
+/**
+ * N'invalide que le cache du propriétaire de la demande. L'invalidation globale
+ * n'est conservée que pour les jobs anciens, créés avant que la file ne porte
+ * l'identifiant utilisateur.
+ */
+function invalidateForJob(job: CleanupJob): void {
+  invalidate(job.jellyfinUserId ? `seer-cache:${job.jellyfinUserId}` : "seer-cache");
+}
+
 async function processCleanupJob(
   prisma: PrismaClient,
   config: WorkerConfig,
@@ -50,7 +59,7 @@ async function processCleanupJob(
     if (job.action === "sync") {
       await triggerSeerrJob(config.seerrUrl, config.seerrApiKey, "availability-sync");
       await updateCleanupJob(prisma, job.id, "completed");
-      invalidate("seer-cache");
+      invalidateForJob(job);
       console.log(`[SeerWorker] availability-sync re-déclenchée pour "${job.title}"`);
       return;
     }
@@ -144,13 +153,16 @@ async function processCleanupJob(
         await enqueueCleanup(prisma, {
           action: "sync", mediaType: job.mediaType, tmdbId: job.tmdbId,
           title: job.title, deleteFiles: false, seasons: null, delaySeconds: delay,
+          // Propagation obligatoire : sans elle, ces jobs enfants naîtraient
+          // sans propriétaire et retomberaient sur l'invalidation globale.
+          jellyfinUserId: job.jellyfinUserId,
         });
       }
     }
 
     // Les listes fusionnées (cache 60s par user) doivent refléter la suppression
     // sans attendre l'expiration du TTL.
-    invalidate("seer-cache");
+    invalidateForJob(job);
 
     console.log(`[SeerWorker] Cleanup completed for "${job.title}"`);
 

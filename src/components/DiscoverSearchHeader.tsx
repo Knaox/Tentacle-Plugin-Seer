@@ -1,5 +1,6 @@
 import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
+import { searchShortcutLabel, showsKeyboardHints } from "../utils/host-env";
 import { MediaTabBar } from "./MediaTabBar";
 import { ActiveFilterPills } from "./ActiveFilterPills";
 import { BlockedResultsBanner } from "./BlockedResultsBanner";
@@ -72,9 +73,9 @@ export function DiscoverSearchHeader({
             </svg>
           </button>
         )}
-        {typeof navigator !== "undefined" && navigator.maxTouchPoints === 0 && !/Mobi|Android/i.test(navigator.userAgent) && (
+        {showsKeyboardHints() && (
           <kbd className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 rounded border border-tentacle-border-subtle bg-tentacle-fill-subtle px-1.5 py-0.5 text-[10px] text-tentacle-text-quaternary">
-            Ctrl+K
+            {searchShortcutLabel()}
           </kbd>
         )}
       </div>

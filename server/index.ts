@@ -6,15 +6,23 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { Readable } from "stream";
 import { resolve, dirname } from "path";
-import { existsSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, statSync } from "fs";
 import { fileURLToPath } from "url";
-import { ensureTables, getQueueStatus, getUserStats, getGlobalStats } from "./db";
-import { startWorker, stopWorker, isWorkerRunning } from "./worker";
+import { ensureTables } from "./db";
+import { startWorker, stopWorker } from "./worker";
 import { registerRequestRoutes } from "./routes-requests";
 import { registerBulkRoutes } from "./routes-bulk";
 import { registerProfileRoutes } from "./routes-profiles";
 import { registerUsersRoutes } from "./routes-users";
+import { registerAvailabilityRoutes } from "./routes-availability";
+import { registerProgressRoutes } from "./routes-progress";
+import { registerCalendarRoutes } from "./routes-calendar";
+import { registerMiscRoutes } from "./routes-misc";
 import { cached } from "./cache";
+import {
+  MEDIA_STATUS_BLOCKLISTED, getBlocklistedTags, parseTagSet,
+  filterResultsByTags, type ResultItem,
+} from "./blocklist";
 
 const __pluginDir = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -25,16 +33,30 @@ interface PluginBackendContext {
   requireAdmin: (req: FastifyRequest, reply: FastifyReply) => Promise<void>;
 }
 
+/*
+ * `installed.json` était relu et re-parsé À CHAQUE requête HTTP (et à chaque
+ * tick du worker) : ~300 µs de lecture synchrone sur le thread d'événements,
+ * sur le chemin de /requests, /seerr/*, /proxy et /config. On garde le contenu
+ * en mémoire, invalidé par la date de modification du fichier — le PUT /config
+ * réécrit le fichier, donc le mtime change et la relecture se fait toute seule.
+ */
+let cfgCache: { mtimeMs: number; value: Record<string, unknown> } | null = null;
+
 function getPluginConfig(ctx: PluginBackendContext): Record<string, unknown> {
   try {
     const installedPath = resolve(__pluginDir, "..", "installed.json");
     if (!existsSync(installedPath)) return {};
+    const mtimeMs = statSync(installedPath).mtimeMs;
+    if (cfgCache && cfgCache.mtimeMs === mtimeMs) return cfgCache.value;
+
     const installed = JSON.parse(readFileSync(installedPath, "utf-8"));
     const plugin = installed.find(
       (p: { pluginId?: string; id?: string }) =>
         p.pluginId === ctx.pluginId || p.id === ctx.pluginId,
     );
-    return plugin?.config || {};
+    const value = plugin?.config || {};
+    cfgCache = { mtimeMs, value };
+    return value;
   } catch { return {}; }
 }
 
@@ -45,126 +67,6 @@ async function getWorkerConfig(ctx: PluginBackendContext) {
   if (!url || !apiKey) return null;
   const profiles = (config.profiles as any[] | undefined) ?? [];
   return { seerrUrl: url.replace(/\/$/, ""), seerrApiKey: apiKey, interval: 60_000, syncEvery: 2, profiles };
-}
-
-/* ── Blocage par tags (Jellyseerr « Bloquer le contenu avec des tags ») ──
- *
- * Jellyseerr stocke les keywords TMDB bloqués dans `settings.main.blocklistedTags`
- * (IDs séparés par des virgules). On applique ce blocage sur 3 surfaces :
- *   1. Discover (movies/tv/anime) : on passe les tags en `excludeKeywords`
- *      → TMDB `without_keywords`, exclusion native à la source (pagination propre).
- *   2. Search / trending : TMDB multi-search n'accepte PAS `without_keywords`, et
- *      le job `process-blocklisted-tags` de Jellyseerr ne couvre qu'une fraction du
- *      catalogue. On filtre donc en lisant les keywords de chaque résultat
- *      (`/api/v1/{movie|tv}/{id}` → champ `keywords`), avec cache 7 j.
- *   3. Toutes surfaces : on retire aussi les médias déjà au statut BLOCKLISTED (6).
- *
- * Le filtrage est désactivable par requête via `?_showBlocked=1` (bouton
- * « Afficher quand même »). On renvoie alors `blockedCount`/`blockedActive` pour
- * que l'UI sache combien d'éléments sont masqués.
- *
- * `settings.main` et le détail ne sont lisibles qu'avec la clé d'API admin
- * (déjà détenue côté plugin).
- */
-const MEDIA_STATUS_BLOCKLISTED = 6;
-const KEYWORD_FETCH_CONCURRENCY = 8;
-
-async function getBlocklistedTags(seerrUrl: string, apiKey: string): Promise<string> {
-  return cached(`seerr:blocklistedTags:${seerrUrl}`, 5 * 60_000, async () => {
-    try {
-      const res = await fetch(`${seerrUrl}/api/v1/settings/main`, {
-        headers: { "X-Api-Key": apiKey },
-        signal: AbortSignal.timeout(8_000),
-      });
-      if (!res.ok) return "";
-      const data = (await res.json()) as { blocklistedTags?: string };
-      return (data.blocklistedTags ?? "").trim();
-    } catch {
-      return "";
-    }
-  });
-}
-
-/** Convertit la CSV `blocklistedTags` en Set d'IDs numériques. */
-function parseTagSet(csv: string): Set<number> {
-  const set = new Set<number>();
-  for (const part of csv.split(",")) {
-    const id = Number(part.trim());
-    if (Number.isFinite(id) && id > 0) set.add(id);
-  }
-  return set;
-}
-
-/** IDs de keywords TMDB d'un média (cache 7 j — les keywords bougent très peu). */
-async function getItemKeywordIds(
-  seerrUrl: string,
-  apiKey: string,
-  mediaType: "movie" | "tv",
-  id: number,
-): Promise<number[]> {
-  return cached(`seerr:kw:${mediaType}:${id}`, 7 * 86_400_000, async () => {
-    try {
-      const res = await fetch(`${seerrUrl}/api/v1/${mediaType}/${id}`, {
-        headers: { "X-Api-Key": apiKey },
-        signal: AbortSignal.timeout(8_000),
-      });
-      if (!res.ok) return [];
-      const data = (await res.json()) as { keywords?: Array<{ id?: number }> };
-      return Array.isArray(data.keywords)
-        ? data.keywords.map((k) => k?.id).filter((x): x is number => typeof x === "number")
-        : [];
-    } catch {
-      return [];
-    }
-  });
-}
-
-interface ResultItem {
-  id?: number;
-  mediaType?: string;
-  mediaInfo?: { status?: number };
-}
-
-/**
- * Filtre une page de résultats (search/trending) en récupérant les keywords de
- * chaque film/série et en retirant ceux qui intersectent les tags bloqués.
- * Les `person` sont conservées (pas de keywords). Retourne la liste filtrée et
- * le nombre d'éléments masqués.
- */
-async function filterResultsByTags(
-  seerrUrl: string,
-  apiKey: string,
-  results: ResultItem[],
-  blockedSet: Set<number>,
-): Promise<{ kept: ResultItem[]; blockedCount: number }> {
-  // 1) Retrait immédiat des éléments déjà marqués BLOCKLISTED par Jellyseerr.
-  const afterStatus = results.filter((r) => r?.mediaInfo?.status !== MEDIA_STATUS_BLOCKLISTED);
-  let blockedCount = results.length - afterStatus.length;
-
-  // 2) Vérification par keywords (films/séries uniquement), bornée en concurrence.
-  const blockedFlags = new Array<boolean>(afterStatus.length).fill(false);
-  const checkable = afterStatus
-    .map((item, idx) => ({ item, idx }))
-    .filter(({ item }) => (item.mediaType === "movie" || item.mediaType === "tv") && typeof item.id === "number");
-
-  for (let i = 0; i < checkable.length; i += KEYWORD_FETCH_CONCURRENCY) {
-    const batch = checkable.slice(i, i + KEYWORD_FETCH_CONCURRENCY);
-    await Promise.all(
-      batch.map(async ({ item, idx }) => {
-        const kwIds = await getItemKeywordIds(
-          seerrUrl,
-          apiKey,
-          item.mediaType as "movie" | "tv",
-          item.id as number,
-        );
-        if (kwIds.some((id) => blockedSet.has(id))) blockedFlags[idx] = true;
-      }),
-    );
-  }
-
-  const kept = afterStatus.filter((_, idx) => !blockedFlags[idx]);
-  blockedCount += afterStatus.length - kept.length;
-  return { kept, blockedCount };
 }
 
 /* ── Main plugin registration ────────────────────────────────────── */
@@ -380,80 +282,11 @@ export default async function seerBackend(
     return { seerrUrl: url.replace(/\/$/, ""), seerrApiKey: apiKey };
   });
   registerUsersRoutes(app, prisma, gwc, ctx.requireAdmin);
+  registerAvailabilityRoutes(app, prisma, gwc);
+  registerProgressRoutes(app, prisma, gwc);
+  registerCalendarRoutes(app, prisma, gwc);
 
-  /* ── Watch providers, queue, stats, worker control ─────────────── */
-
-  const providerCache = new Map<string, { providers: number[]; expires: number }>();
-
-  app.post("/check-providers", async (request, reply) => {
-    const body = request.body as { items: Array<{ tmdbId: number; mediaType: "movie" | "tv" }> };
-    if (!body.items || !Array.isArray(body.items)) return reply.status(400).send({ message: "items array required" });
-
-    const config = getPluginConfig(ctx);
-    const seerrUrl = (config.url as string)?.replace(/\/$/, "");
-    const apiKey = config.apiKey as string;
-    if (!seerrUrl || !apiKey) return reply.status(503).send({ message: "Seerr not configured" });
-
-    const result: Record<number, number[]> = {};
-    const toFetch: Array<{ tmdbId: number; mediaType: string }> = [];
-
-    for (const item of body.items.slice(0, 200)) {
-      const key = `${item.mediaType}-${item.tmdbId}`;
-      const cached = providerCache.get(key);
-      if (cached && Date.now() < cached.expires) { result[item.tmdbId] = cached.providers; }
-      else { toFetch.push(item); }
-    }
-
-    const BATCH = 5;
-    for (let i = 0; i < toFetch.length; i += BATCH) {
-      const batch = toFetch.slice(i, i + BATCH);
-      const responses = await Promise.allSettled(
-        batch.map(async (item) => {
-          const res = await fetch(`${seerrUrl}/api/v1/${item.mediaType}/${item.tmdbId}`, {
-            headers: { "X-Api-Key": apiKey }, signal: AbortSignal.timeout(8_000),
-          });
-          if (!res.ok) return { tmdbId: item.tmdbId, mediaType: item.mediaType, providers: [] as number[] };
-          const data = (await res.json()) as {
-            watchProviders?: Array<{ iso_3166_1: string; flatrate?: Array<{ id: number; providerId?: number }> }>;
-          };
-          const region = data.watchProviders?.find((w) => w.iso_3166_1 === "FR")
-            ?? data.watchProviders?.find((w) => w.iso_3166_1 === "US");
-          const ids = region?.flatrate?.map((p) => p.id ?? p.providerId ?? 0).filter(Boolean) ?? [];
-          return { tmdbId: item.tmdbId, mediaType: item.mediaType, providers: ids };
-        }),
-      );
-      for (const r of responses) {
-        if (r.status === "fulfilled" && r.value) {
-          const { tmdbId, mediaType, providers } = r.value;
-          result[tmdbId] = providers;
-          providerCache.set(`${mediaType}-${tmdbId}`, { providers, expires: Date.now() + 7 * 86400_000 });
-        }
-      }
-    }
-    return result;
-  });
-
-  app.get("/queue/status", async (request) => {
-    const user = (request as any).user;
-    const status = await getQueueStatus(prisma, user.isAdmin ? undefined : user.userId);
-    return { ...status, workerRunning: isWorkerRunning() };
-  });
-
-  app.get("/stats", async (request) => {
-    const user = (request as any).user;
-    if (user.isAdmin) {
-      const [personal, global] = await Promise.all([getUserStats(prisma, user.userId), getGlobalStats(prisma)]);
-      return { personal, global };
-    }
-    return { personal: await getUserStats(prisma, user.userId) };
-  });
-
-  app.post("/worker/trigger", { preHandler: ctx.requireAdmin }, async () => {
-    const config = await getWorkerConfig(ctx);
-    if (!config) return { message: "Seerr not configured" };
-    const next = await getQueueStatus(prisma);
-    return { workerRunning: isWorkerRunning(), processing: next.processing, queued: next.queued, triggered: true };
-  });
+  registerMiscRoutes(app, prisma, gwc, ctx.requireAdmin);
 
   console.log("[SeerBackend] Routes registered");
 }

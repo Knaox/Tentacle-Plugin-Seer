@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { getRequestsStats } from "../api/seer-client";
 import { STATUS_STYLE, statAccent } from "../styles/status";
 import type { SeerStatusKey } from "../styles/status";
+import type { RequestsStats } from "../api/types-releases";
 
 /* Couleurs de statut : dictionnaire unique thémé (styles/status.ts) — les
  * classes en dur (text-emerald-300…) manquaient de contraste en clair. */
@@ -10,17 +11,28 @@ function statusStyleOf(status: string) {
   return STATUS_STYLE[status as SeerStatusKey] as (typeof STATUS_STYLE)[SeerStatusKey] | undefined;
 }
 
-export function RequestsStatsBar() {
+interface Props {
+  /** Fournies par la réponse de la liste — évite une seconde pagination complète. */
+  stats?: RequestsStats;
+}
+
+export function RequestsStatsBar({ stats: provided }: Props = {}) {
   const { t } = useTranslation("seer");
-  const { data: stats, isLoading } = useQuery({
+
+  /* Repli pour les cas où la liste ne porte pas les statistiques (vue admin
+   * tous utilisateurs, plugin non configuré). Sinon aucune requête n'est émise. */
+  const { data: fetched, isLoading: fetching } = useQuery({
     queryKey: ["seer-stats-overview"],
     queryFn: () => getRequestsStats(),
+    enabled: provided === undefined,
     staleTime: 60_000,
     gcTime: 30 * 60_000,
-    refetchInterval: 60_000,
     refetchOnWindowFocus: false,
     placeholderData: (prev) => prev,
   });
+
+  const stats = provided ?? fetched;
+  const isLoading = provided === undefined && fetching;
 
   if (isLoading) {
     return (

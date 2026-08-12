@@ -1,4 +1,6 @@
 import { useState, useCallback, useEffect, useRef, lazy, Suspense } from "react";
+import { useRequestsProgress } from "../hooks/useDownloadProgress";
+import { useSearchHotkey, useScrollTopOnMount } from "../hooks/useSearchHotkey";
 import { useTranslation } from "react-i18next";
 import {
   useMyRequests, useDeleteRequest, useRetryRequest, useRetryDeleteRequest,
@@ -65,6 +67,18 @@ export function RequestsPage() {
 
   const requests = data?.results ?? [];
   const totalPages = data?.pages ?? 1;
+
+  /* Suivi en direct : uniquement si un téléchargement est réellement affiché.
+   * Sans cela, aucune requête n'est émise — et la fusion se fait au rendu
+   * plutôt que dans le cache, pour ne pas écraser les mises à jour optimistes
+   * des actions (suppression, relance) qui savent revenir en arrière. */
+  const hasDownloading = requests.some((r) => r.status === "downloading");
+  const progress = useRequestsProgress(hasDownloading);
+
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const clearSearch = useCallback(() => setSearch(""), []);
+  useSearchHotkey(searchInputRef, clearSearch);
+  useScrollTopOnMount();
 
   const handleDelete = (id: string, seasons?: number[], deleteFiles?: boolean, full?: boolean) => {
     deleteMutation.mutate({ id, seasons, deleteFiles, full }, {
@@ -146,7 +160,9 @@ export function RequestsPage() {
     <div className="px-4 pt-4 md:px-8">
       <h1 className="mb-4 text-2xl font-bold text-tentacle-text-primary">{t("seer:myRequestsTitle")}</h1>
 
-      <RequestsStatsBar />
+      {/* Les statistiques arrivent avec la liste : plus de seconde pagination
+          complète de toutes les demandes en parallèle du chargement. */}
+      <RequestsStatsBar stats={data?.stats} />
 
       <RequestsQueueBanner queue={queueData} />
 
@@ -160,11 +176,14 @@ export function RequestsPage() {
         showSelectToggle={requests.length > 0}
         selectionMode={selectionMode}
         onToggleSelectionMode={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}
+        searchInputRef={searchInputRef}
       />
 
       <RequestsList
         isLoading={isLoading}
         requests={requests}
+        progressById={progress.byId}
+        progressAt={progress.updatedAt}
         filtered={statusFilter !== "all" || !!debouncedSearch}
         page={page}
         totalPages={totalPages}

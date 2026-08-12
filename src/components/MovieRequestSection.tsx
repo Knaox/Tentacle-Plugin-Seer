@@ -11,6 +11,8 @@ interface MovieRequestSectionProps {
   profileId: string | null;
   onProfileChange: (id: string | null) => void;
   onRequest: () => void;
+  /** false = pas encore sorti en ligne : le téléchargement ne pourra pas démarrer. */
+  obtainable?: boolean;
 }
 
 /**
@@ -19,6 +21,7 @@ interface MovieRequestSectionProps {
  */
 export function MovieRequestSection({
   mediaStatus, isAnime, requesting, requestSuccess, profileId, onProfileChange, onRequest,
+  obtainable = true,
 }: MovieRequestSectionProps) {
   const { t } = useTranslation("seer");
 
@@ -59,8 +62,16 @@ export function MovieRequestSection({
             </svg>
             {t("seer:requestAdded")}
           </>
-        ) : t("seer:requestMovie")}
+        ) : obtainable ? t("seer:requestMovie") : t("seer:availRequestAnyway")}
       </button>
+
+      {/* Dire pourquoi rien ne se passera tout de suite vaut mieux que laisser
+          la demande stagner sans explication. */}
+      {!obtainable && !requestSuccess && (
+        <p className="mt-2 text-center text-[11px] leading-relaxed text-tentacle-text-quaternary">
+          {t("seer:availRequestAnywayHint")}
+        </p>
+      )}
     </div>
   );
 }

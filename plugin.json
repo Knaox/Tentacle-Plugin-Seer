@@ -1,7 +1,7 @@
 {
   "id": "seer",
-  "name": "Seer",
-  "description": "Media discovery and request management powered by Seerr / Overseerr",
+  "name": "Vigie",
+  "description": "Demandez films et séries, suivez leur arrivée et voyez les prochaines sorties. Se connecte à votre instance Jellyseerr / Overseerr — projet indépendant, sans affiliation avec Jellyseerr ni Overseerr.",
   "version": "1.13.2",
   "author": "Knaox",
   "entry": "dist/plugin-seer.iife.js",
@@ -22,8 +22,8 @@
         "mobile"
       ],
       "labels": {
-        "en": "Discover",
-        "fr": "Découvrir"
+        "en": "Catalog",
+        "fr": "Catalogue"
       }
     },
     {
@@ -35,8 +35,21 @@
         "mobile"
       ],
       "labels": {
-        "en": "Requests",
-        "fr": "Demandes"
+        "en": "My Requests",
+        "fr": "Mes demandes"
+      }
+    },
+    {
+      "path": "/releases",
+      "icon": "calendar",
+      "platforms": [
+        "web",
+        "desktop",
+        "mobile"
+      ],
+      "labels": {
+        "en": "Releases",
+        "fr": "Sorties"
       }
     },
     {

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { searchMedia } from "../api/seer-client";
+import { searchMedia } from "../api/client-catalog";
 
 export function useSeerSearch(query: string, page = 1, showBlocked = false) {
   return useQuery({

@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SeerrSearchResult } from "../api/types";
+import type { AvailabilityVerdict } from "../api/types-releases";
 import { posterUrl, mediaTitle, mediaYear, mediaTypeKey } from "../utils/media-helpers";
 import { CTA_PRIMARY, CTA_PRIMARY_HALO } from "../styles/cta";
 import { STATUS_STYLE } from "../styles/status";
+import { AvailabilityPill } from "./AvailabilityPill";
 
 interface MediaCardProps {
   item: SeerrSearchResult;
@@ -11,6 +13,8 @@ interface MediaCardProps {
   onClick?: (item: SeerrSearchResult) => void;
   requesting?: boolean;
   style?: React.CSSProperties;
+  /** Absent tant que la réponse groupée n'est pas revenue — la grille n'attend pas. */
+  availability?: AvailabilityVerdict | null;
 }
 
 function StatusBadge({ status }: { status: number }) {
@@ -51,7 +55,7 @@ function PosterFallback({ label, mediaType }: { label: string; mediaType?: strin
   );
 }
 
-export function MediaCard({ item, onRequest, onClick, requesting, style }: MediaCardProps) {
+export function MediaCard({ item, onRequest, onClick, requesting, style, availability }: MediaCardProps) {
   const { t } = useTranslation("seer");
   const [imgLoaded, setImgLoaded] = useState(false);
   const title = mediaTitle(item) || t("seer:untitled");
@@ -155,10 +159,12 @@ export function MediaCard({ item, onRequest, onClick, requesting, style }: Media
         </div>
       </div>
 
-      {/* Info */}
+      {/* Info — la pastille ne s'affiche QUE si quelque chose empêche de
+          récupérer le titre. Sinon, l'année seule, comme avant. */}
       <div className="mt-2 px-0.5">
         <h3 className="truncate text-sm font-semibold text-tentacle-text-primary">{title}</h3>
         {year && <p className="text-xs text-tentacle-text-tertiary">{year}</p>}
+        <AvailabilityPill verdict={availability} />
       </div>
     </div>
   );

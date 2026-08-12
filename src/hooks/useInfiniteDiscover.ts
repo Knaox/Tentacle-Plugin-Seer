@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useCallback, useRef } from "react";
-import { discoverMedia } from "../api/seer-client";
+import { discoverMedia } from "../api/client-catalog";
 import type { DiscoverMediaType, DiscoverFilters, SeerrSearchResult, SeerrPagedResponse } from "../api/types";
 
 const INITIAL_PAGES = 3;

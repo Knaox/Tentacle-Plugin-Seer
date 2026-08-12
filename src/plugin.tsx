@@ -17,6 +17,11 @@ const RequestsPage = lazy(() =>
     default: () => <ToastProvider><m.RequestsPage /></ToastProvider>,
   }))
 );
+const ReleasesPage = lazy(() =>
+  import("./components/releases/ReleasesPage").then((m) => ({
+    default: () => <ToastProvider><m.ReleasesPage /></ToastProvider>,
+  }))
+);
 const SeerConfigPage = lazy(() =>
   import("./components/admin/SeerConfigPage").then((m) => ({ default: m.SeerConfigPage }))
 );
@@ -35,6 +40,14 @@ function RequestsIcon({ className }: { className?: string }) {
   return (
     <svg className={className ?? "h-5 w-5"} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+    </svg>
+  );
+}
+
+function ReleasesIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className ?? "h-5 w-5"} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
     </svg>
   );
 }
@@ -75,8 +88,19 @@ export const seerPlugin: TentaclePlugin = {
       showInSidebar: true,
       requiresAuth: true,
     },
+    {
+      path: "/releases",
+      component: ReleasesPage,
+      label: "seer:navReleases",
+      icon: ReleasesIcon,
+      showInMobileNav: true,
+      showInSidebar: true,
+      requiresAuth: true,
+    },
   ],
 
+  /* Libellés alignés sur ceux des routes : le même écran portait jusqu'ici
+   * trois noms différents selon l'endroit d'où on le regardait. */
   navItems: [
     {
       label: "seer:navDiscover",
@@ -85,9 +109,15 @@ export const seerPlugin: TentaclePlugin = {
       platforms: ["web", "desktop", "mobile"],
     },
     {
-      label: "seer:navRequests",
+      label: "seer:navMyRequests",
       path: "/requests",
       icon: RequestsIcon,
+      platforms: ["web", "desktop", "mobile"],
+    },
+    {
+      label: "seer:navReleases",
+      path: "/releases",
+      icon: ReleasesIcon,
       platforms: ["web", "desktop", "mobile"],
     },
   ],
@@ -150,6 +180,8 @@ export const seerPlugin: TentaclePlugin = {
         "@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}",
         "@keyframes viewCrossfade{from{opacity:0}to{opacity:1}}",
         "@keyframes toastTimer{from{transform:scaleX(1)}to{transform:scaleX(0)}}",
+        // Barre de progression sans taille connue (Sonarr cherche encore).
+        "@keyframes seerIndeterminate{0%{transform:translateX(-100%)}100%{transform:translateX(300%)}}",
       ].join("");
       document.head.appendChild(style);
     }

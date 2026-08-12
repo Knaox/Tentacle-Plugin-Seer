@@ -68,6 +68,29 @@ export interface AdminUserRow extends SeerUserSettings {
   requestsTotal: number;
 }
 
+/**
+ * Avancement réel d'un téléchargement, dérivé de `media.downloadStatus` que
+ * Jellyseerr renvoie DÉJÀ dans la liste des demandes (alimenté par Sonarr /
+ * Radarr). Le plugin recevait cette donnée et n'en lisait que la longueur du
+ * tableau pour décider d'afficher « Téléchargement ».
+ *
+ * Tous les champs sont nullables : `DownloadingItem` n'est pas un contrat
+ * stable côté Jellyseerr, et Sonarr laisse `size` à 0 tant qu'il cherche.
+ */
+export interface DownloadProgress {
+  /** 0..100, ou null si la taille est inconnue (barre indéterminée). */
+  percent: number | null;
+  size: number | null;
+  sizeLeft: number | null;
+  etaSeconds: number | null;
+  estimatedCompletionAt: string | null;
+  /** Statut brut : downloading | queued | paused | delay | warning | failed… */
+  status: string;
+  title: string | null;
+  seasonNumber: number | null;
+  episodeNumber: number | null;
+}
+
 export interface UnifiedRequest {
   id: string;
   source: "local" | "seerr";
@@ -95,6 +118,16 @@ export interface UnifiedRequest {
   completedAt: string | null;
   profileId: string | null;
   isAnime: boolean;
+  /** Agrégat de tous les téléchargements actifs du média. null si aucun. */
+  download?: DownloadProgress | null;
+  /** Détail par épisode (séries), plafonné. Absent quand il n'y en a qu'un. */
+  downloads?: DownloadProgress[];
+}
+
+export interface RequestsStats {
+  total: number;
+  byStatus: Record<string, number>;
+  byType: { movie: number; tv: number };
 }
 
 export interface CreateRequestBody {

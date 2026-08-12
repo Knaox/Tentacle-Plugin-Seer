@@ -5,6 +5,8 @@ import { ExtrasRow } from "./ExtrasRow";
 import { SeasonRow } from "./SeasonRow";
 import { SeriesSeasonPicker } from "./SeriesSeasonPicker";
 import { MovieRequestSection } from "./MovieRequestSection";
+import { AvailabilityPill } from "./AvailabilityPill";
+import { useSingleAvailability } from "../hooks/useAvailability";
 import { WatchProviders } from "./WatchProviders";
 import { CastRow } from "./CastRow";
 import { DetailMetaGrid } from "./DetailMetaGrid";
@@ -70,6 +72,7 @@ export function MediaDetailBody({
   providers, cast, similar, onSelectSimilar,
 }: MediaDetailBodyProps) {
   const { t } = useTranslation("seer");
+  const availability = useSingleAvailability(currentItem.mediaType as "movie" | "tv", currentItem.id);
 
   return (
     <div className="space-y-6 px-4 pb-6 sm:px-6">
@@ -147,6 +150,13 @@ export function MediaDetailBody({
         </div>
       )}
 
+      {/* Ce qui empêche de récupérer ce titre, en toutes lettres. */}
+      {availability && availability.kind !== "released" && (
+        <div className="flex justify-center">
+          <AvailabilityPill verdict={availability} variant="detail" />
+        </div>
+      )}
+
       {/* Film → demande (profil + CTA) ou badge déjà demandé */}
       {currentItem.mediaType === "movie" && (
         <MovieRequestSection
@@ -157,6 +167,7 @@ export function MediaDetailBody({
           profileId={movieProfileId}
           onProfileChange={onMovieProfileChange}
           onRequest={onMovieRequest}
+          obtainable={availability?.obtainable ?? true}
         />
       )}
 

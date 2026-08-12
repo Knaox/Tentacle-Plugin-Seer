@@ -65,7 +65,7 @@ jobs:
         if: steps.bump.outputs.skip != 'true'
         run: |
           V="${{ steps.bump.outputs.version }}"
-          TARBALL="plugin-seer-v${V}.tar.gz"
+          TARBALL="plugin-vigie-v${V}.tar.gz"
           echo "tarball=${TARBALL}" >> "$GITHUB_OUTPUT"
           echo "checksum=sha256:$(sha256sum "$TARBALL" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
           echo "min=$(node -p "require('./plugin.json').minTentacleVersion || '1.1.0'")" >> "$GITHUB_OUTPUT"

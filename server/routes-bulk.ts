@@ -49,6 +49,7 @@ export function registerBulkRoutes(
           deleteFiles: false,
           seasons: req.mediaType === "tv" && req.seasons && req.seasons.length > 0 ? req.seasons : null,
           requestId: id,
+          jellyfinUserId: req.jellyfinUserId,
         });
         deleted++;
       } catch { errors++; }

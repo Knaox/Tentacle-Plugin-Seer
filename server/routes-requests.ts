@@ -164,6 +164,9 @@ export function registerRequestRoutes(
         deleteFiles,
         seasons: removing,
         requestId: partial ? null : parsed.id,
+        // Propriétaire réel : un admin peut supprimer la demande d'un tiers,
+        // et c'est SON cache à lui qu'il faut invalider, pas celui de tout le monde.
+        jellyfinUserId: req.jellyfinUserId,
       });
 
       if (partial) {
@@ -219,6 +222,7 @@ export function registerRequestRoutes(
       deleteFiles,
       seasons: removing,
       requestId: null,
+      jellyfinUserId: user.userId,
     });
 
     invalidate(`seer-cache:${user.userId}`);

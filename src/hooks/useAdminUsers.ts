@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getAdminUsers, updateAdminUser, syncAdminUsers, syncRequestsOwnership } from "../api/seer-client";
+import { getAdminUsers, updateAdminUser, syncAdminUsers, syncRequestsOwnership } from "../api/client-admin";
 import type { AdminUserRow, UpdateAdminUserBody } from "../api/types";
 
 export function useAdminUsers() {

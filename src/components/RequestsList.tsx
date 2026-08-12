@@ -2,10 +2,14 @@ import { useTranslation } from "react-i18next";
 import { RequestCard } from "./RequestCard";
 import { RequestsEmpty } from "./RequestsEmpty";
 import type { LocalRequest } from "../api/types";
+import type { ProgressItem } from "../api/types-releases";
 
 interface RequestsListProps {
   isLoading: boolean;
   requests: LocalRequest[];
+  /** Avancement réel, rafraîchi séparément de la liste. */
+  progressById?: Map<string, ProgressItem>;
+  progressAt?: string | null;
   filtered: boolean;
   page: number;
   totalPages: number;
@@ -30,7 +34,7 @@ interface RequestsListProps {
  * changement de comportement.
  */
 export function RequestsList({
-  isLoading, requests, filtered, page, totalPages, onPageChange,
+  isLoading, requests, progressById, progressAt, filtered, page, totalPages, onPageChange,
   selectionMode, selectedIds, onToggleSelect,
   onDelete, onRetry, onRetryDelete, onAddSeasons, onOpenActionModal, onOpenMarkMenu,
   marking, deleting, retrying,
@@ -64,6 +68,8 @@ export function RequestsList({
             >
               <RequestCard
                 request={request}
+                progress={progressById?.get(request.id)}
+                progressAt={progressAt ?? null}
                 onDelete={onDelete}
                 onRetry={onRetry}
                 onRetryDelete={onRetryDelete}

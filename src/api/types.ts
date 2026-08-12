@@ -237,78 +237,22 @@ export interface LocalRequest {
   source?: "local" | "seerr";
 }
 
-export interface AdminUserRow {
-  jellyfinUserId: string;
-  username: string;
-  blocked: boolean;
-  dailyLimit: number | null;
-  allowMovies: boolean;
-  allowTv: boolean;
-  allowAnime: boolean;
-  jellyseerrUserId: number | null;
-  jellyseerrLastSync: string | null;
-  createdAt: string;
-  updatedAt: string;
-  requestsToday: number;
-  requestsTotal: number;
-}
-
-export interface UpdateAdminUserBody {
-  blocked?: boolean;
-  dailyLimit?: number | null;
-  allowMovies?: boolean;
-  allowTv?: boolean;
-  allowAnime?: boolean;
-}
-
-/** Erreur métier renvoyée par le backend (clé i18n + paramètres) */
-export interface SeerBackendError {
-  message?: string;
-  errorKey?: string;
-  limit?: number;
-}
-
-export type ProfileTargetMedia = "all" | "movie" | "tv" | "anime";
-
-export interface SeerProfile {
-  id: string;
-  name: string;
-  targetMediaType?: ProfileTargetMedia;
-  radarrServerId?: number;
-  radarrProfileId?: number;
-  radarrRootFolder?: string;
-  sonarrServerId?: number;
-  sonarrProfileId?: number;
-  sonarrRootFolder?: string;
-  sonarrLanguageProfileId?: number;
-  tags?: number[];
-  isDefault?: boolean;
-}
-
-export interface QualityOption {
-  id: number;
-  name: string;
-}
-
-export interface ArrTag {
-  id: number;
-  label: string;
-}
-
-export interface ArrServerInfo {
-  id: number;
-  name: string;
-  isDefault: boolean;
-  profiles: QualityOption[];
-  rootFolders: { id: number; path: string }[];
-  tags: ArrTag[];
-}
+/* Types d'administration et de profils — extraits dans types-admin.ts pour
+ * tenir sous 300 lignes, ré-exportés ici pour ne rien casser côté appelants. */
+export type {
+  AdminUserRow, UpdateAdminUserBody, SeerBackendError,
+  ProfileTargetMedia, SeerProfile, QualityOption, ArrTag, ArrServerInfo,
+} from "./types-admin";
 
 export interface LocalRequestsResponse {
   results: LocalRequest[];
   total: number;
   page: number;
   pages: number;
+  /** Statistiques calculées avec la liste — plus de requête séparée. */
+  stats?: import("./types-releases").RequestsStats;
+  /** > 0 : des fiches (titres, affiches) sont encore en cours de remplissage. */
+  metaPending?: number;
 }
 
 export interface QueueStatus {
@@ -319,42 +263,6 @@ export interface QueueStatus {
   workerRunning: boolean;
 }
 
-/* ── Notification types ──────────────────────────────────────────── */
-
-export interface SeerNotification {
-  id: string;
-  jellyfinUserId: string;
-  type: string;
-  title: string;
-  message: string;
-  posterPath: string | null;
-  refId: string | null;
-  read: boolean;
-  createdAt: string;
-}
-
-export interface NotificationsResponse {
-  results: SeerNotification[];
-  total: number;
-  page: number;
-  pages: number;
-}
-
-/* ── Stats types ─────────────────────────────────────────────────── */
-
-export interface UserStats {
-  totalRequests: number;
-  byStatus: Record<string, number>;
-  byType: Record<string, number>;
-}
-
-export interface GlobalStats extends UserStats {
-  topRequested: { title: string; tmdbId: number; count: number }[];
-  topUsers: { username: string; count: number }[];
-  successRate: number;
-}
-
-export interface StatsResponse {
-  personal: UserStats;
-  global?: GlobalStats;
-}
+export type {
+  SeerNotification, NotificationsResponse, UserStats, GlobalStats, StatsResponse,
+} from "./types-stats";

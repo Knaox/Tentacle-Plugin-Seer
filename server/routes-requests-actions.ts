@@ -245,6 +245,7 @@ export function registerRequestActionRoutes(
       action: "delete", mediaType: req.mediaType, tmdbId: req.tmdbId, title: req.title,
       seerrRequestId: req.seerrRequestId, seerrMediaId: req.seerrMediaId,
       deleteFiles: true, requestId: id,
+      jellyfinUserId: req.jellyfinUserId,
     });
 
     kickWorkerNow();

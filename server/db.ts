@@ -5,6 +5,7 @@
 import type { PrismaClient } from "@prisma/client";
 import type { SeerRequest, RequestStatus, SeerUserSettings, AdminUserRow } from "./types";
 import { uuid, rowToRequest, rowToUserSettings } from "./db-helpers";
+import { ensureTmdbCacheTable } from "./tmdb-cache";
 
 type Prisma = PrismaClient;
 
@@ -105,6 +106,9 @@ export async function ensureTables(prisma: Prisma): Promise<void> {
 
   await addColumn("seer_cleanup_queue", "request_id", "VARCHAR(36) DEFAULT NULL");
   await addColumn("seer_cleanup_queue", "seasons", "TEXT DEFAULT NULL");
+  // Sans cette colonne, un cleanup vidait le cache de TOUS les utilisateurs :
+  // une suppression par l'un faisait repayer le chargement complet aux autres.
+  await addColumn("seer_cleanup_queue", "jellyfin_user_id", "VARCHAR(255) DEFAULT NULL");
   await addColumn("seer_requests", "pending_cleanup_id", "VARCHAR(36) DEFAULT NULL");
   await addColumn("seer_requests", "profile_id", "VARCHAR(36) DEFAULT NULL");
   await addColumn("seer_requests", "is_anime", "TINYINT(1) NOT NULL DEFAULT 0");
@@ -127,6 +131,9 @@ export async function ensureTables(prisma: Prisma): Promise<void> {
       INDEX idx_seer_user_seerrid (jellyseerr_user_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+
+  // Mémoire durable des fiches TMDB (titres, affiches, dates de sortie).
+  await ensureTmdbCacheTable(prisma);
 
   const rows = await prisma.$queryRawUnsafe<[{ cnt: bigint }]>(
     `SELECT COUNT(*) as cnt FROM seer_requests`,

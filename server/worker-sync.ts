@@ -220,7 +220,9 @@ export async function retryFailedRequests(prisma: PrismaClient): Promise<void> {
  */
 export function mapSeerrStatus(
   requestStatus: number, mediaStatus?: number,
-  downloadStatus?: Array<{ status: string }>,
+  // `status` optionnel : Jellyseerr ne garantit pas le champ sur tous les items
+  // de la file *arr (un grab tout juste envoyé peut arriver sans).
+  downloadStatus?: Array<{ status?: string }>,
 ): SeerRequest["status"] {
   if (requestStatus === 3) return "failed";
   if (requestStatus === 4) return "failed";

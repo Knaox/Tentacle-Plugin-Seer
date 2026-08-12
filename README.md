@@ -1,84 +1,103 @@
-# Tentacle Plugin - Seer
+# Vigie
 
-Media discovery and request management plugin for [Tentacle TV](https://github.com/Knaox/Tentacle-TV), powered by [Jellyseerr](https://github.com/Fallenbagel/jellyseerr) / [Overseerr](https://overseerr.dev/).
+Demandez films et séries, suivez leur arrivée, et voyez ce qui sort — un plugin pour
+[Tentacle TV](https://github.com/Knaox/Tentacle-TV).
 
-## Features
+> [!IMPORTANT]
+> **Vigie n'est affilié ni au projet Jellyseerr, ni au projet Overseerr, et n'est
+> approuvé par aucun des deux.** C'est un plugin indépendant qui se connecte à *votre*
+> instance Jellyseerr ou Overseerr, que vous hébergez vous-même.
+> Projet officiel Jellyseerr : <https://github.com/fallenbagel/jellyseerr> — projet
+> officiel Overseerr : <https://overseerr.dev>.
+>
+> **Vigie is affiliated with neither the Jellyseerr nor the Overseerr project, and is
+> endorsed by neither.** It is an independent plugin that connects to *your own*
+> self-hosted Jellyseerr or Overseerr instance.
 
-- **Discover** - Browse trending movies, TV shows, and anime
-- **Search** - Search the full media catalog
-- **Request** - Request movies and series in 1 click
-- **Track** - Follow the status of your requests (pending, approved, downloading, available)
-- **Admin config** - Configure Jellyseerr URL, API key, and auto-approval settings
-- **i18n** - English and French translations included
+*(Vigie was previously named « Seer ». Only the display name changed — the plugin
+identifier stays `seer`, so existing installations keep working and upgrade in place.)*
 
-## Requirements
+## Les trois pages
 
-- Tentacle TV >= 0.9.0
-- A running Jellyseerr or Overseerr instance
+| Page | À quoi elle sert |
+|------|------------------|
+| **Catalogue** | Trouver un film ou une série qui n'est *pas* dans la bibliothèque, et le demander |
+| **Mes demandes** | Suivre ce qui a été demandé : en attente, en téléchargement (avec l'avancement réel), disponible |
+| **Sorties** | Les prochaines dates — celles de vos demandes, ou celles d'une plateforme entière |
+
+## Ce que Vigie apporte
+
+- **Savoir si c'est vraiment sorti.** Un film annoncé « 2026 » peut être au cinéma sans
+  exister nulle part ailleurs. Vigie lit les dates de sortie typées de TMDB et signale
+  ce qui *empêche* de récupérer un titre : « Au cinéma », « En ligne le 3 sept. »,
+  « Sortie le 16 déc. ». Un titre récupérable n'affiche rien de particulier.
+- **Un avancement réel.** « En téléchargement » affiche le pourcentage, la taille et le
+  temps restant remontés par Sonarr / Radarr via Jellyseerr — sans requête supplémentaire,
+  et sans rien interroger quand aucun téléchargement n'est en cours.
+- **Un calendrier des sorties.** Vos demandes en attente, ou toutes les sorties d'une
+  plateforme (Crunchyroll, Netflix, Disney+, ADN, Canal+… 80 disponibles en France).
+- **Une liste de demandes rapide.** Les fiches (titres, affiches, dates) sont mémorisées
+  durablement : le chargement ne dépend plus du nombre de demandes.
+- **Français et anglais**, thème clair et thème sombre.
+
+## Prérequis
+
+- Tentacle TV ≥ 0.9.0
+- Une instance Jellyseerr ou Overseerr en fonctionnement
 
 ## Installation
 
-### Via the Marketplace (recommended)
+### Depuis la marketplace (recommandé)
 
-1. Open Tentacle TV as admin
-2. Go to **Admin > Marketplace**
-3. Find **Seer** and click **Install**
-4. Go to **Admin > Seer** to configure Jellyseerr URL and API key
+1. Ouvrir Tentacle TV en tant qu'administrateur
+2. **Admin → Marketplace**
+3. Chercher **Vigie**, puis **Installer**
+4. **Admin → Vigie** pour renseigner l'adresse et la clé d'API de votre Jellyseerr
 
-### Manual installation
+### Installation manuelle
 
-1. Download the latest release from [Releases](https://github.com/Knaox/Tentacle-Plugin-Seer/releases)
-2. Extract the archive into `data/plugins/seer/` on your Tentacle server
-3. Restart the backend
+1. Télécharger la dernière archive depuis les [releases](https://github.com/Knaox/Tentacle-Plugin-Seer/releases)
+2. L'extraire dans `data/plugins/seer/` sur votre serveur Tentacle
+3. Redémarrer le backend
 
-## Development
-
-### Prerequisites
-
-- Node.js >= 20
-- npm
-
-### Setup
+## Développement
 
 ```bash
 npm install
-```
-
-### Build
-
-```bash
-npm run build
-```
-
-This produces `dist/plugin-seer.iife.js` - a single self-contained bundle that auto-registers with Tentacle TV at runtime.
-
-### Typecheck
-
-```bash
+npm run build      # bundle client + module serveur
 npm run typecheck
 ```
 
-### Package for release
+Le build produit `dist/plugin-seer.iife.js` et `server/index.mjs`.
 
-```bash
-npm run build
-tar -czf plugin-seer-v1.0.0.tar.gz dist/ plugin.json
-```
+> Le nom du fichier bundle est **imposé par Tentacle TV** : la route qui le sert
+> construit le chemin `plugin-<id>.iife.js` à partir de l'identifiant du plugin et
+> ignore le champ `entry` du manifeste. Le renommer casserait toutes les installations
+> existantes — d'où l'identifiant `seer` conservé.
+
+### Déploiement en développement
+
+Copier `plugin.json`, `dist/plugin-seer.iife.js` et `server/index.mjs` dans
+`Tentacle-TV/apps/backend/data/plugins/seer/`, puis redémarrer le backend — le module
+serveur est chargé au démarrage.
 
 ## Architecture
 
-This plugin is built as an **IIFE bundle** (Immediately Invoked Function Expression). Shared dependencies (React, React Query, react-i18next) are provided by the host app via `window.TentacleShared` and are not bundled into the plugin.
+Bundle **IIFE** unique. Les dépendances partagées sont fournies par l'application hôte
+via `window.TentacleShared` et ne sont pas embarquées :
 
-| External | Mapped to |
-|----------|-----------|
-| `react` | `TentacleShared.React` |
-| `react/jsx-runtime` | `TentacleShared.ReactJSXRuntime` |
+| Externe | Fourni par |
+|---------|-----------|
+| `react`, `react/jsx-runtime` | `TentacleShared.React`, `TentacleShared.ReactJSXRuntime` |
 | `react-i18next` | `TentacleShared.ReactI18next` |
 | `@tanstack/react-query` | `TentacleShared.TanStackQuery` |
 | `@tentacle-tv/plugins-api` | `TentacleShared.PluginsAPI` |
 
-When loaded, the plugin auto-registers via `window.__tentacle.registerPlugin()`.
+Le plugin s'enregistre de lui-même au chargement via `window.__tentacle.registerPlugin()`.
 
-## License
+Côté serveur, un module Fastify est monté sous `/api/plugins/seer` : il parle à
+Jellyseerr avec la clé d'API, qui **ne quitte jamais le serveur**.
+
+## Licence
 
 MIT

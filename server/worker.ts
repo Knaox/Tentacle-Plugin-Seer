@@ -9,6 +9,7 @@ import { notifyAvailableSeasons, notifyMovieAvailable } from "./seer-availabilit
 import { syncStatuses, retryFailedRequests, type WorkerConfig } from "./worker-sync";
 import { processCleanupQueue } from "./worker-cleanup";
 import { resolveJellyseerrUserId } from "./jellyseerr-user";
+import { warmTmdbCache, seedTmdbCacheOnce } from "./worker-tmdb";
 import { invalidate } from "./cache";
 import type { SeerProfile } from "./types";
 
@@ -73,9 +74,15 @@ export function startWorker(
 
     try { await runCleanupQueue(prisma, config); }
     catch (err) { console.error("[SeerWorker] Error processing cleanup queue:", err); }
+
+    // Réchauffage des fiches TMDB — 1 tick sur 5 (~5 min), budget borné.
+    if (cycleCount % 5 === 0) {
+      try { await warmTmdbCache(prisma, config); }
+      catch (err) { console.error("[SeerWorker] Error warming TMDB cache:", err); }
+    }
   }
 
-  setTimeout(tick, 5000);
+  setTimeout(() => { void seedTmdbCacheOnce(prisma); tick(); }, 5000);
   timer = setInterval(() => { tick(); }, 60_000);
   console.log("[SeerWorker] Started");
 }
