@@ -18,6 +18,7 @@ import { EmptyState } from "./EmptyState";
 import { mediaTitle, mediaYear } from "../utils/media-helpers";
 import { useToast } from "../hooks/useToast";
 import { useAvailability } from "../hooks/useAvailability";
+import { POSTER_GUARD } from "../hooks/useNearViewport";
 import { useSearchHotkey, useScrollTopOnMount } from "../hooks/useSearchHotkey";
 import type { SeerrSearchResult, DiscoverMediaType } from "../api/types";
 
@@ -117,6 +118,20 @@ export function DiscoverPage() {
 
   // Revenir sur le catalogue le rouvre en haut, pas à mi-hauteur.
   useScrollTopOnMount();
+
+  /* La fiche détail fige la garde des affiches. Elle bloque le défilement du
+   * corps et prévient l'hôte qu'un calque est ouvert ; si celui-ci réduit ou
+   * recouvre le cadre, toutes les cartes se retrouvent d'un coup hors zone —
+   * la grille se viderait derrière la fiche pour se recharger en vague à la
+   * fermeture, sur l'interaction la plus fréquente de la page.
+   *
+   * Le dégel au démontage n'est pas une précaution de style : « Regarder » quitte
+   * le plugin depuis la fiche ouverte. Une garde restée figée ne rendrait plus
+   * aucun verdict, et le catalogue rouvrirait entièrement vide. */
+  useEffect(() => {
+    POSTER_GUARD.setPaused(!!selectedItem);
+    return () => POSTER_GUARD.setPaused(false);
+  }, [selectedItem]);
 
   /* Verdicts de sortie pour la grille entière, en une requête. La grille ne
    * les attend pas : les pastilles apparaissent quand la réponse arrive. */

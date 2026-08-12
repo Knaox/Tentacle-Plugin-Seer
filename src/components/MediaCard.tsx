@@ -3,11 +3,17 @@ import { useTranslation } from "react-i18next";
 import type { SeerrSearchResult } from "../api/types";
 import type { AvailabilityVerdict } from "../api/types-releases";
 import { posterUrl, mediaTitle, mediaYear, mediaTypeKey } from "../utils/media-helpers";
+import { useNearViewport, POSTER_GUARD } from "../hooks/useNearViewport";
 import { CTA_PRIMARY, CTA_PRIMARY_HALO } from "../styles/cta";
 import { STATUS_STYLE } from "../styles/status";
 import { AvailabilityPill } from "./AvailabilityPill";
 import { PlatformBadges } from "./PlatformBadges";
 import { PosterImage } from "./PosterImage";
+
+/* Un `?? []` rendrait un tableau NEUF à chaque rendu, ce qui suffit à annuler
+ * la mémoïsation des pastilles de plateformes. Bénin jusqu'ici ; multiplié par
+ * les passages de seuil de la garde une fois la grille en défilement. */
+const NO_PROVIDERS: readonly number[] = [];
 
 interface MediaCardProps {
   item: SeerrSearchResult;
@@ -70,6 +76,15 @@ export const MediaCard = memo(function MediaCard({
    * caché sous `opacity: 0` garde sa couche composée et refloute son fond à
    * chaque image, sur toutes les cartes à la fois (règle GPU du projet). */
   const [hovered, setHovered] = useState(false);
+  /* Une affiche décodée pèse plusieurs centaines de kilooctets, et le catalogue
+   * ne démonte jamais rien : sans cette garde, la mémoire suit le défilement
+   * sans plafond. Hors de la zone, l'affiche est vidée et le navigateur la
+   * libère ; elle revient bien avant d'être regardée. La référence va sur la
+   * RACINE de la carte, jamais sur l'image : à l'intérieur d'un sous-arbre
+   * `content-visibility` mis de côté, un observateur ne voit plus rien, et il
+   * ne se réveillerait de toute façon qu'à la distance du moteur — trop tard
+   * pour recharger avant la peinture. */
+  const [nearScreen, cardRef] = useNearViewport(POSTER_GUARD);
   const title = mediaTitle(item) || t("seer:untitled");
   const year = mediaYear(item);
   const type = t(mediaTypeKey(item));
@@ -78,10 +93,11 @@ export const MediaCard = memo(function MediaCard({
   const hasMediaInfo = mediaStatus > 1;
   /* Les plateformes voyagent avec le verdict de disponibilité : elles sont déjà
    * en mémoire côté serveur, donc les afficher ici ne coûte aucune requête. */
-  const providerIds = availability?.providerIds ?? [];
+  const providerIds = availability?.providerIds ?? NO_PROVIDERS;
 
   return (
     <div
+      ref={cardRef}
       className="group relative cursor-pointer overflow-hidden rounded-xl transition-transform duration-300 focus-within:ring-2 focus-within:ring-tentacle-brand-soft hover:scale-[1.05]"
       style={{
         opacity: 0,
@@ -106,12 +122,20 @@ export const MediaCard = memo(function MediaCard({
         style={{ boxShadow: "0 12px 40px rgba(var(--brand-rgb), 0.15)" }}
       />
 
-      <div className="relative aspect-[2/3] w-full overflow-hidden rounded-xl">
+      {/* Le fond n'est pas décoratif : c'est l'assurance du déchargement. Dans
+          le seul cas où l'affiche pourrait manquer — un saut brutal à l'aide de
+          l'ascenseur — on voit la même tuile neutre que lorsqu'il n'y a pas
+          d'affiche du tout, et non un trou dans la grille. */}
+      <div className="relative aspect-[2/3] w-full overflow-hidden rounded-xl bg-tentacle-surface-2">
         {poster ? (
+          /* La condition de montage reste sur `poster`, JAMAIS sur la garde :
+             démonter l'image remettrait son fondu à zéro et ferait clignoter le
+             repli à chaque allée et venue. Seule la source s'efface. */
           <PosterImage
-            src={poster}
+            src={nearScreen ? poster : undefined}
             width={342}
             height={513}
+            loading="eager"
             className="transition-transform duration-300 group-hover:scale-105"
           />
         ) : (

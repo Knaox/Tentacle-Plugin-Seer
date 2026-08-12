@@ -161,6 +161,20 @@ test("à la reprise, toutes les cibles sont ré-observées", () => {
   assert.equal(built.length, 1, "la reprise ne construit pas un second observateur");
 });
 
+test("dégeler une garde qui ne l'est pas ne double pas les observations", () => {
+  // Le dégel se joue aussi au démontage de la page, y compris quand rien
+  // n'était figé : il doit rester sans effet.
+  const { built, make } = spyFactory();
+  const guard = createViewportGuard("100px", make);
+  const a = el();
+
+  guard.observe(a, () => {});
+  guard.setPaused(false);
+
+  assert.equal(built.length, 1);
+  assert.equal(built[0].watched.size, 1);
+});
+
 test("suspendre deux fois de suite ne change rien", () => {
   const { built, make } = spyFactory();
   const guard = createViewportGuard("100px", make);
