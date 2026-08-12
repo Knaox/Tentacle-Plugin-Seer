@@ -39,6 +39,10 @@ export default {
   progressSearching: "Looking for a source",
   progressEpisodes_one: "{{count}} episode in progress",
   progressEpisodes_other: "{{count}} episodes in progress",
+  // Per-season breakdown of a series request
+  progressSeason: "Season {{season}}",
+  progressSeasonWaiting: "Waiting",
+  progressNoSeason: "Outside a season",
 
   // Releases page
   navReleases: "Releases",

@@ -1,5 +1,5 @@
 import { build } from "esbuild";
-import { globSync } from "node:fs";
+import { globSync, rmSync } from "node:fs";
 
 /*
  * Le serveur du plugin n'a AUCUNE vérification de types : `tsconfig.json`
@@ -14,7 +14,11 @@ import { globSync } from "node:fs";
  * installer, et les fichiers testés restent tels qu'ils sont livrés.
  */
 
-const entryPoints = globSync("server/**/*.test.ts");
+/* Table rase à chaque fois : un test supprimé ou déplacé laissait sinon son
+ * ancienne version derrière lui, et elle continuait de passer au vert. */
+rmSync("test-build", { recursive: true, force: true });
+
+const entryPoints = [...globSync("server/**/*.test.ts"), ...globSync("src/**/*.test.ts")];
 if (entryPoints.length === 0) {
   console.log("[build-tests] aucun test à construire");
   process.exit(0);

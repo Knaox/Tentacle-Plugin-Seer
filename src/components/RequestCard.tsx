@@ -50,6 +50,10 @@ const PROGRESS_STEPS: RequestStatus[] = ["queued", "sent_to_seer", "approved", "
 function getProgressIndex(status: RequestStatus): number {
   if (status === "processing" || status === "retry_pending") return 0;
   if (status === "failed" || status === "deleting" || status === "delete_failed" || status === "unavailable" || status === "deleted") return -1;
+  // « Partiellement disponible » n'est pas dans le parcours : `indexOf` rendait
+  // -1, donc AUCUNE barre — au moment précis où une série récupère encore des
+  // épisodes et où la barre est la plus utile.
+  if (status === "partially_available") return PROGRESS_STEPS.indexOf("downloading");
   return PROGRESS_STEPS.indexOf(status);
 }
 
@@ -166,6 +170,7 @@ export function RequestCard({
             download={progress.download}
             downloads={progress.downloads}
             receivedAt={progressAt ?? null}
+            requestedSeasons={request.seasons}
           />
         ) : progressIdx >= 0 && (
           <div className="mt-2 flex items-center gap-1">

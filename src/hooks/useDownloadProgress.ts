@@ -29,7 +29,12 @@ export function useRequestsProgress(active: boolean) {
     staleTime: 10_000,
     gcTime: 60_000,
     refetchIntervalInBackground: false,
-    refetchInterval: active && visible ? 15_000 : false,
+    /* La route ne renvoie QUE ce qui descend réellement : une réponse vide
+     * signifie « rien en cours ». On lève alors le pied au lieu de marteler —
+     * le cas d'une série partiellement disponible qui n'a plus rien à
+     * récupérer, désormais incluse dans `active`. */
+    refetchInterval: (q) =>
+      active && visible ? ((q.state.data?.items.length ?? 0) > 0 ? 15_000 : 60_000) : false,
     retry: 1,
   });
 

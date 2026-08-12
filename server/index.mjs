@@ -2344,7 +2344,7 @@ function toDownloadProgress(item) {
     episodeNumber: item.episode?.episodeNumber ?? null
   };
 }
-var MAX_DETAIL_ITEMS = 12;
+var MAX_DETAIL_ITEMS = 24;
 function aggregateDownloads(items) {
   if (!Array.isArray(items) || items.length === 0) return { summary: null, items: [] };
   const parsed = items.map(toDownloadProgress).filter((p) => p !== null);

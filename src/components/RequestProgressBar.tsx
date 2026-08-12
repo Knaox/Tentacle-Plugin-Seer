@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { DownloadProgress } from "../api/types-releases";
 import { useInterpolatedProgress } from "../hooks/useDownloadProgress";
 import { formatBytes, formatEta } from "../utils/format-bytes";
+import { SeasonProgressList } from "./SeasonProgressList";
 import { STATUS_STYLE } from "../styles/status";
 
 /**
@@ -18,10 +19,12 @@ interface Props {
   download: DownloadProgress;
   downloads?: DownloadProgress[];
   receivedAt: string | null;
+  /** Saisons demandées : celles qui n'ont pas commencé méritent d'être vues. */
+  requestedSeasons?: readonly number[] | null;
 }
 
 export const RequestProgressBar = memo(function RequestProgressBar({
-  download, downloads, receivedAt,
+  download, downloads, receivedAt, requestedSeasons,
 }: Props) {
   const { t } = useTranslation("seer");
   const { percent, etaSeconds } = useInterpolatedProgress(download, receivedAt);
@@ -47,8 +50,11 @@ export const RequestProgressBar = memo(function RequestProgressBar({
     if (paused) parts.push(t("seer:progressPaused"));
   }
 
+  /* Une seule saison sans détail n'a rien à déplier : le compteur suffit.
+   * Dès qu'il y a plusieurs épisodes, la liste par saison le remplace. */
   const episodes = downloads?.length ?? 0;
-  if (episodes > 1) parts.push(t("seer:progressEpisodes", { count: episodes }));
+  const bySeason = episodes > 1 || (requestedSeasons?.length ?? 0) > 1;
+  if (episodes > 1 && !bySeason) parts.push(t("seer:progressEpisodes", { count: episodes }));
 
   return (
     <div className="mt-2">
@@ -84,6 +90,10 @@ export const RequestProgressBar = memo(function RequestProgressBar({
 
       {percent == null && !validating && (
         <p className="mt-1 text-[10px] text-tentacle-text-quaternary">{t("seer:progressSearching")}</p>
+      )}
+
+      {bySeason && (
+        <SeasonProgressList downloads={downloads ?? []} requestedSeasons={requestedSeasons} />
       )}
     </div>
   );

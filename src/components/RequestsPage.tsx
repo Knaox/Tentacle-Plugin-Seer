@@ -72,7 +72,11 @@ export function RequestsPage() {
    * Sans cela, aucune requête n'est émise — et la fusion se fait au rendu
    * plutôt que dans le cache, pour ne pas écraser les mises à jour optimistes
    * des actions (suppression, relance) qui savent revenir en arrière. */
-  const hasDownloading = requests.some((r) => r.status === "downloading");
+  /* « Partiellement disponible » compte aussi : une série dans cet état
+   * récupère souvent encore des épisodes, et le serveur les remonte déjà. */
+  const hasDownloading = requests.some(
+    (r) => r.status === "downloading" || r.status === "partially_available",
+  );
   const progress = useRequestsProgress(hasDownloading);
 
   const searchInputRef = useRef<HTMLInputElement>(null);

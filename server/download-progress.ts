@@ -114,8 +114,12 @@ export function toDownloadProgress(item: SeerrDownloadItem): DownloadProgress | 
   };
 }
 
-/** Nombre d'épisodes détaillés renvoyés au front (une saison peut en aligner 24). */
-const MAX_DETAIL_ITEMS = 12;
+/*
+ * Nombre d'épisodes détaillés renvoyés au front. Douze suffisaient pour un
+ * compteur ; il en faut le double pour un rendu par saison, une saison
+ * complète en alignant couramment vingt-quatre.
+ */
+const MAX_DETAIL_ITEMS = 24;
 
 /**
  * Agrège les téléchargements d'un même média.
