@@ -8,7 +8,7 @@
  *   node scripts/update-registry.mjs \
  *     --registry ../registry/registry.json \
  *     --version 1.12.0 \
- *     --url https://github.com/Knaox/Tentacle-Plugin-Seer/releases/download/v1.12.0/plugin-seer-v1.12.0.tar.gz \
+ *     --url https://github.com/Knaox/Tentacle-Plugin-Vigie/releases/download/v1.12.0/plugin-vigie-v1.12.0.tar.gz \
  *     --checksum sha256:abc… \
  *     --min 1.1.0 --date 2026-07-14 \
  *     --changelog "Notes…" [--id seer]

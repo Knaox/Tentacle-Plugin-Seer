@@ -56,7 +56,7 @@ identifier stays `seer`, so existing installations keep working and upgrade in p
 
 ### Installation manuelle
 
-1. Télécharger la dernière archive depuis les [releases](https://github.com/Knaox/Tentacle-Plugin-Seer/releases)
+1. Télécharger la dernière archive depuis les [releases](https://github.com/Knaox/Tentacle-Plugin-Vigie/releases)
 2. L'extraire dans `data/plugins/seer/` sur votre serveur Tentacle
 3. Redémarrer le backend
 
