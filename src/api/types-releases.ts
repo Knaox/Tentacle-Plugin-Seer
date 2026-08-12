@@ -19,13 +19,17 @@ export type AvailabilityKind =
   | "upcoming"
   | "not_aired";
 
-/** Salle, VOD-streaming, DVD-Blu-ray : trois canaux qui se cumulent. */
-export type ChannelId = "theatrical" | "digital" | "physical";
+/**
+ * Salle, sortie en streaming, Blu-ray — et « en streaming en ce moment », le
+ * seul canal sans date : il décrit un état présent, pas une sortie. C'est
+ * souvent la seule chose qu'on sache d'une série ou d'un animé en cours.
+ */
+export type ChannelId = "theatrical" | "digital" | "physical" | "streaming";
 
 export interface AvailabilityChannel {
   id: ChannelId;
-  /** Toujours 'YYYY-MM-DD' — à lire avec parseAirDate, jamais new Date(). */
-  date: string;
+  /** 'YYYY-MM-DD' — à lire avec parseAirDate, jamais new Date(). */
+  date: string | null;
   released: boolean;
 }
 

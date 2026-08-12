@@ -3787,7 +3787,7 @@ function daysBetween(from, to) {
   const b = new Date(by, bm - 1, bd).getTime();
   return Math.round((b - a) / 864e5);
 }
-var RANK = { physical: 0, digital: 1, theatrical: 2 };
+var RANK = { physical: 0, digital: 1, streaming: 2, theatrical: 3 };
 function buildChannels(meta, today) {
   const raw = [
     ["physical", meta.physicalDate],
@@ -3804,9 +3804,14 @@ function buildChannels(meta, today) {
     }
     channels.push({ id, date, released });
   }
+  const hasDigital = channels.some((c) => c.id === "digital" && c.released);
+  if (!hasDigital && (meta.providerIds?.length ?? 0) > 0) {
+    channels.push({ id: "streaming", date: null, released: true });
+  }
   return channels.sort((a, b) => {
     if (a.released !== b.released) return a.released ? -1 : 1;
-    return a.released ? RANK[a.id] - RANK[b.id] : a.date.localeCompare(b.date);
+    if (a.released) return RANK[a.id] - RANK[b.id];
+    return (a.date ?? "").localeCompare(b.date ?? "");
   });
 }
 function kindOf(channels, meta, today) {
@@ -3818,7 +3823,7 @@ function kindOf(channels, meta, today) {
   return first.id === "digital" ? "digital_soon" : "upcoming";
 }
 function outlookOf(meta, today, channels) {
-  const outOfTheaters = meta.digitalDate != null && meta.digitalDate <= today || meta.physicalDate != null && meta.physicalDate <= today;
+  const outOfTheaters = meta.digitalDate != null && meta.digitalDate <= today || meta.physicalDate != null && meta.physicalDate <= today || (meta.providerIds?.length ?? 0) > 0;
   if (outOfTheaters) return "likely";
   if (channels.some((c) => c.released)) return "unlikely";
   return channels.length === 0 ? "likely" : "not_yet";
@@ -3836,7 +3841,8 @@ function classifyAvailability(meta, today = todayString()) {
     const notAired = meta.releaseDate && meta.releaseDate > today || !meta.releaseDate && isPlanned(meta.tmdbStatus);
     return {
       ...base,
-      channels: [],
+      // Rien qui ne soit pas encore diffusé ne peut être « en streaming ».
+      channels: notAired ? [] : buildChannels(meta, today),
       outlook: notAired ? "not_yet" : "likely",
       kind: notAired ? "not_aired" : "released",
       date: notAired ? meta.releaseDate : null,

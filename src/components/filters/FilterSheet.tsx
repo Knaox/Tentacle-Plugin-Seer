@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { CTA_PRIMARY } from "../../styles/cta";
+import { ICON_BUTTON } from "../../styles/pills";
 
 /**
  * La coquille d'un panneau de filtres : voile, tiroir, en-tête, pied.
@@ -89,11 +90,9 @@ export function FilterSheet({
                 {t("resetFilters")}
               </button>
             )}
-            <button
-              onClick={onClose}
-              aria-label={t("seer:cancel")}
-              className="flex h-7 w-7 items-center justify-center rounded-full bg-tentacle-fill-subtle text-tentacle-text-tertiary hover:text-tentacle-text-primary"
-            >
+            {/* ICON_BUTTON plutôt qu'un carré de 28 px : c'est la cible que le
+                plugin s'impose partout ailleurs, et elle se vise vraiment. */}
+            <button onClick={onClose} aria-label={t("seer:cancel")} className={ICON_BUTTON}>
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
               </svg>

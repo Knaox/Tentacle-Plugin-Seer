@@ -67,7 +67,14 @@ export const RequestProgressBar = memo(function RequestProgressBar({
         )}
       </div>
 
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-tentacle-surface-2">
+      <div
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={validating ? 100 : percent != null ? Math.floor(percent) : undefined}
+        aria-label={parts.join(" · ") || undefined}
+        className="h-1.5 w-full overflow-hidden rounded-full bg-tentacle-surface-2"
+      >
         {validating ? (
           <div className={`h-full w-full rounded-full ${STATUS_STYLE.processing.solid}`} />
         ) : percent != null ? (

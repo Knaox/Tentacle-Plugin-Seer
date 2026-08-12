@@ -56,18 +56,22 @@ function SeasonRowItem({ group, soleSeason }: { group: SeasonProgress; soleSeaso
 
   return (
     <li>
+      {/* Hauteur minimale de 36 px : c'est la cible que le plugin s'impose
+          (cf. ICON_BUTTON dans styles/pills.ts). Sans elle, la rangée ne
+          mesurait qu'une quinzaine de pixels — impossible à viser au doigt. */}
       <button
         type="button"
         onClick={() => canOpen && setOpen((v) => !v)}
         aria-expanded={canOpen ? open : undefined}
+        aria-label={canOpen ? `${label} — ${state}` : undefined}
         disabled={!canOpen}
-        className="flex w-full items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(var(--brand-rgb),0.6)] disabled:cursor-default"
+        className="flex min-h-[36px] w-full items-center gap-2 rounded px-1 text-left transition-colors duration-150 hover:bg-tentacle-fill-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(var(--brand-rgb),0.6)] disabled:cursor-default disabled:hover:bg-transparent"
       >
-        <span className="w-16 shrink-0 truncate text-[10px] font-medium text-tentacle-text-secondary">
+        <span className="w-16 shrink-0 truncate text-[11px] font-medium text-tentacle-text-secondary">
           {label}
         </span>
         <Bar percent={group.percent} muted={group.waiting} validating={group.validating} />
-        <span className="shrink-0 text-[10px] tabular-nums text-tentacle-text-quaternary">
+        <span className="shrink-0 text-[11px] tabular-nums text-tentacle-text-tertiary">
           {group.percent != null && !group.validating ? `${Math.floor(group.percent)} %` : state}
         </span>
         {canOpen && <Chevron open={open} />}
@@ -76,13 +80,20 @@ function SeasonRowItem({ group, soleSeason }: { group: SeasonProgress; soleSeaso
       {open && canOpen && (
         <ul className="mt-1 flex flex-col gap-1 pl-[4.5rem]">
           {group.episodes.map((e) => (
-            <li key={`${e.seasonNumber}-${e.episodeNumber}-${e.title ?? ""}`} className="flex items-center gap-2">
-              <span className="w-8 shrink-0 text-[10px] tabular-nums text-tentacle-text-quaternary">
+            <li
+              key={`${e.seasonNumber}-${e.episodeNumber}-${e.title ?? ""}`}
+              className="flex min-h-[24px] items-center gap-2"
+            >
+              <span className="w-8 shrink-0 text-[11px] tabular-nums text-tentacle-text-tertiary">
                 {e.episodeNumber != null ? `E${e.episodeNumber}` : "—"}
               </span>
               <Bar percent={e.percent} validating={e.validating} thin />
-              <span className="shrink-0 text-[10px] tabular-nums text-tentacle-text-quaternary">
-                {e.validating ? "✓" : e.percent != null ? `${Math.floor(e.percent)} %` : "…"}
+              <span className="shrink-0 text-[11px] tabular-nums text-tentacle-text-tertiary">
+                {/* Un signe seul ne dit rien à un lecteur d'écran : le libellé
+                    complet part dans le titre accessible. */}
+                {e.validating
+                  ? <span title={t("seer:statusValidating")} aria-label={t("seer:statusValidating")}>✓</span>
+                  : e.percent != null ? `${Math.floor(e.percent)} %` : "…"}
               </span>
             </li>
           ))}
@@ -99,8 +110,17 @@ function Bar({ percent, muted, validating, thin }: {
   if (muted) return <div className={`${height} w-full rounded-full bg-tentacle-surface-2`} />;
 
   const fill = validating ? STATUS_STYLE.processing.solid : STATUS_STYLE.downloading.solid;
+  const value = validating ? 100 : percent;
   return (
-    <div className={`${height} w-full overflow-hidden rounded-full bg-tentacle-surface-2`}>
+    <div
+      /* Sans ces attributs, un lecteur d'écran ne voit qu'une boîte vide :
+         la progression n'existe que visuellement. */
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={value != null ? Math.floor(value) : undefined}
+      className={`${height} w-full overflow-hidden rounded-full bg-tentacle-surface-2`}
+    >
       {validating || percent != null ? (
         // Seule `transform` est animée — animer la largeur repeindrait la carte
         // à chaque image (règle GPU du projet).

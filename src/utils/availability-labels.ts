@@ -31,6 +31,9 @@ export function shortDate(date: string): string {
 export const CHANNEL_STYLE: Record<ChannelId, string> = {
   physical: KIND_STYLE.physical.chip,
   digital: KIND_STYLE.digital.chip,
+  // Même sens que « sorti en ligne », donc même teinte : c'est la même réponse
+  // à la même question, « puis-je le regarder maintenant ? ».
+  streaming: KIND_STYLE.digital.chip,
   theatrical: KIND_STYLE.theatrical.chip,
 };
 
@@ -45,19 +48,21 @@ type Translate = (key: string, opts?: Record<string, unknown>) => string;
 const SHORT: Record<ChannelId, { out: string; soon: string }> = {
   physical: { out: "seer:availPhysicalOut", soon: "seer:availPhysicalSoon" },
   digital: { out: "seer:availDigitalOut", soon: "seer:availOnlineOn" },
+  streaming: { out: "seer:availStreamingNow", soon: "seer:availStreamingNow" },
   theatrical: { out: "seer:availStillInTheaters", soon: "seer:availTheatricalSoon" },
 };
 
 const LONG: Record<ChannelId, { out: string; soon: string }> = {
   physical: { out: "seer:availPhysicalOutLong", soon: "seer:availPhysicalSoonLong" },
   digital: { out: "seer:availDigitalOutLong", soon: "seer:availOnlineOnLong" },
+  streaming: { out: "seer:availStreamingNowLong", soon: "seer:availStreamingNowLong" },
   theatrical: { out: "seer:availInTheatersLong", soon: "seer:availTheatricalSoonLong" },
 };
 
 export function channelLabel(channel: AvailabilityChannel, t: Translate, long = false): string {
   const table = long ? LONG : SHORT;
   const key = channel.released ? table[channel.id].out : table[channel.id].soon;
-  return t(key, { date: shortDate(channel.date) });
+  return t(key, { date: channel.date ? shortDate(channel.date) : "" });
 }
 
 const OUTLOOK_I18N: Record<AvailabilityOutlook, string> = {

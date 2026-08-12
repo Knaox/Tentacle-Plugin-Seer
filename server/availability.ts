@@ -72,13 +72,20 @@ export type AvailabilityKind =
   /** Série dont la diffusion n'a pas commencé. */
   | "not_aired";
 
-export type ChannelId = "theatrical" | "digital" | "physical";
+export type ChannelId = "theatrical" | "digital" | "physical" | "streaming";
 
-/** Un canal de diffusion connu, avec sa date et son état à la date du jour. */
+/**
+ * Un canal connu.
+ *
+ * `streaming` est le seul sans date : il ne décrit pas une sortie mais un état
+ * présent — « c'est sur une plateforme d'abonnement en ce moment ». C'est
+ * souvent la seule chose qu'on sache d'une série ou d'un titre ancien, et c'est
+ * précisément celle qui manquait : les séries n'avaient aucun canal du tout.
+ */
 export interface AvailabilityChannel {
   id: ChannelId;
-  /** Toujours 'YYYY-MM-DD'. */
-  date: string;
+  /** 'YYYY-MM-DD', ou null pour un canal sans date de sortie. */
+  date: string | null;
   released: boolean;
 }
 
@@ -113,7 +120,7 @@ export interface AvailabilityVerdict {
  * le physique et le numérique garantissent l'existence d'un fichier, la salle
  * non. Entre deux canaux à venir, la date la plus proche gagne.
  */
-const RANK: Record<ChannelId, number> = { physical: 0, digital: 1, theatrical: 2 };
+const RANK: Record<ChannelId, number> = { physical: 0, digital: 1, streaming: 2, theatrical: 3 };
 
 function buildChannels(meta: TmdbMeta, today: string): AvailabilityChannel[] {
   const raw: Array<[ChannelId, string | null]> = [
@@ -136,9 +143,24 @@ function buildChannels(meta: TmdbMeta, today: string): AvailabilityChannel[] {
     channels.push({ id, date, released });
   }
 
+  /*
+   * Présent sur une plateforme d'abonnement : un fait d'aujourd'hui, que la
+   * fenêtre de pertinence ne concerne pas. Sans lui, un titre ancien ou une
+   * série — qui n'a jamais de date typée — n'affichait rien du tout alors que
+   * les logos des plateformes s'alignaient juste à côté.
+   *
+   * On ne le dit PAS quand une sortie numérique récente est déjà annoncée :
+   * les deux nommeraient la même chose.
+   */
+  const hasDigital = channels.some((c) => c.id === "digital" && c.released);
+  if (!hasDigital && (meta.providerIds?.length ?? 0) > 0) {
+    channels.push({ id: "streaming", date: null, released: true });
+  }
+
   return channels.sort((a, b) => {
     if (a.released !== b.released) return a.released ? -1 : 1;
-    return a.released ? RANK[a.id] - RANK[b.id] : a.date.localeCompare(b.date);
+    if (a.released) return RANK[a.id] - RANK[b.id];
+    return (a.date ?? "").localeCompare(b.date ?? "");
   });
 }
 
@@ -158,10 +180,12 @@ function kindOf(channels: AvailabilityChannel[], meta: TmdbMeta, today: string):
  * canal-là est trop vieux pour être encore mentionné.
  */
 function outlookOf(meta: TmdbMeta, today: string, channels: AvailabilityChannel[]): AvailabilityOutlook {
-  /* Un fichier n'existe de façon sûre qu'à partir d'une sortie hors salle. */
+  /* Un fichier n'existe de façon sûre qu'à partir d'une sortie hors salle —
+   * ou d'une mise en ligne sur une plateforme, qui la vaut bien. */
   const outOfTheaters =
     (meta.digitalDate != null && meta.digitalDate <= today) ||
-    (meta.physicalDate != null && meta.physicalDate <= today);
+    (meta.physicalDate != null && meta.physicalDate <= today) ||
+    (meta.providerIds?.length ?? 0) > 0;
   if (outOfTheaters) return "likely";
   if (channels.some((c) => c.released)) return "unlikely";
   /* Aucun canal du tout : titre ancien sans dates typées, donc récupérable. */
@@ -179,14 +203,17 @@ export function classifyAvailability(meta: TmdbMeta, today = todayString()): Ava
   };
 
   if (meta.mediaType === "tv") {
-    /* Une série n'a pas de canaux : on ne parle que du début de sa diffusion. */
+    /* Une série n'a pas de dates typées — mais elle est souvent sur une
+     * plateforme, et c'était le grand absent : les animés en cours de
+     * diffusion n'affichaient rien, logos alignés juste à côté. */
     const notAired =
       (meta.releaseDate && meta.releaseDate > today) ||
       (!meta.releaseDate && isPlanned(meta.tmdbStatus));
 
     return {
       ...base,
-      channels: [],
+      // Rien qui ne soit pas encore diffusé ne peut être « en streaming ».
+      channels: notAired ? [] : buildChannels(meta, today),
       outlook: notAired ? "not_yet" : "likely",
       kind: notAired ? "not_aired" : "released",
       date: notAired ? meta.releaseDate : null,

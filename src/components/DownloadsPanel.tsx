@@ -81,7 +81,14 @@ function DownloadRow({ entry }: { entry: QueueEntry }) {
         )}
       </div>
 
-      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-tentacle-surface-2">
+      <div
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={entry.validating ? 100 : entry.percent != null ? Math.floor(entry.percent) : undefined}
+        aria-label={`${entry.title}${parts.length ? ` — ${parts.join(" · ")}` : ""}`}
+        className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-tentacle-surface-2"
+      >
         {entry.validating || entry.percent != null ? (
           // Seule `transform` est animée (règle GPU du projet).
           <div

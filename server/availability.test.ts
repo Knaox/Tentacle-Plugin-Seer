@@ -81,7 +81,7 @@ test("Avengers: Doomsday — sortie en salle encore devant nous", () => {
   assert.equal(v.outlook, "not_yet");
 });
 
-test("Fight Club — vieux titre : récupérable, mais on n'en dit rien", () => {
+test("Fight Club — vieux titre sur des plateformes : « en streaming », rien d'autre", () => {
   const v = classifyAvailability(
     meta({
       tmdbId: 550, theatricalDate: "1999-11-10", digitalDate: "2011-09-08",
@@ -89,11 +89,50 @@ test("Fight Club — vieux titre : récupérable, mais on n'en dit rien", () => 
     }),
     TODAY,
   );
-  // Annoncer « En Blu-ray » sur un film de 1999 noierait la grille.
+  // Annoncer « En Blu-ray » sur un film de 1999 noierait la grille ; dire
+  // qu'il est sur des plateformes reste utile, et c'est ce qui manquait.
+  assert.deepEqual(ids(v), ["streaming"]);
+  assert.equal(v.channels[0].date, null);
+  assert.equal(v.outlook, "likely");
+  assert.deepEqual(v.providerIds, [8, 337, 381]);
+});
+
+test("vieux titre sur aucune plateforme — on se tait", () => {
+  const v = classifyAvailability(
+    meta({ theatricalDate: "1999-11-10", digitalDate: "2011-09-08" }),
+    TODAY,
+  );
   assert.deepEqual(ids(v), []);
   assert.equal(v.outlook, "likely");
-  assert.equal(v.obtainable, true);
-  assert.deepEqual(v.providerIds, [8, 337, 381]);
+});
+
+test("série en cours sur une plateforme — le cas des animés", () => {
+  // C'était le grand absent : une série n'a aucune date typée, donc rien ne
+  // s'affichait, alors même que les logos des plateformes étaient à côté.
+  const v = classifyAvailability(
+    meta({ mediaType: "tv", releaseDate: "2024-04-10", tmdbStatus: "Returning Series", providerIds: [283] }),
+    TODAY,
+  );
+  assert.deepEqual(ids(v), ["streaming"]);
+  assert.equal(v.outlook, "likely");
+});
+
+test("sortie en streaming récente — pas de doublon avec « en streaming »", () => {
+  const v = classifyAvailability(
+    meta({ digitalDate: "2026-07-01", providerIds: [8] }),
+    TODAY,
+  );
+  // Les deux nommeraient la même chose : la date est plus informative.
+  assert.deepEqual(ids(v), ["digital"]);
+});
+
+test("encore en salle mais déjà sur une plateforme — les deux sont dits", () => {
+  const v = classifyAvailability(
+    meta({ theatricalDate: "2026-07-08", providerIds: [8] }),
+    TODAY,
+  );
+  assert.deepEqual(ids(v), ["streaming", "theatrical"]);
+  assert.equal(v.outlook, "likely");
 });
 
 test("aucune date typée — on se tait et on laisse demander", () => {

@@ -2,16 +2,20 @@ export default {
   // Disponibilité — PAR OÙ un titre est sorti, et ce qu'une demande peut espérer.
   // Ne jamais employer « Disponible » ici : ce mot désigne, sur Mes demandes,
   // un titre déjà téléchargé et présent dans la bibliothèque. On nomme le
-  // canal (salle, en ligne, Blu-ray), jamais un état de possession.
+  // canal (salle, streaming, Blu-ray), jamais un état de possession.
   availStillInTheaters: "Encore au cinéma",
   availInTheaters: "Au cinéma",
   availInTheatersLong: "Encore au cinéma depuis le {{date}}",
   availTheatricalSoon: "Au cinéma le {{date}}",
   availTheatricalSoonLong: "Sortie en salle le {{date}}",
-  availDigitalOut: "En ligne",
-  availDigitalOutLong: "Sorti en ligne le {{date}}",
-  availOnlineOn: "En ligne le {{date}}",
-  availOnlineOnLong: "Sortie en ligne le {{date}}",
+  availDigitalOut: "En streaming",
+  availDigitalOutLong: "Sorti en streaming le {{date}}",
+  availOnlineOn: "En streaming le {{date}}",
+  availOnlineOnLong: "Sortie en streaming le {{date}}",
+  // Sur une plateforme d'abonnement en ce moment, sans date de sortie connue :
+  // c'est souvent tout ce qu'on sait d'une série ou d'un animé en cours.
+  availStreamingNow: "En streaming",
+  availStreamingNowLong: "Regardable en streaming sur abonnement",
   availPhysicalOut: "En Blu-ray",
   availPhysicalOutLong: "Sorti en DVD / Blu-ray le {{date}}",
   availPhysicalSoon: "Blu-ray le {{date}}",
@@ -85,7 +89,7 @@ export default {
   releasesToday: "Aujourd'hui",
   releasesTomorrow: "Demain",
   releasesThisMonth: "Ce mois-ci",
-  releasesKindDigital: "En ligne",
+  releasesKindDigital: "En streaming",
   releasesKindTheatrical: "Au cinéma",
   releasesKindPhysical: "Blu-ray / DVD",
   releasesKindEpisode: "Épisode",

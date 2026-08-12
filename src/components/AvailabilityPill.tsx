@@ -53,8 +53,12 @@ export const AvailabilityPill = memo(function AvailabilityPill({ verdict, varian
 
   const shown = cardChannels(verdict);
 
+  /* Le détail complet vit dans l'infobulle, hors d'atteinte au clavier et pour
+   * un lecteur d'écran : il est donc aussi porté par le libellé accessible. */
+  const detail = verdictTooltip(verdict, t);
+
   return (
-    <span className="mt-0.5 flex flex-col items-start gap-0.5" title={verdictTooltip(verdict, t)}>
+    <span className="mt-0.5 flex flex-col items-start gap-0.5" title={detail} aria-label={detail}>
       {shown.length > 0
         ? shown.map((c) => <Chip key={c.id} channel={c} t={t} />)
         : <NotAired verdict={verdict} t={t} />}
