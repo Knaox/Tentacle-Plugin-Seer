@@ -34,6 +34,10 @@ auto-bumpé par le message du commit (`feat`→mineure, `fix`→patch, `!`→maj
 - Le raccourci affiche **⌘K sur Mac** au lieu de « Ctrl+K », et fonctionne aussi sur Mes demandes qui n'en avait aucun
 - Revenir sur une page du plugin la rouvre **en haut**
 - Les pages du plugin peuvent être **retirées de la barre de navigation** (menu « Bibliothèques ») ; elles y sont par défaut
+- **La barre de l'agenda tient sur une ligne** : elle empilait jusqu'à trois rangées, dont un mur de quarante pilules de plateformes qui repoussait le calendrier hors de l'écran. La plateforme passe derrière un menu avec recherche
+- **« Mes sorties » propose « À venir » ou « Toutes mes demandes »** : la page ne montrait que ce qui restait à arriver, et paraissait donc vide quand tout était là
+- **Le filtre plateformes du catalogue s'ouvre aux cent plateformes** de la région au lieu de onze écrites en dur, toujours en sélection multiple, avec recherche
+- Les pages de catalogue sont désormais **mises en cache pour tout le monde** pendant cinq minutes : deux personnes qui appliquent le même filtre ne déclenchent plus qu'un seul aller-retour
 - **Les filtres du catalogue sont rangés** : sept sections dépliées d'un coup deviennent des sections repliables, chacune avec le nombre de valeurs retenues et son propre « Effacer ». Le panneau parlait quatre langages de bouton différents, il n'en parle plus qu'un. Un bouton fixe en bas annonce combien de titres correspondent
 - Correctif : une suppression par un utilisateur ne vidait plus seulement son propre cache mais celui de tout le monde
 
@@ -51,6 +55,10 @@ auto-bumpé par le message du commit (`feat`→mineure, `fix`→patch, `!`→maj
 - The shortcut hint shows **⌘K on Mac** instead of "Ctrl+K", and now works on My Requests too
 - Returning to a plugin page reopens it **at the top**
 - Plugin pages can be **removed from the navigation bar** (Libraries menu); they are pinned by default
+- **The calendar toolbar fits on one line**: it stacked up to three rows, including a wall of forty platform pills that pushed the calendar off screen. Platform selection moved behind a searchable menu
+- **"My releases" now offers "Upcoming" or "All my requests"**: the page only showed what was still to come, and therefore looked empty once everything had arrived
+- **The catalog platform filter opens up to the region's hundred platforms** instead of eleven hard-coded ones, still multi-select, with search
+- Catalog pages are now **cached for everyone** for five minutes: two people applying the same filter no longer trigger two round trips
 - **Catalog filters are tidied up**: seven sections unfolded at once become collapsible ones, each showing how many values are selected and its own "Clear". The panel spoke four different button languages, now just one. A fixed button at the bottom states how many titles match
 - Fix: one user deleting a request used to clear everyone's cache, not just their own
 

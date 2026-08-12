@@ -5,10 +5,12 @@ import {
 import type { CalendarMediaFilter } from "../api/types-releases";
 
 /** Mes sorties — suit les demandes, donc rafraîchi plus souvent que le global. */
-export function usePersonalCalendar(from?: string, to?: string, enabled = true) {
+export function usePersonalCalendar(
+  from?: string, to?: string, enabled = true, includeSettled = false,
+) {
   return useQuery({
-    queryKey: ["seer-calendar-personal", from ?? "", to ?? ""],
-    queryFn: () => getPersonalCalendar(from, to),
+    queryKey: ["seer-calendar-personal", from ?? "", to ?? "", includeSettled],
+    queryFn: () => getPersonalCalendar(from, to, includeSettled),
     enabled,
     staleTime: 5 * 60_000,
     gcTime: 30 * 60_000,

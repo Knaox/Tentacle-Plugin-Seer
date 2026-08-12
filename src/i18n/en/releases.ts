@@ -29,6 +29,8 @@ export default {
   releasesTabPersonal: "My releases",
   releasesTabAll: "Everything",
   releasesTabProvider: "By platform",
+  releasesScopeUpcoming: "Upcoming",
+  releasesScopeAll: "All my requests",
   releasesViewWeek: "Week",
   releasesViewMonth: "Month",
   releasesEmptyPersonal: "No upcoming releases among your requests",

@@ -35,10 +35,15 @@ export async function getRequestsProgress(): Promise<RequestsProgressResponse> {
   return backendFetch("/requests/progress");
 }
 
-export async function getPersonalCalendar(from?: string, to?: string): Promise<CalendarResponse> {
+export async function getPersonalCalendar(
+  from?: string, to?: string, includeSettled = false,
+): Promise<CalendarResponse> {
   const p = new URLSearchParams();
   if (from) p.set("from", from);
   if (to) p.set("to", to);
+  // Par défaut on masque ce qui est déjà arrivé : c'est un calendrier de ce
+  // qui reste à venir. « Toutes mes demandes » lève ce filtre.
+  if (includeSettled) p.set("all", "1");
   const qs = p.toString();
   return backendFetch(`/calendar/personal${qs ? `?${qs}` : ""}`);
 }

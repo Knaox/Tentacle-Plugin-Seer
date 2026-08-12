@@ -39,6 +39,8 @@ export interface PersonalCalendarOpts {
   to: string;
   maxFetch?: number;
   region?: string;
+  /** true = garder aussi les demandes déjà satisfaites. */
+  includeSettled?: boolean;
 }
 
 export async function buildPersonalCalendar(
@@ -59,7 +61,9 @@ export async function buildPersonalCalendar(
     const ref: TmdbRef = { mediaType: sr.media.mediaType, tmdbId: sr.media.tmdbId };
     const key = tmdbKey(ref);
 
-    if (sr.media.mediaType === "movie" && SETTLED_MEDIA_STATUS.has(sr.media.status ?? 0)) continue;
+    if (!opts.includeSettled
+        && sr.media.mediaType === "movie"
+        && SETTLED_MEDIA_STATUS.has(sr.media.status ?? 0)) continue;
 
     refs.set(key, ref);
     if (!statusByKey.has(key)) {

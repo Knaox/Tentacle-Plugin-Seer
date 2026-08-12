@@ -1,8 +1,11 @@
 import { useTranslation } from "react-i18next";
 import type { CalendarMediaFilter, CalendarMode } from "../../api/types-releases";
-import { pill, segment, SEGMENT_GROUP } from "../../styles/pills";
+import { segment, SEGMENT_GROUP } from "../../styles/pills";
+import { PlatformPicker } from "./PlatformPicker";
 
 export type ReleasesView = "week" | "month";
+/** Mes sorties : uniquement ce qui reste à venir, ou toutes les demandes. */
+export type ReleasesScope = "upcoming" | "all";
 
 interface Props {
   mode: CalendarMode;
@@ -11,6 +14,10 @@ interface Props {
   onViewChange: (view: ReleasesView) => void;
   mediaFilter: CalendarMediaFilter;
   onMediaFilterChange: (value: CalendarMediaFilter) => void;
+  scope: ReleasesScope;
+  onScopeChange: (value: ReleasesScope) => void;
+  providerId: number | null;
+  onProviderChange: (id: number | null) => void;
 }
 
 const MODES: Array<{ value: CalendarMode; key: string }> = [
@@ -25,62 +32,97 @@ const MEDIA: Array<{ value: CalendarMediaFilter; key: string }> = [
   { value: "tv", key: "seer:releasesFilterTv" },
 ];
 
-/** Mode (mes sorties / tout / plateforme), filtre film-série, et vue semaine/mois. */
+const SCOPES: Array<{ value: ReleasesScope; key: string }> = [
+  { value: "upcoming", key: "seer:releasesScopeUpcoming" },
+  { value: "all", key: "seer:releasesScopeAll" },
+];
+
+/**
+ * Une seule barre d'outils, en segments.
+ *
+ * Elle empilait jusqu'à trois rangées — modes, filtre média, puis quarante
+ * pilules de plateformes — soit un mur qui repoussait l'agenda hors de l'écran.
+ * Tout tient maintenant sur une ligne (deux en écran étroit), chaque groupe
+ * lisible comme un interrupteur, et la plateforme derrière un menu.
+ */
 export function ReleasesTabs({
-  mode, onModeChange, view, onViewChange, mediaFilter, onMediaFilterChange,
+  mode, onModeChange, view, onViewChange,
+  mediaFilter, onMediaFilterChange,
+  scope, onScopeChange,
+  providerId, onProviderChange,
 }: Props) {
   const { t } = useTranslation("seer");
 
   return (
-    <div className="mb-4 space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-2">
-          {MODES.map((m) => (
-            <button
-              key={m.value}
-              type="button"
-              onClick={() => onModeChange(m.value)}
-              aria-pressed={mode === m.value}
-              className={pill(mode === m.value)}
-            >
-              {t(m.key)}
-            </button>
-          ))}
-        </div>
-
-        <div className={SEGMENT_GROUP} role="tablist">
-          {(["week", "month"] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              role="tab"
-              aria-selected={view === v}
-              onClick={() => onViewChange(v)}
-              className={segment(view === v)}
-            >
-              {t(v === "week" ? "seer:releasesViewWeek" : "seer:releasesViewMonth")}
-            </button>
-          ))}
-        </div>
+    <div className="mb-4 flex flex-wrap items-center gap-2">
+      <div className={SEGMENT_GROUP} role="tablist" aria-label={t("seer:releasesTitle")}>
+        {MODES.map((m) => (
+          <button
+            key={m.value}
+            type="button"
+            role="tab"
+            aria-selected={mode === m.value}
+            onClick={() => onModeChange(m.value)}
+            className={segment(mode === m.value)}
+          >
+            {t(m.key)}
+          </button>
+        ))}
       </div>
 
-      {/* Le filtre film / série n'a de sens que sur les modes globaux : en mode
-          personnel, la liste est déjà celle de vos propres demandes. */}
+      {/* Mes sorties : par défaut on ne montre que ce qui reste à venir — d'où
+          une page vide quand tout est déjà arrivé. « Toutes » lève ce filtre. */}
+      {mode === "personal" && (
+        <div className={SEGMENT_GROUP} role="group">
+          {SCOPES.map((s) => (
+            <button
+              key={s.value}
+              type="button"
+              aria-pressed={scope === s.value}
+              onClick={() => onScopeChange(s.value)}
+              className={segment(scope === s.value)}
+            >
+              {t(s.key)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {mode === "provider" && (
+        <PlatformPicker value={providerId} onChange={onProviderChange} />
+      )}
+
       {mode !== "personal" && (
-        <div className="flex gap-2">
+        <div className={SEGMENT_GROUP} role="group">
           {MEDIA.map((m) => (
             <button
               key={m.value}
               type="button"
-              onClick={() => onMediaFilterChange(m.value)}
               aria-pressed={mediaFilter === m.value}
-              className={pill(mediaFilter === m.value)}
+              onClick={() => onMediaFilterChange(m.value)}
+              className={segment(mediaFilter === m.value)}
             >
               {t(m.key)}
             </button>
           ))}
         </div>
       )}
+
+      {/* Poussé à droite : c'est un réglage d'affichage, pas un filtre. */}
+      <div className={`${SEGMENT_GROUP} ml-auto`} role="tablist">
+        {(["week", "month"] as const).map((v) => (
+          <button
+            key={v}
+            type="button"
+            role="tab"
+            aria-selected={view === v}
+            onClick={() => onViewChange(v)}
+            className={segment(view === v)}
+          >
+            {t(v === "week" ? "seer:releasesViewWeek" : "seer:releasesViewMonth")}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

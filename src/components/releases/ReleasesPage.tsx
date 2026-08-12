@@ -10,8 +10,7 @@ import { formatSeerError } from "../../api/seer-client";
 import { mediaTitle, mediaYear } from "../../utils/media-helpers";
 import { ReleaseMonthView } from "./ReleaseMonthView";
 import { ReleaseWeekView } from "./ReleaseWeekView";
-import { PlatformPicker } from "./PlatformPicker";
-import { ReleasesTabs, type ReleasesView } from "./ReleasesTabs";
+import { ReleasesTabs, type ReleasesView, type ReleasesScope } from "./ReleasesTabs";
 import { EmptyState } from "../EmptyState";
 import { SkeletonList } from "../SkeletonList";
 import { MediaDetailModal } from "../MediaDetailModal";
@@ -46,6 +45,7 @@ export function ReleasesPage() {
     try { localStorage.setItem(MODE_KEY, next); } catch { /* stockage indisponible */ }
   }, []);
   const [mediaFilter, setMediaFilter] = useState<CalendarMediaFilter>("both");
+  const [scope, setScope] = useState<ReleasesScope>("upcoming");
   const [providerId, setProviderId] = useState<number | null>(null);
   const [selected, setSelected] = useState<SeerrSearchResult | null>(null);
 
@@ -82,7 +82,7 @@ export function ReleasesPage() {
 
   const { from, to } = range;
 
-  const personal = usePersonalCalendar(from, to, mode === "personal");
+  const personal = usePersonalCalendar(from, to, mode === "personal", scope === "all");
   const global = useGlobalCalendar(
     { providerId: mode === "provider" ? providerId ?? undefined : undefined, mediaType: mediaFilter, from, to },
     mode === "all" || (mode === "provider" && providerId !== null),
@@ -151,9 +151,11 @@ export function ReleasesPage() {
         onViewChange={changeView}
         mediaFilter={mediaFilter}
         onMediaFilterChange={setMediaFilter}
+        scope={scope}
+        onScopeChange={setScope}
+        providerId={providerId}
+        onProviderChange={setProviderId}
       />
-
-      {mode === "provider" && <PlatformPicker value={providerId} onChange={setProviderId} />}
 
       {active.data?.partial && (
         <p className="mb-3 text-xs text-tentacle-text-quaternary">{t("seer:releasesPartial")}</p>

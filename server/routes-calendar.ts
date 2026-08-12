@@ -45,13 +45,15 @@ export function registerCalendarRoutes(
   /* ── Mes sorties — à partir des demandes en cours ── */
   app.get("/calendar/personal", async (request) => {
     const user = getUser(request);
-    const { from, to } = readWindow(request.query as { from?: string; to?: string });
+    const q = request.query as { from?: string; to?: string; all?: string };
+    const { from, to } = readWindow(q);
+    const includeSettled = q.all === "1";
 
     const config = await getWorkerConfig();
     if (!config) return EMPTY(from, to);
 
     return cached(
-      `seer-cache:${user.userId}:cal:${from}:${to}`,
+      `seer-cache:${user.userId}:cal:${from}:${to}:${includeSettled ? 'all' : 'up'}`,
       PERSONAL_TTL_MS,
       async () => {
         // Réutilise la liste déjà chargée : arriver depuis « Mes demandes »
@@ -62,7 +64,7 @@ export function registerCalendarRoutes(
           () => buildMergedRows(prisma, config, user, (err, msg) => app.log?.warn?.({ err }, msg)),
           { staleMs: 600_000 },
         );
-        return buildPersonalCalendar(prisma, config, user, rows, { from, to });
+        return buildPersonalCalendar(prisma, config, user, rows, { from, to, includeSettled });
       },
       { staleMs: PERSONAL_STALE_MS },
     );

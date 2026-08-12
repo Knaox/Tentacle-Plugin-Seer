@@ -3956,7 +3956,7 @@ async function buildPersonalCalendar(prisma, cfg, user, rows, opts) {
     if (!sr.media?.tmdbId) continue;
     const ref = { mediaType: sr.media.mediaType, tmdbId: sr.media.tmdbId };
     const key = tmdbKey(ref);
-    if (sr.media.mediaType === "movie" && SETTLED_MEDIA_STATUS.has(sr.media.status ?? 0)) continue;
+    if (!opts.includeSettled && sr.media.mediaType === "movie" && SETTLED_MEDIA_STATUS.has(sr.media.status ?? 0)) continue;
     refs.set(key, ref);
     if (!statusByKey.has(key)) {
       const local = rows.localBySeerrId.get(sr.id);
@@ -4215,11 +4215,13 @@ var EMPTY = (from, to) => ({ from, to, items: [], partial: false });
 function registerCalendarRoutes(app, prisma, getWorkerConfig2) {
   app.get("/calendar/personal", async (request) => {
     const user = getUser(request);
-    const { from, to } = readWindow(request.query);
+    const q = request.query;
+    const { from, to } = readWindow(q);
+    const includeSettled = q.all === "1";
     const config = await getWorkerConfig2();
     if (!config) return EMPTY(from, to);
     return cached(
-      `seer-cache:${user.userId}:cal:${from}:${to}`,
+      `seer-cache:${user.userId}:cal:${from}:${to}:${includeSettled ? "all" : "up"}`,
       PERSONAL_TTL_MS,
       async () => {
         const rows = await cached(
@@ -4228,7 +4230,7 @@ function registerCalendarRoutes(app, prisma, getWorkerConfig2) {
           () => buildMergedRows(prisma, config, user, (err, msg) => app.log?.warn?.({ err }, msg)),
           { staleMs: 6e5 }
         );
-        return buildPersonalCalendar(prisma, config, user, rows, { from, to });
+        return buildPersonalCalendar(prisma, config, user, rows, { from, to, includeSettled });
       },
       { staleMs: PERSONAL_STALE_MS }
     );
@@ -4299,9 +4301,9 @@ function registerMiscRoutes(app, prisma, getWorkerConfig2, requireAdmin) {
     const toFetch = [];
     for (const item of body.items.slice(0, 200)) {
       const key = `${item.mediaType}-${item.tmdbId}`;
-      const cached2 = providerCache.get(key);
-      if (cached2 && Date.now() < cached2.expires) {
-        result[item.tmdbId] = cached2.providers;
+      const cached3 = providerCache.get(key);
+      if (cached3 && Date.now() < cached3.expires) {
+        result[item.tmdbId] = cached3.providers;
       } else {
         toFetch.push(item);
       }
@@ -4415,6 +4417,7 @@ async function filterResultsByTags(seerrUrl, apiKey, results, blockedSet) {
 
 // server/index.ts
 var __pluginDir = dirname(dirname(fileURLToPath(import.meta.url)));
+var PROXY_TTL_MS = 5 * 6e4;
 var cfgCache = null;
 function getPluginConfig(ctx) {
   try {
@@ -4542,6 +4545,15 @@ async function seerBackend(app, ctx) {
       headers["Content-Type"] = "application/json";
       reqBody = JSON.stringify(request.body);
     }
+    const cacheable = request.method === "GET" && isFilterable;
+    const cacheKey = cacheable ? `seer:proxy:${targetUrl}:${headers["Accept-Language"] ?? ""}` : null;
+    if (cacheKey) {
+      const hit = peek(cacheKey);
+      if (hit) {
+        reply.header("content-type", "application/json");
+        return reply.send(hit);
+      }
+    }
     try {
       const response = await fetch(targetUrl, {
         method: request.method,
@@ -4581,6 +4593,14 @@ async function seerBackend(app, ctx) {
           }
           data.blockedActive = blockedActive;
         }
+        if (cacheKey && response.ok && data) put(cacheKey, data, PROXY_TTL_MS);
+        reply.status(response.status);
+        reply.header("content-type", "application/json");
+        return reply.send(data ?? {});
+      }
+      if (cacheKey && response.ok && (ct ?? "").includes("application/json")) {
+        const data = await response.json().catch(() => null);
+        if (data) put(cacheKey, data, PROXY_TTL_MS);
         reply.status(response.status);
         reply.header("content-type", "application/json");
         return reply.send(data ?? {});

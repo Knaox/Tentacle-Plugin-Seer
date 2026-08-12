@@ -18,13 +18,16 @@ import { registerAvailabilityRoutes } from "./routes-availability";
 import { registerProgressRoutes } from "./routes-progress";
 import { registerCalendarRoutes } from "./routes-calendar";
 import { registerMiscRoutes } from "./routes-misc";
-import { cached } from "./cache";
+import { cached, peek, put } from "./cache";
 import {
   MEDIA_STATUS_BLOCKLISTED, getBlocklistedTags, parseTagSet,
   filterResultsByTags, type ResultItem,
 } from "./blocklist";
 
 const __pluginDir = dirname(dirname(fileURLToPath(import.meta.url)));
+
+/** Durée de vie du cache des pages de catalogue, partagé par tous. */
+const PROXY_TTL_MS = 5 * 60_000;
 
 interface PluginBackendContext {
   pluginId: string;
@@ -201,6 +204,30 @@ export default async function seerBackend(
       reqBody = JSON.stringify(request.body);
     }
 
+    /* Cache mutualisé des surfaces de navigation.
+     *
+     * Une page de catalogue est identique pour tout le monde : les mêmes
+     * filtres donnent la même réponse, et le statut des médias qu'elle porte
+     * dépend de la bibliothèque, pas de qui regarde. Chaque changement de
+     * filtre repartait pourtant chez Jellyseerr, qui repart chez TMDB — et
+     * deux personnes appliquant le même filtre payaient l'aller-retour
+     * chacune. Cinq minutes suffisent : c'est court devant le rythme auquel
+     * un catalogue bouge, et long devant une session de navigation.
+     *
+     * Les mutations et les surfaces personnelles ne passent pas par ici. */
+    const cacheable = request.method === "GET" && isFilterable;
+    const cacheKey = cacheable
+      ? `seer:proxy:${targetUrl}:${headers["Accept-Language"] ?? ""}`
+      : null;
+
+    if (cacheKey) {
+      const hit = peek<Record<string, unknown>>(cacheKey);
+      if (hit) {
+        reply.header("content-type", "application/json");
+        return reply.send(hit);
+      }
+    }
+
     try {
       const response = await fetch(targetUrl, {
         method: request.method, headers, body: reqBody,
@@ -253,6 +280,18 @@ export default async function seerBackend(
           data.blockedActive = blockedActive;
         }
 
+        if (cacheKey && response.ok && data) put(cacheKey, data, PROXY_TTL_MS);
+        reply.status(response.status);
+        reply.header("content-type", "application/json");
+        return reply.send(data ?? {});
+      }
+
+      /* Réponse cachable : on la lit pour pouvoir la garder. Le flux direct
+         reste la règle partout ailleurs — ces réponses-là sont de simples
+         pages de résultats, pas des médias. */
+      if (cacheKey && response.ok && (ct ?? "").includes("application/json")) {
+        const data = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+        if (data) put(cacheKey, data, PROXY_TTL_MS);
         reply.status(response.status);
         reply.header("content-type", "application/json");
         return reply.send(data ?? {});
