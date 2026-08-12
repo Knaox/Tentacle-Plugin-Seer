@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isDateless, needsDateRefresh, type DatedMeta } from "./calendar-freshness";
+import { isDateless, needsDateRefresh, needsTraitsRefresh, type DatedMeta } from "./calendar-freshness";
 
 /*
  * La propriété qui règle « Toutes les demandes » : une fiche amorcée — titre
@@ -52,4 +52,12 @@ test("une péremption illisible vaut jamais récupérée", () => {
 
 test("la péremption pile à l'instant compte comme dépassée", () => {
   assert.equal(needsDateRefresh(meta({ expiresAt: new Date(NOW).toISOString() }), NOW), true);
+});
+
+test("les fiches antérieures aux colonnes de tri se reconnaissent à leur langue absente", () => {
+  // TMDB donne toujours une langue d'origine et Jellyseerr la relaie : son
+  // absence ne peut vouloir dire qu'une chose, la fiche est plus ancienne.
+  assert.equal(needsTraitsRefresh({}), true);
+  assert.equal(needsTraitsRefresh({ originalLanguage: null }), true);
+  assert.equal(needsTraitsRefresh({ originalLanguage: "ja" }), false);
 });

@@ -4149,6 +4149,9 @@ function needsDateRefresh(m, now = Date.now()) {
   const expires = Date.parse(m.expiresAt);
   return !Number.isFinite(expires) || expires <= now;
 }
+function needsTraitsRefresh(m) {
+  return !m.originalLanguage;
+}
 
 // server/calendar-types.ts
 var DATE_RE2 = /^\d{4}-\d{2}-\d{2}$/;
@@ -4220,7 +4223,13 @@ async function buildPersonalCalendar(prisma, cfg, user, rows, opts) {
     return !!m && needsDateRefresh(m);
   });
   const toFill = [...missing, ...undated];
-  if (toFill.length > 0) scheduleTmdbBackfill(prisma, cfg, toFill, region);
+  const untyped = list.filter((ref) => {
+    const m = meta.get(tmdbKey(ref));
+    return !!m && !needsDateRefresh(m) && needsTraitsRefresh(m);
+  });
+  if (toFill.length > 0 || untyped.length > 0) {
+    scheduleTmdbBackfill(prisma, cfg, [...toFill, ...untyped], region);
+  }
   const items = [];
   for (const ref of list) {
     const m = meta.get(tmdbKey(ref));

@@ -21,7 +21,7 @@ import { tmdbKey } from "./tmdb-cache";
 import type { WorkerCfg, JellyfinUser } from "./seerr-unified";
 import type { MergedRows } from "./requests-list";
 import { resolveTmdbMeta, scheduleTmdbBackfill, DEFAULT_REGION } from "./tmdb-resolver";
-import { needsDateRefresh } from "./calendar-freshness";
+import { needsDateRefresh, needsTraitsRefresh } from "./calendar-freshness";
 import { mapSeerrStatus } from "./worker-sync";
 import {
   type CalendarItem, type CalendarResponse, type CalendarKind,
@@ -100,7 +100,20 @@ export async function buildPersonalCalendar(
     return !!m && needsDateRefresh(m);
   });
   const toFill = [...missing, ...undated];
-  if (toFill.length > 0) scheduleTmdbBackfill(prisma, cfg, toFill, region);
+
+  /* Les fiches antérieures aux colonnes de tri sont remises en file elles
+   * aussi, mais SANS compter comme incomplètes : leurs dates, elles, sont
+   * bonnes — le calendrier n'a rien à attendre, seuls les filtres gagnent à ce
+   * qu'elles repassent. Les annoncer manquantes ferait tourner le sondage du
+   * client pour rien. */
+  const untyped = list.filter((ref) => {
+    const m = meta.get(tmdbKey(ref));
+    return !!m && !needsDateRefresh(m) && needsTraitsRefresh(m);
+  });
+
+  if (toFill.length > 0 || untyped.length > 0) {
+    scheduleTmdbBackfill(prisma, cfg, [...toFill, ...untyped], region);
+  }
 
   /* 3) Construction, purement en mémoire. */
   const items: CalendarItem[] = [];

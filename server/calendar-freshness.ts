@@ -49,3 +49,21 @@ export function needsDateRefresh(m: DatedMeta, now = Date.now()): boolean {
   const expires = Date.parse(m.expiresAt);
   return !Number.isFinite(expires) || expires <= now;
 }
+
+/**
+ * La fiche est-elle antérieure aux colonnes de tri et de filtre ?
+ *
+ * Note, langue, genres et « est-ce un animé » sont arrivés après coup. Les
+ * fiches déjà en mémoire les portent donc à vide, et le réchauffage périodique
+ * met des heures à repasser une grosse instance — pendant lesquelles le filtre
+ * « Animés » ne rendrait rien du tout, faute de pouvoir distinguer « ce n'en
+ * est pas un » de « on ne sait pas encore ».
+ *
+ * La langue d'origine sert de témoin : TMDB en donne toujours une, et
+ * Jellyseerr la relaie (vérifié). Son absence ne peut donc signifier qu'une
+ * chose — la fiche a été écrite avant. On la remet en file, et le remplissage
+ * de fond, qui vide TOUTE sa file, s'en charge en quelques minutes.
+ */
+export function needsTraitsRefresh(m: { originalLanguage?: string | null }): boolean {
+  return !m.originalLanguage;
+}
