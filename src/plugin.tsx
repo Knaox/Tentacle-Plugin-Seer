@@ -3,6 +3,7 @@ import type { TentaclePlugin } from "@tentacle-tv/plugins-api";
 import { isSeerConfigured } from "./api/seer-client";
 import { setSeerBackendUrl } from "./api/endpoints";
 import { ensureHostTheme } from "./utils/host-theme";
+import { ensureHostChrome } from "./utils/host-chrome";
 import { ToastProvider } from "./components/ToastProvider";
 import enTranslations from "./i18n/en";
 import frTranslations from "./i18n/fr";
@@ -150,6 +151,10 @@ export const seerPlugin: TentaclePlugin = {
     // Tokens de thème garantis (le template WebView mobile ne fournit pas les
     // tokens sémantiques → modals/dropdowns transparents sans ce fallback).
     ensureHostTheme();
+
+    // Combien de pixels du bas appartiennent à la barre de l'hôte (mobile) —
+    // sans quoi tout ce que le plugin ancre en bas passe dessous.
+    ensureHostChrome();
 
     // Configure backend URL from host app
     const tentacle = (window as unknown as Record<string, unknown>).__tentacle as Record<string, unknown> | undefined;

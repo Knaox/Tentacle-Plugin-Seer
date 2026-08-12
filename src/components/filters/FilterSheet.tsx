@@ -2,6 +2,7 @@ import { useEffect, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { CTA_PRIMARY } from "../../styles/cta";
 import { ICON_BUTTON } from "../../styles/pills";
+import { CHROME_BOTTOM } from "../../utils/host-chrome";
 
 /**
  * La coquille d'un panneau de filtres : voile, tiroir, en-tête, pied.
@@ -108,8 +109,16 @@ export function FilterSheet({
         </div>
 
         {/* Pied collant — le bouton de sortie reste sous le pouce, quelle que
-            soit la longueur du panneau. */}
-        <div className="border-t border-tentacle-border-subtle px-5 py-3">
+            soit la longueur du panneau.
+
+            La réserve basse n'est pas cosmétique : sur l'application mobile, la
+            barre d'onglets flotte au-dessus du cadre du plugin et recouvrait
+            ce bouton entièrement. Le fond du panneau, lui, continue de courir
+            derrière le verre — seul le contenu remonte. */}
+        <div
+          className="border-t border-tentacle-border-subtle px-5 pt-3"
+          style={{ paddingBottom: `calc(0.75rem + ${CHROME_BOTTOM})` }}
+        >
           <button onClick={onClose} className={`${CTA_PRIMARY} h-11 w-full`}>
             {footerLabel ?? t("filterApply")}
           </button>
