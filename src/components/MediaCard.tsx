@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SeerrSearchResult } from "../api/types";
 import type { AvailabilityVerdict } from "../api/types-releases";
@@ -7,13 +7,19 @@ import { CTA_PRIMARY, CTA_PRIMARY_HALO } from "../styles/cta";
 import { STATUS_STYLE } from "../styles/status";
 import { AvailabilityPill } from "./AvailabilityPill";
 import { PlatformBadges } from "./PlatformBadges";
+import { PosterImage } from "./PosterImage";
 
 interface MediaCardProps {
   item: SeerrSearchResult;
   onRequest?: (item: SeerrSearchResult) => void;
   onClick?: (item: SeerrSearchResult) => void;
   requesting?: boolean;
-  style?: React.CSSProperties;
+  /**
+   * Retard d'entrée, en millisecondes. Un simple nombre plutôt qu'un objet de
+   * style : un littéral recréé à chaque rendu suffirait à neutraliser la
+   * mémoïsation, et donc à re-rendre toutes les cartes montées.
+   */
+  delayMs?: number;
   /** Absent tant que la réponse groupée n'est pas revenue — la grille n'attend pas. */
   availability?: AvailabilityVerdict | null;
 }
@@ -56,9 +62,14 @@ function PosterFallback({ label, mediaType }: { label: string; mediaType?: strin
   );
 }
 
-export function MediaCard({ item, onRequest, onClick, requesting, style, availability }: MediaCardProps) {
+export const MediaCard = memo(function MediaCard({
+  item, onRequest, onClick, requesting, delayMs = 0, availability,
+}: MediaCardProps) {
   const { t } = useTranslation("seer");
-  const [imgLoaded, setImgLoaded] = useState(false);
+  /* Le survol MONTE l'habillage au lieu de le masquer : un `backdrop-filter`
+   * caché sous `opacity: 0` garde sa couche composée et refloute son fond à
+   * chaque image, sur toutes les cartes à la fois (règle GPU du projet). */
+  const [hovered, setHovered] = useState(false);
   const title = mediaTitle(item) || t("seer:untitled");
   const year = mediaYear(item);
   const type = t(mediaTypeKey(item));
@@ -71,34 +82,37 @@ export function MediaCard({ item, onRequest, onClick, requesting, style, availab
 
   return (
     <div
-      className="group relative cursor-pointer overflow-hidden rounded-xl transition-all duration-300 focus-within:ring-2 focus-within:ring-tentacle-brand-soft"
+      className="group relative cursor-pointer overflow-hidden rounded-xl transition-transform duration-300 focus-within:ring-2 focus-within:ring-tentacle-brand-soft hover:scale-[1.05]"
       style={{
-        ...style,
-        willChange: "transform",
+        opacity: 0,
+        animation: `fadeSlideUp 400ms cubic-bezier(0.25,0.46,0.45,0.94) ${delayMs}ms forwards`,
+        /* Hors écran, la carte n'est ni disposée ni peinte. C'est ce qui rend
+         * un défilement de plusieurs centaines de cartes tenable sans
+         * bibliothèque de virtualisation. */
+        contentVisibility: "auto",
+        containIntrinsicSize: "auto 320px",
       }}
       // Média disponible inclus : on ouvre la fiche détail (saisons, épisodes,
       // dates de sortie) — le bouton « Regarder » y mène vers la bibliothèque.
       onClick={() => onClick?.(item)}
-      onMouseEnter={(e) => {
-        const el = e.currentTarget;
-        el.style.transform = "scale(1.05) translateY(-6px)";
-        el.style.boxShadow = "0 12px 40px rgba(var(--brand-rgb), 0.15)";
-      }}
-      onMouseLeave={(e) => {
-        const el = e.currentTarget;
-        el.style.transform = "";
-        el.style.boxShadow = "";
-      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
+      {/* L'ombre est un calque qu'on fond, jamais un `box-shadow` animé : celui-ci
+          repeindrait la carte à chaque image (règle GPU du projet). */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 rounded-xl opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+        style={{ boxShadow: "0 12px 40px rgba(var(--brand-rgb), 0.15)" }}
+      />
+
       <div className="relative aspect-[2/3] w-full overflow-hidden rounded-xl">
         {poster ? (
-          <img
+          <PosterImage
             src={poster}
-            alt={title}
-            className="h-full w-full object-cover transition-all duration-300 group-hover:scale-105"
-            loading="lazy"
-            style={{ opacity: imgLoaded ? 1 : 0, transition: "opacity 300ms ease, transform 300ms ease" }}
-            onLoad={() => setImgLoaded(true)}
+            width={342}
+            height={513}
+            className="transition-transform duration-300 group-hover:scale-105"
           />
         ) : (
           <PosterFallback label={t("seer:noImage")} mediaType={item.mediaType} />
@@ -129,11 +143,17 @@ export function MediaCard({ item, onRequest, onClick, requesting, style, availab
         {/* Status badge */}
         {hasMediaInfo && <StatusBadge status={mediaStatus} />}
 
-        {/* Hover overlay — scrim NOIR constant (posé sur affiche) + synopsis
-            on-media : fini le voile délavé illisible du thème clair. */}
+        {/* Habillage de survol — MONTÉ à la demande, pas masqué : il contient un
+            flou d'arrière-plan, et une couche floutée sous `opacity: 0` continue
+            de recopier et de reflouter son fond à chaque image, sur toutes les
+            cartes de la grille (règle GPU du projet). */}
+        {hovered && (
         <div
-          className="absolute inset-0 flex flex-col justify-end opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-          style={{ background: "linear-gradient(to top, rgba(var(--scrim-media-rgb),0.92), rgba(var(--scrim-media-rgb),0.45) 55%, transparent)" }}
+          className="absolute inset-0 flex flex-col justify-end"
+          style={{
+            background: "linear-gradient(to top, rgba(var(--scrim-media-rgb),0.92), rgba(var(--scrim-media-rgb),0.45) 55%, transparent)",
+            animation: "fadeIn 200ms ease forwards",
+          }}
         >
           {item.overview && (
             <p className="mx-3 mb-2 line-clamp-3 text-[11px] leading-relaxed text-tentacle-on-media-secondary">
@@ -161,6 +181,7 @@ export function MediaCard({ item, onRequest, onClick, requesting, style, availab
             ) : null}
           </div>
         </div>
+        )}
       </div>
 
       {/* Info — la pastille ne s'affiche QUE s'il y a quelque chose à dire du
@@ -180,4 +201,4 @@ export function MediaCard({ item, onRequest, onClick, requesting, style, availab
       </div>
     </div>
   );
-}
+});

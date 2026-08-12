@@ -1,28 +1,23 @@
-import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useCallback, useRef } from "react";
 import { discoverMedia } from "../api/client-catalog";
 import type { DiscoverMediaType, DiscoverFilters, SeerrSearchResult, SeerrPagedResponse } from "../api/types";
 
 const INITIAL_PAGES = 3;
-const PREFETCH_AHEAD = 2;
 const STALE_TIME = 5 * 60_000;
 
 /**
- * Replicate Seerr's useDiscover pattern with TanStack Query:
- * - 3 initial pages fetched in parallel on mount
- * - Prefetch 2 pages ahead when fetching next page
- * - Deduplication of results across pages (by ID)
- * - keepPreviousData to avoid flash when filters change
- * - Aggressive caching (5 min staleTime)
+ * Pagination du catalogue :
+ * - trois pages en parallèle au montage ;
+ * - dédoublonnage des résultats d'une page à l'autre (par identifiant) ;
+ * - la page précédente reste affichée pendant qu'un filtre change ;
+ * - cache de cinq minutes.
  */
 export function useInfiniteDiscover(
   mediaType: DiscoverMediaType,
   filters: DiscoverFilters,
   showBlocked = false,
 ) {
-  const queryClient = useQueryClient();
-  const prefetchedRef = useRef(new Set<string>());
-
   const queryKey = ["seer-discover", mediaType, filters, showBlocked];
 
   const query = useInfiniteQuery({
@@ -59,34 +54,17 @@ export function useInfiniteDiscover(
     refetchOnWindowFocus: false,
   });
 
-  // Prefetch 2 pages ahead when new data arrives
-  useEffect(() => {
-    if (!query.data?.pages.length) return;
-
-    const lastPage = query.data.pages[query.data.pages.length - 1];
-    const lastFetchedPage = (lastPage as SeerrPagedResponse & { _batchedPages?: number })._batchedPages ?? lastPage.page;
-    const totalPages = lastPage.totalPages;
-
-    for (let i = 1; i <= PREFETCH_AHEAD; i++) {
-      const nextPage = lastFetchedPage + i;
-      if (nextPage > totalPages) break;
-
-      const cacheKey = `${mediaType}-${JSON.stringify(filters)}-${showBlocked}-${nextPage}`;
-      if (prefetchedRef.current.has(cacheKey)) continue;
-      prefetchedRef.current.add(cacheKey);
-
-      queryClient.prefetchQuery({
-        queryKey: ["seer-discover-page", mediaType, filters, showBlocked, nextPage],
-        queryFn: () => discoverMedia(mediaType, nextPage, filters, showBlocked),
-        staleTime: STALE_TIME,
-      });
-    }
-  }, [query.data, mediaType, filters, showBlocked, queryClient]);
-
-  // Reset prefetch cache when filters change
-  useEffect(() => {
-    prefetchedRef.current.clear();
-  }, [mediaType, filters, showBlocked]);
+  /*
+   * Le préchargement de deux pages d'avance a été RETIRÉ.
+   *
+   * Il écrivait sous « seer-discover-page », alors que la requête paginée vit
+   * sous « seer-discover » et redemande tout par elle-même : ces pages n'ont
+   * jamais été lues par personne. C'étaient donc deux appels complets gaspillés
+   * à chaque page chargée — et surtout deux places prises dans une file qui
+   * n'en compte que huit avant que Jellyseerr ne parte en latence (cf.
+   * concurrency.ts). Pendant le défilement, le plugin retardait ses propres
+   * pages en se faisant concurrence à lui-même.
+   */
 
   // Deduplicate results across pages (like Seerr's Set<number>)
   const titles = useMemo(() => {

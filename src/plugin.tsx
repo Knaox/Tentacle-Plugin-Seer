@@ -176,8 +176,10 @@ export const seerPlugin: TentaclePlugin = {
         "@keyframes fadeOut{from{opacity:1}to{opacity:0}}",
         "@keyframes fadeSlideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}",
         "@keyframes scaleIn{from{opacity:0;transform:scale(0.9)}to{opacity:1;transform:scale(1)}}",
-        "@keyframes pulseGlow{0%,100%{box-shadow:0 0 4px rgba(139,92,246,0.3)}50%{box-shadow:0 0 12px rgba(139,92,246,0.6)}}",
-        "@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}",
+        // « pulseGlow » retiré : sans aucun usage, et il animait un box-shadow,
+        // que la règle GPU du projet interdit précisément.
+        // « shimmer » retiré avec lui : il animait `background-position`, donc
+        // une peinture par image. Les squelettes translatent un calque.
         "@keyframes viewCrossfade{from{opacity:0}to{opacity:1}}",
         "@keyframes toastTimer{from{transform:scaleX(1)}to{transform:scaleX(0)}}",
         // Barre de progression sans taille connue (Sonarr cherche encore).

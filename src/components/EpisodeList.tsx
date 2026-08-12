@@ -26,16 +26,19 @@ export function EpisodeList({ tvId, seasonNumber, airTimes }: Props) {
   if (isLoading) {
     return (
       <div className="space-y-2 py-2">
+        {/* Calque translaté plutôt que `background-position` animée : cette
+            dernière repeint à chaque image (règle GPU du projet). */}
         {[0, 1, 2].map((i) => (
-          <div
-            key={i}
-            className="h-9 rounded-lg bg-tentacle-fill-subtle"
-            style={{
-              background: "linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%)",
-              backgroundSize: "200% 100%",
-              animation: "shimmer 1.4s infinite",
-            }}
-          />
+          <div key={i} className="relative h-9 overflow-hidden rounded-lg bg-tentacle-fill-subtle">
+            <div
+              aria-hidden
+              className="absolute inset-y-0 w-1/3"
+              style={{
+                background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent)",
+                animation: "seerIndeterminate 1.6s ease-in-out infinite",
+              }}
+            />
+          </div>
         ))}
       </div>
     );

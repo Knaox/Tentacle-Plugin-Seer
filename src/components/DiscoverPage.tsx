@@ -7,7 +7,7 @@ import { useSeerSearch } from "../hooks/useSearch";
 import { useRequestMedia } from "../hooks/useRequestMedia";
 import type { RequestMediaPayload } from "../hooks/useRequestMedia";
 import { formatSeerError } from "../api/seer-client";
-import { MediaCard } from "./MediaCard";
+import { DiscoverGrid } from "./DiscoverGrid";
 import { FilterPanel } from "./FilterPanel";
 import { DiscoverSearchHeader } from "./DiscoverSearchHeader";
 import { HeroCarousel } from "./HeroCarousel";
@@ -122,18 +122,30 @@ export function DiscoverPage() {
    * les attend pas : les pastilles apparaissent quand la réponse arrive. */
   const availability = useAvailability(filtered);
 
-  // Seerr-style scroll: IntersectionObserver at 800px from bottom
+  /* Défilement infini.
+   *
+   * `fetchMore` change d'identité à chaque rendu — l'objet que rend TanStack est
+   * un proxy neuf à chaque fois. En dépendre démontait et reconstruisait
+   * l'observateur en continu, pendant le défilement précisément. On le range
+   * donc dans une ref, et l'observateur ne se monte plus qu'une fois.
+   *
+   * Marge d'anticipation portée à 800 px, comme l'annonçait le commentaire
+   * d'origine : à six colonnes, 400 px ne font qu'une rangée d'avance, et on
+   * atteint le bas avant l'arrivée des titres suivants. */
+  const fetchMoreRef = useRef(fetchMore);
+  fetchMoreRef.current = fetchMore;
+
   useEffect(() => {
     if (isSearching || !sentinelRef.current) return;
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) fetchMore();
+        if (entry.isIntersecting) fetchMoreRef.current();
       },
-      { rootMargin: "0px 0px 400px 0px" },
+      { rootMargin: "0px 0px 800px 0px" },
     );
     observer.observe(sentinelRef.current);
     return () => observer.disconnect();
-  }, [isSearching, fetchMore]);
+  }, [isSearching]);
 
   const handleRequest = useCallback((item: SeerrSearchResult) => {
     if (item.mediaType === "movie" || item.mediaType === "tv") {
@@ -158,8 +170,12 @@ export function DiscoverPage() {
       {/* Hero Carousel — always rendered; dimmed + blurred when searching */}
       {trendingData?.results && (
         <div className="-mx-4 -mt-4 mb-6 md:-mx-8 relative">
+          {/* On fond l'opacité au lieu de transitionner un `filter` : un flou
+              animé sur une bannière plein écran repeint tout le viewport à
+              chaque image (règle GPU du projet). Le flou reste, il ne s'anime
+              simplement plus. */}
           <div
-            className="transition-all duration-300"
+            className="transition-opacity duration-300"
             style={isSearching ? { filter: "blur(4px) brightness(0.3)", pointerEvents: "none", maxHeight: "200px", opacity: 0.5 } : { maxHeight: "500px", opacity: 1 }}
           >
             <HeroCarousel
@@ -222,31 +238,15 @@ export function DiscoverPage() {
           </button>
         </div>
       ) : filtered.length > 0 ? (
-        <>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-            {filtered.map((item, i) => (
-              <MediaCard
-                key={`${item.mediaType}-${item.id}`}
-                item={item}
-                onRequest={handleRequest}
-                onClick={openModal}
-                requesting={requestMedia.isPending}
-                availability={availability.get(`${item.mediaType}:${item.id}`)}
-                style={{
-                  opacity: 0,
-                  animation: `fadeSlideUp 400ms cubic-bezier(0.25,0.46,0.45,0.94) ${Math.min(i, 19) * 50}ms forwards`,
-                }}
-              />
-            ))}
-          </div>
-
-          {/* Sentinel + loading skeletons (like Seerr's 20 placeholder cards) */}
-          {!isSearching && (
-            <div ref={sentinelRef} className="pt-4">
-              {isLoadingMore && !isReachingEnd && <SkeletonList count={20} />}
-            </div>
-          )}
-        </>
+        <DiscoverGrid
+          items={filtered}
+          availability={availability}
+          requesting={requestMedia.isPending}
+          onRequest={handleRequest}
+          onOpen={openModal}
+          sentinelRef={isSearching ? undefined : sentinelRef}
+          showSkeletons={isLoadingMore && !isReachingEnd}
+        />
       ) : (
         <EmptyState
           title={isSearching ? t("seer:noResults") : t("seer:noContent")}
