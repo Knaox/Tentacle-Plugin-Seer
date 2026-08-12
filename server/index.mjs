@@ -3770,6 +3770,7 @@ async function fetchJellyfinUsers() {
 
 // server/availability.ts
 var THEATRICAL_WINDOW_DAYS = 180;
+var RECENT_WINDOW_DAYS = 120;
 function daysBetween(from, to) {
   const [ay, am, ad] = from.split("-").map(Number);
   const [by, bm, bd] = to.split("-").map(Number);
@@ -3777,59 +3778,91 @@ function daysBetween(from, to) {
   const b = new Date(by, bm - 1, bd).getTime();
   return Math.round((b - a) / 864e5);
 }
-var released = (meta) => ({
-  mediaType: meta.mediaType,
-  tmdbId: meta.tmdbId,
-  kind: "released",
-  date: null,
-  theatricalDate: meta.theatricalDate,
-  digitalDate: meta.digitalDate,
-  obtainable: true
-});
+var RANK = { physical: 0, digital: 1, theatrical: 2 };
+function buildChannels(meta, today) {
+  const raw = [
+    ["physical", meta.physicalDate],
+    ["digital", meta.digitalDate],
+    ["theatrical", meta.theatricalDate]
+  ];
+  const channels = [];
+  for (const [id, date] of raw) {
+    if (!date) continue;
+    const released = date <= today;
+    if (released) {
+      const window = id === "theatrical" ? THEATRICAL_WINDOW_DAYS : RECENT_WINDOW_DAYS;
+      if (daysBetween(date, today) > window) continue;
+    }
+    channels.push({ id, date, released });
+  }
+  return channels.sort((a, b) => {
+    if (a.released !== b.released) return a.released ? -1 : 1;
+    return a.released ? RANK[a.id] - RANK[b.id] : a.date.localeCompare(b.date);
+  });
+}
+function kindOf(channels, meta, today) {
+  const first = channels[0];
+  if (!first) {
+    return meta.releaseDate && meta.releaseDate > today ? "upcoming" : "released";
+  }
+  if (first.released) return first.id === "theatrical" ? "theatrical" : "released";
+  return first.id === "digital" ? "digital_soon" : "upcoming";
+}
+function outlookOf(meta, today, channels) {
+  const outOfTheaters = meta.digitalDate != null && meta.digitalDate <= today || meta.physicalDate != null && meta.physicalDate <= today;
+  if (outOfTheaters) return "likely";
+  if (channels.some((c) => c.released)) return "unlikely";
+  return channels.length === 0 ? "likely" : "not_yet";
+}
 function classifyAvailability(meta, today = todayString()) {
   const base = {
     mediaType: meta.mediaType,
     tmdbId: meta.tmdbId,
     theatricalDate: meta.theatricalDate,
-    digitalDate: meta.digitalDate
+    digitalDate: meta.digitalDate,
+    physicalDate: meta.physicalDate,
+    providerIds: meta.providerIds ?? []
   };
   if (meta.mediaType === "tv") {
-    if (meta.releaseDate && meta.releaseDate > today) {
-      return { ...base, kind: "not_aired", date: meta.releaseDate, obtainable: false };
-    }
-    const status = (meta.tmdbStatus ?? "").toLowerCase();
-    if (!meta.releaseDate && (status === "planned" || status === "in production" || status === "rumored")) {
-      return { ...base, kind: "not_aired", date: null, obtainable: false };
-    }
-    return released(meta);
+    const notAired = meta.releaseDate && meta.releaseDate > today || !meta.releaseDate && isPlanned(meta.tmdbStatus);
+    return {
+      ...base,
+      channels: [],
+      outlook: notAired ? "not_yet" : "likely",
+      kind: notAired ? "not_aired" : "released",
+      date: notAired ? meta.releaseDate : null,
+      obtainable: !notAired
+    };
   }
-  if (meta.digitalDate && meta.digitalDate <= today) return released(meta);
-  if (meta.physicalDate && meta.physicalDate <= today) return released(meta);
-  if (meta.digitalDate) {
-    return { ...base, kind: "digital_soon", date: meta.digitalDate, obtainable: false };
-  }
-  if (meta.theatricalDate) {
-    if (meta.theatricalDate <= today) {
-      if (daysBetween(meta.theatricalDate, today) <= THEATRICAL_WINDOW_DAYS) {
-        return { ...base, kind: "theatrical", date: meta.theatricalDate, obtainable: false };
-      }
-      return released(meta);
-    }
-    return { ...base, kind: "upcoming", date: meta.theatricalDate, obtainable: false };
-  }
-  if (meta.releaseDate && meta.releaseDate > today) {
-    return { ...base, kind: "upcoming", date: meta.releaseDate, obtainable: false };
-  }
-  return released(meta);
+  const channels = buildChannels(meta, today);
+  const kind = kindOf(channels, meta, today);
+  const outlook = outlookOf(meta, today, channels);
+  const date = channels[0]?.date ?? (meta.releaseDate && meta.releaseDate > today ? meta.releaseDate : null);
+  return {
+    ...base,
+    channels,
+    outlook,
+    kind,
+    date: kind === "released" && channels.length === 0 ? null : date,
+    obtainable: outlook === "likely"
+  };
+}
+function isPlanned(tmdbStatus) {
+  const status = (tmdbStatus ?? "").toLowerCase();
+  return status === "planned" || status === "in production" || status === "rumored";
 }
 
 // server/routes-availability.ts
-var MAX_ITEMS = 60;
+var MAX_ITEMS = 120;
 var FETCH_BUDGET = 12;
 function registerAvailabilityRoutes(app, prisma, getWorkerConfig2) {
   app.post("/availability", async (request) => {
     const body = request.body ?? {};
-    const raw = Array.isArray(body.items) ? body.items.slice(0, MAX_ITEMS) : [];
+    const asked = Array.isArray(body.items) ? body.items : [];
+    const raw = asked.slice(0, MAX_ITEMS);
+    if (asked.length > MAX_ITEMS) {
+      console.warn(`[Seer] /availability : ${asked.length} titres demand\xE9s, ${MAX_ITEMS} trait\xE9s`);
+    }
     const refs = [];
     for (const it of raw) {
       const tmdbId = Number(it?.tmdbId);

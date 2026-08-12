@@ -1,16 +1,31 @@
 export default {
-  // Disponibilité — ce qui EMPÊCHE de récupérer un titre.
+  // Disponibilité — PAR OÙ un titre est sorti, et ce qu'une demande peut espérer.
   // Ne jamais employer « Disponible » ici : ce mot désigne, sur Mes demandes,
-  // un titre déjà téléchargé et présent dans la bibliothèque.
+  // un titre déjà téléchargé et présent dans la bibliothèque. On nomme le
+  // canal (salle, en ligne, Blu-ray), jamais un état de possession.
+  availStillInTheaters: "Encore au cinéma",
   availInTheaters: "Au cinéma",
-  availInTheatersLong: "Au cinéma depuis le {{date}} — pas encore en ligne",
+  availInTheatersLong: "Encore au cinéma depuis le {{date}}",
+  availTheatricalSoon: "Au cinéma le {{date}}",
+  availTheatricalSoonLong: "Sortie en salle le {{date}}",
+  availDigitalOut: "En ligne",
+  availDigitalOutLong: "Sorti en ligne le {{date}}",
   availOnlineOn: "En ligne le {{date}}",
   availOnlineOnLong: "Sortie en ligne le {{date}}",
+  availPhysicalOut: "En Blu-ray",
+  availPhysicalOutLong: "Sorti en DVD / Blu-ray le {{date}}",
+  availPhysicalSoon: "Blu-ray le {{date}}",
+  availPhysicalSoonLong: "Sortie en DVD / Blu-ray le {{date}}",
   availReleaseOn: "Sortie le {{date}}",
   availReleaseOnLong: "Pas encore sorti — prévu le {{date}}",
   availAirsOn: "Diffusion le {{date}}",
   availAirsOnLong: "Première diffusion le {{date}}",
   availNotAiredYet: "Diffusion pas encore commencée",
+  // Les chances d'aboutir, sans jamais les chiffrer ni les promettre.
+  availOutlookLikely: "Une version existe : la demande a de bonnes chances d'aboutir.",
+  availOutlookUnlikely:
+    "Encore en salle uniquement : peu de chances qu'une version circule déjà.",
+  availOutlookNotYet: "Rien n'est encore sorti : la demande restera en attente jusque-là.",
   availRequestAnyway: "Demander quand même",
   availRequestAnywayHint:
     "Le téléchargement ne pourra pas démarrer avant la sortie. La demande restera en attente jusque-là.",

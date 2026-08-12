@@ -6,6 +6,7 @@ import { SeasonRow } from "./SeasonRow";
 import { SeriesSeasonPicker } from "./SeriesSeasonPicker";
 import { MovieRequestSection } from "./MovieRequestSection";
 import { AvailabilityPill } from "./AvailabilityPill";
+import { hasSignal } from "../utils/availability-labels";
 import { PlatformBadges } from "./PlatformBadges";
 import { useSingleAvailability } from "../hooks/useAvailability";
 import { WatchProviders } from "./WatchProviders";
@@ -154,8 +155,8 @@ export function MediaDetailBody({
         </div>
       )}
 
-      {/* Ce qui empêche de récupérer ce titre, en toutes lettres. */}
-      {availability && availability.kind !== "released" && (
+      {/* Par où ce titre est sorti, et ce qu'une demande peut espérer. */}
+      {hasSignal(availability) && (
         <div className="flex justify-center">
           <AvailabilityPill verdict={availability} variant="detail" />
         </div>

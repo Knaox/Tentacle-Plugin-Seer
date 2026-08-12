@@ -6,6 +6,7 @@ import { posterUrl, mediaTitle, mediaYear, mediaTypeKey } from "../utils/media-h
 import { CTA_PRIMARY, CTA_PRIMARY_HALO } from "../styles/cta";
 import { STATUS_STYLE } from "../styles/status";
 import { AvailabilityPill } from "./AvailabilityPill";
+import { PlatformBadges } from "./PlatformBadges";
 
 interface MediaCardProps {
   item: SeerrSearchResult;
@@ -64,6 +65,9 @@ export function MediaCard({ item, onRequest, onClick, requesting, style, availab
   const poster = posterUrl(item.posterPath);
   const mediaStatus = item.mediaInfo?.status ?? 0;
   const hasMediaInfo = mediaStatus > 1;
+  /* Les plateformes voyagent avec le verdict de disponibilité : elles sont déjà
+   * en mémoire côté serveur, donc les afficher ici ne coûte aucune requête. */
+  const providerIds = availability?.providerIds ?? [];
 
   return (
     <div
@@ -159,11 +163,19 @@ export function MediaCard({ item, onRequest, onClick, requesting, style, availab
         </div>
       </div>
 
-      {/* Info — la pastille ne s'affiche QUE si quelque chose empêche de
-          récupérer le titre. Sinon, l'année seule, comme avant. */}
+      {/* Info — la pastille ne s'affiche QUE s'il y a quelque chose à dire du
+          canal de sortie. Sinon, l'année seule, comme avant. Les logos partagent
+          la ligne de l'année : même hauteur, donc la carte ne grandit pas. */}
       <div className="mt-2 px-0.5">
         <h3 className="truncate text-sm font-semibold text-tentacle-text-primary">{title}</h3>
-        {year && <p className="text-xs text-tentacle-text-tertiary">{year}</p>}
+        {(year || providerIds.length > 0) && (
+          <div className="flex items-center gap-2">
+            {year && <p className="text-xs text-tentacle-text-tertiary">{year}</p>}
+            <span className="ml-auto shrink-0">
+              <PlatformBadges providerIds={providerIds} max={3} size="sm" />
+            </span>
+          </div>
+        )}
         <AvailabilityPill verdict={availability} />
       </div>
     </div>

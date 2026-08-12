@@ -17,8 +17,14 @@ import { tmdbKey } from "./tmdb-cache";
 import { resolveTmdbMeta, scheduleTmdbBackfill, DEFAULT_REGION } from "./tmdb-resolver";
 import { classifyAvailability, type AvailabilityVerdict } from "./availability";
 
-/** Taille d'un écran de grille, marge comprise. */
-const MAX_ITEMS = 60;
+/*
+ * Plafond de sécurité. La grille défile à l'infini et envoie sa liste ENTIÈRE
+ * à chaque page chargée : au-delà, les cartes n'auraient plus de pastille du
+ * tout. Soixante ne tenait plus dès la troisième page — d'où ce doublement, et
+ * surtout la trace quand on coupe : une troncature muette se lit comme une
+ * couverture complète.
+ */
+const MAX_ITEMS = 120;
 /** Fiches récupérées en direct par appel : le reste part en tâche de fond. */
 const FETCH_BUDGET = 12;
 
@@ -35,7 +41,11 @@ export function registerAvailabilityRoutes(
 
   app.post("/availability", async (request) => {
     const body = (request.body ?? {}) as Body;
-    const raw = Array.isArray(body.items) ? body.items.slice(0, MAX_ITEMS) : [];
+    const asked = Array.isArray(body.items) ? body.items : [];
+    const raw = asked.slice(0, MAX_ITEMS);
+    if (asked.length > MAX_ITEMS) {
+      console.warn(`[Seer] /availability : ${asked.length} titres demandés, ${MAX_ITEMS} traités`);
+    }
 
     const refs: TmdbRef[] = [];
     for (const it of raw) {

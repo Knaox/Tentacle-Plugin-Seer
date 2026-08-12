@@ -1,16 +1,23 @@
 import { memo } from "react";
 import { useTranslation } from "react-i18next";
-import type { AvailabilityVerdict } from "../api/types-releases";
-import { formatAirDateShort, parseAirDate } from "../utils/episode-dates";
+import type { AvailabilityChannel, AvailabilityVerdict } from "../api/types-releases";
+import {
+  CHANNEL_STYLE, cardChannels, channelLabel, hasSignal, outlookLabel, shortDate, verdictTooltip,
+} from "../utils/availability-labels";
 import { STATUS_STYLE } from "../styles/status";
 
 /**
- * Ce qui EMPÊCHE de récupérer un titre — jamais l'inverse.
+ * Par où un titre est sorti — et donc ce qu'une demande peut espérer.
  *
- * On ne rend rien quand le titre est récupérable : le mot « Disponible »
- * appartient aux demandes (« c'est dans ta bibliothèque »), et le réemployer
- * ici serait trompeur. Un titre sans obstacle affiche donc simplement son
- * année, comme avant — ce qui évite aussi de bruiter tout le catalogue ancien.
+ * Les canaux se CUMULENT : un film peut être encore à l'affiche et déjà pressé
+ * en Blu-ray. La version précédente n'en montrait qu'un, et faisait disparaître
+ * le plus utile des deux ; pire, un film sorti en vidéo retombait sur
+ * « récupérable », c'est-à-dire sur rien du tout. On empile donc jusqu'à deux
+ * mentions, la plus probante en tête.
+ *
+ * Un titre sans canal à signaler n'affiche toujours rien : le mot « Disponible »
+ * appartient aux demandes (« c'est dans ta bibliothèque ») et le catalogue
+ * ancien n'a pas à être bruité.
  */
 
 interface Props {
@@ -19,74 +26,86 @@ interface Props {
   variant?: "card" | "detail";
 }
 
-/** « 3 sept. » — l'année n'est utile que si la sortie déborde sur l'an prochain. */
-function shortDate(date: string): string {
-  const parsed = parseAirDate(date);
-  if (!parsed) return date;
-  const full = formatAirDateShort(date);
-  return parsed.getFullYear() === new Date().getFullYear()
-    ? full.replace(/\s*\d{4}$/, "").replace(/,\s*$/, "")
-    : full;
-}
-
 export const AvailabilityPill = memo(function AvailabilityPill({ verdict, variant = "card" }: Props) {
   const { t } = useTranslation("seer");
-  if (!verdict || verdict.kind === "released") return null;
 
-  const date = verdict.date ? shortDate(verdict.date) : "";
-
-  const config: Record<string, { label: string; style: string }> = {
-    digital_soon: { label: t("seer:availOnlineOn", { date }), style: STATUS_STYLE.downloading.chip },
-    theatrical: { label: t("seer:availInTheaters"), style: STATUS_STYLE.retry_pending.chip },
-    upcoming: { label: t("seer:availReleaseOn", { date }), style: STATUS_STYLE.queued.chip },
-    not_aired: { label: t("seer:availAirsOn", { date }), style: STATUS_STYLE.queued.chip },
-  };
-
-  const c = config[verdict.kind];
-  if (!c) return null;
+  /* Les séries n'ont pas de canaux : leur seul obstacle est une diffusion qui
+   * n'a pas commencé, et il vaut la peine d'être dit. */
+  if (!hasSignal(verdict) || !verdict) return null;
+  const channels = verdict.channels ?? [];
 
   if (variant === "detail") {
     return (
-      <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium ${c.style}`}>
-        <Dot />
-        {detailLabel(verdict, t, date)}
-      </span>
+      <div className="flex flex-col items-center gap-1.5">
+        <div className="flex flex-wrap items-center justify-center gap-1.5">
+          {channels.length > 0
+            ? channels.map((c) => <Chip key={c.id} channel={c} t={t} long />)
+            : <NotAired verdict={verdict} t={t} long />}
+        </div>
+        {outlookLabel(verdict, t) && (
+          <p className="text-center text-[11px] leading-relaxed text-tentacle-text-quaternary">
+            {outlookLabel(verdict, t)}
+          </p>
+        )}
+      </div>
     );
   }
 
+  const shown = cardChannels(verdict);
+
   return (
-    <span
-      className={`mt-0.5 inline-flex max-w-full items-center gap-1 truncate rounded px-1.5 py-0.5 text-[10px] font-medium ${c.style}`}
-      title={detailLabel(verdict, t, date)}
-    >
-      <Dot />
-      <span className="truncate">{c.label}</span>
+    <span className="mt-0.5 flex flex-col items-start gap-0.5" title={verdictTooltip(verdict, t)}>
+      {shown.length > 0
+        ? shown.map((c) => <Chip key={c.id} channel={c} t={t} />)
+        : <NotAired verdict={verdict} t={t} />}
     </span>
   );
 });
 
-function Dot() {
-  return <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-80" />;
+type Translate = (key: string, opts?: Record<string, unknown>) => string;
+
+function Chip({ channel, t, long }: { channel: AvailabilityChannel; t: Translate; long?: boolean }) {
+  const style = CHANNEL_STYLE[channel.id];
+  const label = channelLabel(channel, t, long);
+  return long ? (
+    <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium ${style}`}>
+      <Dot />
+      {label}
+    </span>
+  ) : (
+    <span
+      className={`inline-flex max-w-full items-center gap-1 truncate rounded px-1.5 py-0.5 text-[10px] font-medium ${style}`}
+    >
+      <Dot />
+      <span className="truncate">{label}</span>
+    </span>
+  );
 }
 
-/** Phrase complète : c'est elle qui explique pourquoi une demande attendra. */
-function detailLabel(
-  verdict: AvailabilityVerdict,
-  t: (k: string, o?: Record<string, unknown>) => string,
-  date: string,
-): string {
-  switch (verdict.kind) {
-    case "digital_soon":
-      return t("seer:availOnlineOnLong", { date });
-    case "theatrical":
-      return t("seer:availInTheatersLong", {
-        date: verdict.theatricalDate ? shortDate(verdict.theatricalDate) : date,
-      });
-    case "upcoming":
-      return t("seer:availReleaseOnLong", { date });
-    case "not_aired":
-      return date ? t("seer:availAirsOnLong", { date }) : t("seer:availNotAiredYet");
-    default:
-      return "";
-  }
+/** Série dont la diffusion n'a pas commencé — aucun canal, mais un obstacle réel. */
+function NotAired({ verdict, t, long }: { verdict: AvailabilityVerdict; t: Translate; long?: boolean }) {
+  const date = verdict.date ? shortDate(verdict.date) : "";
+  const label = !date
+    ? t("seer:availNotAiredYet")
+    : t(long ? "seer:availAirsOnLong" : "seer:availAirsOn", { date });
+
+  return long ? (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium ${STATUS_STYLE.queued.chip}`}
+    >
+      <Dot />
+      {label}
+    </span>
+  ) : (
+    <span
+      className={`inline-flex max-w-full items-center gap-1 truncate rounded px-1.5 py-0.5 text-[10px] font-medium ${STATUS_STYLE.queued.chip}`}
+    >
+      <Dot />
+      <span className="truncate">{label}</span>
+    </span>
+  );
+}
+
+function Dot() {
+  return <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-80" />;
 }

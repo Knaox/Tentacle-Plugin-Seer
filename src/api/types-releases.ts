@@ -8,8 +8,9 @@ import type { MediaType, RequestStatus } from "./types";
 
 /**
  * On ne dit jamais « disponible » : ce mot désigne déjà, sur Mes demandes, un
- * titre présent dans la bibliothèque. Ici « released » signifie seulement
- * « rien ne s'oppose à une demande » — et n'affiche donc AUCUNE pastille.
+ * titre présent dans la bibliothèque. On nomme le CANAL — « En Blu-ray »,
+ * « En ligne » — jamais un état de bibliothèque. « released » signifie
+ * seulement « rien ne s'oppose à une demande ».
  */
 export type AvailabilityKind =
   | "released"
@@ -18,13 +19,32 @@ export type AvailabilityKind =
   | "upcoming"
   | "not_aired";
 
+/** Salle, VOD-streaming, DVD-Blu-ray : trois canaux qui se cumulent. */
+export type ChannelId = "theatrical" | "digital" | "physical";
+
+export interface AvailabilityChannel {
+  id: ChannelId;
+  /** Toujours 'YYYY-MM-DD' — à lire avec parseAirDate, jamais new Date(). */
+  date: string;
+  released: boolean;
+}
+
+/** Les chances qu'un fichier existe. Trois niveaux, jamais un pourcentage. */
+export type AvailabilityOutlook = "likely" | "unlikely" | "not_yet";
+
 export interface AvailabilityVerdict {
   mediaType: MediaType;
   tmdbId: number;
+  /** Canaux connus, le plus probant d'abord. Vide = rien à dire. */
+  channels: AvailabilityChannel[];
+  outlook: AvailabilityOutlook;
+  /** Plateformes d'abonnement, servies avec le verdict — aucun appel de plus. */
+  providerIds: number[];
   kind: AvailabilityKind;
   date: string | null;
   theatricalDate: string | null;
   digitalDate: string | null;
+  physicalDate: string | null;
   obtainable: boolean;
 }
 

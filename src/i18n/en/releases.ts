@@ -1,16 +1,30 @@
 export default {
-  // Availability — what PREVENTS getting a title.
+  // Availability — WHERE a title came out, and what a request can hope for.
   // Never use "Available" here: on My Requests it already means the title is
-  // downloaded and sitting in the library.
+  // downloaded and sitting in the library. Name the channel (theaters, online,
+  // Blu-ray), never a state of ownership.
+  availStillInTheaters: "Still in theaters",
   availInTheaters: "In theaters",
-  availInTheatersLong: "In theaters since {{date}} — not online yet",
+  availInTheatersLong: "Still in theaters since {{date}}",
+  availTheatricalSoon: "In theaters {{date}}",
+  availTheatricalSoonLong: "Theatrical release on {{date}}",
+  availDigitalOut: "Online",
+  availDigitalOutLong: "Released online on {{date}}",
   availOnlineOn: "Online {{date}}",
   availOnlineOnLong: "Digital release on {{date}}",
+  availPhysicalOut: "On Blu-ray",
+  availPhysicalOutLong: "Released on DVD / Blu-ray on {{date}}",
+  availPhysicalSoon: "Blu-ray {{date}}",
+  availPhysicalSoonLong: "DVD / Blu-ray release on {{date}}",
   availReleaseOn: "Out {{date}}",
   availReleaseOnLong: "Not released yet — due {{date}}",
   availAirsOn: "Airs {{date}}",
   availAirsOnLong: "First airs on {{date}}",
   availNotAiredYet: "Has not started airing",
+  // Odds of success, never a number and never a promise.
+  availOutlookLikely: "A release exists: this request has a good chance of completing.",
+  availOutlookUnlikely: "Theaters only for now: a release is unlikely to be circulating yet.",
+  availOutlookNotYet: "Nothing is out yet: the request will stay pending until then.",
   availRequestAnyway: "Request anyway",
   availRequestAnywayHint:
     "Downloading cannot start before release. The request will stay pending until then.",
