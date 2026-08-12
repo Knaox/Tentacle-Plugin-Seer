@@ -18,16 +18,26 @@
  * étend le même raisonnement aux lignes lues chez Jellyseerr, qui sont la
  * source de vérité de « Mes demandes ».
  *
- * NE PAS confondre les deux tableaux de saisons :
- *   - `request.seasons[].status`  → l'état de la DEMANDE de saison (approuvée…)
- *   - `media.seasons[].status`    → la DISPONIBILITÉ de la saison  ← celui-ci
+ * Deux tableaux de saisons coexistent, et ils ne disent PAS la même chose :
+ *   - `media.seasons[].status`   → la DISPONIBILITÉ de la saison (5 = AVAILABLE)
+ *   - `request.seasons[].status` → l'état de la DEMANDE de saison (5 = COMPLETED)
+ *
+ * Le premier est le plus direct, mais `GET /request` ne le renvoie pas : il ne
+ * vient qu'avec la fiche du média (`/tv/:id`), que la liste n'a aucune raison
+ * d'aller chercher pour chaque série. Le second, lui, est TOUJOURS là, et il
+ * répond à la même question : Jellyseerr passe une demande de saison à
+ * « terminée » quand la saison est arrivée. On accepte donc les deux signaux —
+ * une saison compte pour arrivée dès que l'un des deux l'affirme.
  */
 
 import type { RequestStatus } from "./types";
 import { mapSeerrStatus } from "./worker-sync";
 
-/** status Jellyseerr d'une saison / d'un média : 5 = AVAILABLE. */
+/** `media.seasons[].status` : 5 = AVAILABLE (la saison est en bibliothèque). */
 const AVAILABLE = 5;
+
+/** `request.seasons[].status` : 5 = COMPLETED (la saison demandée est arrivée). */
+const COMPLETED = 5;
 
 /**
  * La forme MINIMALE dont ce module a besoin — volontairement structurelle :
@@ -36,8 +46,8 @@ const AVAILABLE = 5;
  */
 export interface StatusRow {
   status: number;
-  /** Saisons couvertes par la demande. */
-  seasons?: Array<{ seasonNumber: number }>;
+  /** Saisons couvertes par la demande, avec l'état de CHAQUE demande de saison. */
+  seasons?: Array<{ seasonNumber: number; status?: number }>;
   media?: {
     status?: number;
     /** Disponibilité par saison de la série entière. */
@@ -54,9 +64,7 @@ export interface StatusRow {
  * garder le statut global que promettre une disponibilité qu'on n'a pas vue.
  */
 export function allRequestedSeasonsAvailable(row: StatusRow): boolean {
-  const requested = (row.seasons ?? [])
-    .map((s) => s.seasonNumber)
-    .filter((n) => typeof n === "number");
+  const requested = (row.seasons ?? []).filter((s) => typeof s.seasonNumber === "number");
   if (requested.length === 0) return false;
 
   const available = new Set(
@@ -64,9 +72,8 @@ export function allRequestedSeasonsAvailable(row: StatusRow): boolean {
       .filter((s) => s.status === AVAILABLE)
       .map((s) => s.seasonNumber),
   );
-  if (available.size === 0) return false;
 
-  return requested.every((n) => available.has(n));
+  return requested.every((s) => available.has(s.seasonNumber) || s.status === COMPLETED);
 }
 
 /**

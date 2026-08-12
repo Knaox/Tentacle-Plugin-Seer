@@ -2422,14 +2422,14 @@ async function processNextRequest(prisma, config, skipIds) {
 
 // server/request-status.ts
 var AVAILABLE2 = 5;
+var COMPLETED = 5;
 function allRequestedSeasonsAvailable(row) {
-  const requested = (row.seasons ?? []).map((s) => s.seasonNumber).filter((n) => typeof n === "number");
+  const requested = (row.seasons ?? []).filter((s) => typeof s.seasonNumber === "number");
   if (requested.length === 0) return false;
   const available = new Set(
     (row.media?.seasons ?? []).filter((s) => s.status === AVAILABLE2).map((s) => s.seasonNumber)
   );
-  if (available.size === 0) return false;
-  return requested.every((n) => available.has(n));
+  return requested.every((s) => available.has(s.seasonNumber) || s.status === COMPLETED);
 }
 function resolveRequestStatus(row, local) {
   let status = mapSeerrStatus(row.status, row.media?.status, row.media?.downloadStatus);

@@ -35,6 +35,38 @@ test("sans granularité par-saison, on garde le statut de la série", () => {
   assert.equal(resolveRequestStatus(row), "partially_available");
 });
 
+test("LE cas réel : `GET /request` ne donne QUE l'état des demandes de saison", () => {
+  /* Forme exacte renvoyée par Jellyseerr sur la liste — `media.seasons` en est
+   * absent, et c'est précisément là que le badge se décidait. Les deux saisons
+   * demandées sont terminées, la série reste partielle : demande satisfaite. */
+  const row: StatusRow = {
+    status: 5,
+    seasons: [{ seasonNumber: 2, status: 5 }, { seasonNumber: 3, status: 5 }],
+    media: { status: 4 },
+  };
+  assert.equal(resolveRequestStatus(row), "available");
+});
+
+test("une demande de saison encore approuvée n'est pas une saison arrivée", () => {
+  // status 2 = APPROVED : acceptée, pas encore descendue.
+  const row: StatusRow = {
+    status: 2,
+    seasons: [{ seasonNumber: 1, status: 5 }, { seasonNumber: 2, status: 2 }],
+    media: { status: 4 },
+  };
+  assert.equal(resolveRequestStatus(row), "partially_available");
+});
+
+test("les deux sources se complètent plutôt que de s'exclure", () => {
+  // La saison 1 n'est connue que du média, la 2 que de la demande.
+  const row: StatusRow = {
+    status: 2,
+    seasons: [{ seasonNumber: 1 }, { seasonNumber: 2, status: 5 }],
+    media: { status: 4, seasons: [{ seasonNumber: 1, status: 5 }] },
+  };
+  assert.equal(allRequestedSeasonsAvailable(row), true);
+});
+
 test("une série demandée en bloc garde le statut du média", () => {
   const row: StatusRow = { status: 2, media: { status: 4, seasons: [{ seasonNumber: 1, status: 5 }] } };
   assert.equal(resolveRequestStatus(row), "partially_available");
