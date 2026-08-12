@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo } from "react";
 import type { DiscoverFilters, SortOption, SortOrder, TvStatus } from "../api/types";
+import type { ChannelId } from "../api/types-releases";
 
 const DEFAULT_FILTERS: DiscoverFilters = {
   genres: [],
@@ -9,6 +10,7 @@ const DEFAULT_FILTERS: DiscoverFilters = {
   ratingMin: null,
   originalLanguage: null,
   tvStatus: [],
+  channels: [],
   sortBy: "popularity",
   sortOrder: "desc",
 };
@@ -55,6 +57,13 @@ export function useDiscoverFilters() {
     }));
   }, []);
 
+  const toggleChannel = useCallback((c: ChannelId) => {
+    setFilters((f) => ({
+      ...f,
+      channels: f.channels.includes(c) ? f.channels.filter((x) => x !== c) : [...f.channels, c],
+    }));
+  }, []);
+
   const setSortBy = useCallback((v: SortOption) => {
     setFilters((f) => ({ ...f, sortBy: v }));
   }, []);
@@ -79,6 +88,7 @@ export function useDiscoverFilters() {
     if (filters.ratingMin != null) count++;
     if (filters.originalLanguage != null) count++;
     if (filters.tvStatus.length > 0) count++;
+    if (filters.channels.length > 0) count++;
     return count;
   }, [filters]);
 
@@ -93,6 +103,7 @@ export function useDiscoverFilters() {
     setRatingMin,
     setOriginalLanguage,
     toggleTvStatus,
+    toggleChannel,
     setSortBy,
     setSortOrder,
     resetFilters,

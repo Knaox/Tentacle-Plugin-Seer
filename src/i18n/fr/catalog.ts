@@ -44,6 +44,8 @@ export default {
   filterShowResults_one: "Voir {{count}} résultat",
   filterShowResults_other: "Voir {{count}} résultats",
   filterTitle: "Filtres",
+  filterChannel: "Canal de sortie",
+  filterChannelHint: "Un titre apparaît s'il est sorti par au moins un des canaux cochés.",
   filterSort: "Trier par",
   filterGenres: "Genres",
   filterPlatforms: "Plateformes",

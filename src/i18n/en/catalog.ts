@@ -44,6 +44,8 @@ export default {
   filterShowResults_one: "Show {{count}} result",
   filterShowResults_other: "Show {{count}} results",
   filterTitle: "Filters",
+  filterChannel: "Release channel",
+  filterChannelHint: "A title shows up if it came out through at least one ticked channel.",
   filterSort: "Sort by",
   filterGenres: "Genres",
   filterPlatforms: "Platforms",

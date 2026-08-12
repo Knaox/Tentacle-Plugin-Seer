@@ -7,6 +7,7 @@ export type DiscoverMediaType = "movies" | "tv" | "anime";
 export type SortOption = "popularity" | "vote_average" | "release_date" | "title";
 export type SortOrder = "asc" | "desc";
 export type TvStatus = 0 | 1 | 2 | 3 | 4 | 5;
+import type { ChannelId } from "./types-releases";
 
 export interface DiscoverFilters {
   genres: number[];
@@ -16,6 +17,10 @@ export interface DiscoverFilters {
   ratingMin: number | null;
   originalLanguage: string | null;
   tvStatus: TvStatus[];
+  /* Canaux de sortie retenus — salle, streaming, Blu-ray. Filtré CÔTÉ CLIENT :
+   * Jellyseerr refuse tout paramètre de type de sortie (400 sur `releaseType`
+   * comme sur `withReleaseType`), le verdict vient donc du serveur du plugin. */
+  channels: ChannelId[];
   sortBy: SortOption;
   sortOrder: SortOrder;
 }

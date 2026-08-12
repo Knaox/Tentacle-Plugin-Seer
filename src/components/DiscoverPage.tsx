@@ -18,6 +18,7 @@ import { EmptyState } from "./EmptyState";
 import { mediaTitle, mediaYear } from "../utils/media-helpers";
 import { useToast } from "../hooks/useToast";
 import { useAvailability } from "../hooks/useAvailability";
+import { matchesChannels } from "../utils/channel-filter";
 import { POSTER_GUARD } from "../hooks/useNearViewport";
 import { useSearchHotkey, useScrollTopOnMount } from "../hooks/useSearchHotkey";
 import type { SeerrSearchResult, DiscoverMediaType } from "../api/types";
@@ -49,7 +50,7 @@ export function DiscoverPage() {
   const {
     filters, toggleGenre, toggleWatchProvider,
     setYearFrom, setYearTo, setRatingMin, setOriginalLanguage,
-    toggleTvStatus, setSortBy, setSortOrder,
+    toggleTvStatus, toggleChannel, setSortBy, setSortOrder,
     resetFilters, resetGenres, activeFilterCount, hasActiveFilters,
   } = useDiscoverFilters();
 
@@ -137,6 +138,16 @@ export function DiscoverPage() {
    * les attend pas : les pastilles apparaissent quand la réponse arrive. */
   const availability = useAvailability(filtered);
 
+  /* Canal de sortie — APRÈS la demande de disponibilité, jamais avant : le
+   * verdict porte sur cette liste, filtrer en amont ferait dépendre la question
+   * de sa propre réponse (cf. `channel-filter.ts` pour le reste). */
+  const shown = useMemo(
+    () => (filters.channels.length === 0 ? filtered : filtered.filter(
+      (item) => matchesChannels(availability.get(`${item.mediaType}:${item.id}`), filters.channels),
+    )),
+    [filtered, availability, filters.channels],
+  );
+
   /* Défilement infini : la sentinelle s'observe par référence de rappel, donc
    * dès qu'elle entre dans le document — au premier rendu la grille est encore
    * vide, et un effet classique ressortirait sans rien observer. */
@@ -216,7 +227,7 @@ export function DiscoverPage() {
       <div key={viewKey} style={{ animation: "viewCrossfade 200ms ease" }}>
       {isLoading ? (
         <SkeletonList count={20} />
-      ) : hasError && filtered.length === 0 ? (
+      ) : hasError && shown.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-3 py-16">
           <svg className="h-10 w-10 text-red-400/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
@@ -232,9 +243,9 @@ export function DiscoverPage() {
             {t("seer:retry")}
           </button>
         </div>
-      ) : filtered.length > 0 ? (
+      ) : shown.length > 0 ? (
         <DiscoverGrid
-          items={filtered}
+          items={shown}
           availability={availability}
           requesting={requestMedia.isPending}
           onRequest={handleRequest}
@@ -273,6 +284,7 @@ export function DiscoverPage() {
         onRatingMinChange={setRatingMin}
         onLanguageChange={setOriginalLanguage}
         onToggleTvStatus={toggleTvStatus}
+        onToggleChannel={toggleChannel}
         onSortByChange={setSortBy}
         onSortOrderChange={setSortOrder}
         onReset={resetFilters}
