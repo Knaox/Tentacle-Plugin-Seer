@@ -36,14 +36,16 @@ export async function getRequestsProgress(): Promise<RequestsProgressResponse> {
 }
 
 export async function getPersonalCalendar(
-  from?: string, to?: string, includeSettled = false,
+  from?: string, to?: string, includeSettled = false, everyone = false,
 ): Promise<CalendarResponse> {
   const p = new URLSearchParams();
   if (from) p.set("from", from);
   if (to) p.set("to", to);
-  // Par défaut on masque ce qui est déjà arrivé : c'est un calendrier de ce
-  // qui reste à venir. « Toutes mes demandes » lève ce filtre.
+  // Y compris ce qui est déjà arrivé : sans cela la page paraissait vide dès
+  // que toutes les demandes avaient abouti.
   if (includeSettled) p.set("all", "1");
+  // Les demandes de tout le monde, pas seulement les siennes.
+  if (everyone) p.set("everyone", "1");
   const qs = p.toString();
   return backendFetch(`/calendar/personal${qs ? `?${qs}` : ""}`);
 }

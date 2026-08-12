@@ -8,6 +8,7 @@ import { cached } from "./cache";
 import { getUser, type WorkerCfg } from "./seerr-unified";
 import { buildMergedRows, type MergedRows } from "./requests-list";
 import { buildPersonalCalendar } from "./calendar-personal";
+import { buildEveryoneRows } from "./calendar-everyone";
 import { buildGlobalCalendar } from "./calendar-global";
 import { isDayString, addDays, type CalendarResponse } from "./calendar-types";
 import { todayString } from "./tmdb-fetch";
@@ -45,28 +46,44 @@ export function registerCalendarRoutes(
   getWorkerConfig: () => Promise<WorkerCfg | null>,
 ): void {
 
-  /* ── Mes sorties — à partir des demandes en cours ── */
+  /* ── Les sorties des demandes — les miennes, ou celles de tout le monde ── */
   app.get("/calendar/personal", async (request) => {
     const user = getUser(request);
-    const q = request.query as { from?: string; to?: string; all?: string };
+    const q = request.query as { from?: string; to?: string; all?: string; everyone?: string };
     const { from, to } = readWindow(q);
     const includeSettled = q.all === "1";
+    const everyone = q.everyone === "1";
 
     const config = await getWorkerConfig();
     if (!config) return EMPTY(from, to);
 
+    /* Vue « tout le monde » : le résultat ne dépend d'aucun utilisateur, donc
+     * une seule entrée de cache sert toute l'instance. La vue personnelle,
+     * elle, reste préfixée par le compte. */
+    const key = everyone
+      ? `seer:cal:everyone:${from}:${to}:${includeSettled ? "all" : "up"}`
+      : `seer-cache:${user.userId}:cal:${from}:${to}:${includeSettled ? "all" : "up"}`;
+
     return cached(
-      `seer-cache:${user.userId}:cal:${from}:${to}:${includeSettled ? 'all' : 'up'}`,
+      key,
       PERSONAL_TTL_MS,
       async () => {
         // Réutilise la liste déjà chargée : arriver depuis « Mes demandes »
         // ne coûte alors aucun appel réseau.
-        const rows: MergedRows = await cached(
-          rowsCacheKey(user.userId),
-          60_000,
-          () => buildMergedRows(prisma, config, user, (err, msg) => app.log?.warn?.({ err }, msg)),
-          { staleMs: 600_000 },
-        );
+        const warn = (err: unknown, msg: string) => app.log?.warn?.({ err }, msg);
+        const rows: MergedRows = everyone
+          ? await cached(
+              "seer:rows:everyone",
+              60_000,
+              () => buildEveryoneRows(prisma, config, warn),
+              { staleMs: 600_000 },
+            )
+          : await cached(
+              rowsCacheKey(user.userId),
+              60_000,
+              () => buildMergedRows(prisma, config, user, warn),
+              { staleMs: 600_000 },
+            );
         const res = await buildPersonalCalendar(prisma, config, user, rows, { from, to, includeSettled });
         // L'heure réelle des épisodes, quand Sonarr suit la série.
         return attachAirTimes(config, res);

@@ -4,13 +4,16 @@ import {
 } from "../api/client-releases";
 import type { CalendarMediaFilter } from "../api/types-releases";
 
-/** Mes sorties — suit les demandes, donc rafraîchi plus souvent que le global. */
+/**
+ * Les sorties des demandes — suit les demandes, donc rafraîchi plus souvent que
+ * le calendrier global. `everyone` bascule des siennes à celles de tous.
+ */
 export function usePersonalCalendar(
-  from?: string, to?: string, enabled = true, includeSettled = false,
+  from?: string, to?: string, enabled = true, includeSettled = false, everyone = false,
 ) {
   return useQuery({
-    queryKey: ["seer-calendar-personal", from ?? "", to ?? "", includeSettled],
-    queryFn: () => getPersonalCalendar(from, to, includeSettled),
+    queryKey: ["seer-calendar-personal", from ?? "", to ?? "", includeSettled, everyone],
+    queryFn: () => getPersonalCalendar(from, to, includeSettled, everyone),
     enabled,
     staleTime: 5 * 60_000,
     gcTime: 30 * 60_000,

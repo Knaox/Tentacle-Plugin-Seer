@@ -65,7 +65,11 @@ export default {
   releasesTabPersonal: "Mes sorties",
   releasesTabAll: "Tout",
   releasesScopeUpcoming: "À venir",
-  releasesScopeAll: "Toutes mes demandes",
+  releasesScopeAll: "Toutes les demandes",
+  // Dit franchement ce que la vue partagée montre : ce que les autres ont
+  // demandé. C'est un choix assumé, pas un effet de bord.
+  releasesEveryoneHint: "Les demandes de tous les utilisateurs du serveur.",
+  releasesEmptyEveryone: "Aucune sortie à venir parmi les demandes du serveur",
   releasesViewWeek: "Semaine",
   releasesViewMonth: "Mois",
   releasesEmptyPersonal: "Aucune sortie à venir parmi vos demandes",

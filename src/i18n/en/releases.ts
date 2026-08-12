@@ -64,7 +64,10 @@ export default {
   releasesTabPersonal: "My releases",
   releasesTabAll: "Everything",
   releasesScopeUpcoming: "Upcoming",
-  releasesScopeAll: "All my requests",
+  releasesScopeAll: "All requests",
+  // States plainly what the shared view shows: what other people requested.
+  releasesEveryoneHint: "Requests from every user on this server.",
+  releasesEmptyEveryone: "No upcoming releases among the server's requests",
   releasesViewWeek: "Week",
   releasesViewMonth: "Month",
   releasesEmptyPersonal: "No upcoming releases among your requests",

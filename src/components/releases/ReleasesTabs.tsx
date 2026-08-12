@@ -3,8 +3,13 @@ import type { CalendarMode } from "../../api/types-releases";
 import { segment, SEGMENT_GROUP } from "../../styles/pills";
 
 export type ReleasesView = "week" | "month";
-/** Mes sorties : uniquement ce qui reste à venir, ou toutes les demandes. */
-export type ReleasesScope = "upcoming" | "all";
+/**
+ * Les demandes dont on suit les dates : les siennes, ou celles de tout le
+ * monde. Les deux montrent l'intégralité des demandes, arrivées comprises —
+ * n'afficher que ce qui restait à venir donnait une page vide dès que tout
+ * était là.
+ */
+export type ReleasesScope = "mine" | "everyone";
 
 interface Props {
   mode: CalendarMode;
@@ -24,8 +29,8 @@ const MODES: Array<{ value: CalendarMode; key: string }> = [
 ];
 
 const SCOPES: Array<{ value: ReleasesScope; key: string }> = [
-  { value: "upcoming", key: "seer:releasesScopeUpcoming" },
-  { value: "all", key: "seer:releasesScopeAll" },
+  { value: "mine", key: "seer:releasesScopeUpcoming" },
+  { value: "everyone", key: "seer:releasesScopeAll" },
 ];
 
 /**
@@ -60,8 +65,8 @@ export function ReleasesTabs({
         ))}
       </div>
 
-      {/* Mes sorties : par défaut on ne montre que ce qui reste à venir — d'où
-          une page vide quand tout est déjà arrivé. « Toutes » lève ce filtre. */}
+      {/* Les miennes, ou celles de tout le monde : sur un serveur partagé, la
+          question « qu'est-ce qui arrive bientôt ici ? » n'avait pas de réponse. */}
       {mode === "personal" && (
         <div className={SEGMENT_GROUP} role="group">
           {SCOPES.map((s) => (

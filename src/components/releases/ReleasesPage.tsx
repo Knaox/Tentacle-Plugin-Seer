@@ -20,6 +20,7 @@ import { applyLocalDays } from "../../utils/calendar-localtime";
 
 const VIEW_KEY = "seer_releases_view";
 const MODE_KEY = "seer_releases_mode";
+const SCOPE_KEY = "seer_releases_scope";
 const PROVIDERS_KEY = "seer_releases_providers";
 const WINDOW_DAYS = 90;
 
@@ -59,7 +60,16 @@ export function ReleasesPage() {
     try { localStorage.setItem(MODE_KEY, next); } catch { /* stockage indisponible */ }
   }, []);
   const [mediaFilter, setMediaFilter] = useState<CalendarMediaFilter>("both");
-  const [scope, setScope] = useState<ReleasesScope>("upcoming");
+  /* Retenu comme le mode et la vue : c'était le seul réglage de la page à
+   * repartir de zéro à chaque visite. */
+  const [scope, setScope] = useState<ReleasesScope>(() => {
+    try { return localStorage.getItem(SCOPE_KEY) === "everyone" ? "everyone" : "mine"; }
+    catch { return "mine"; }
+  });
+  const changeScope = useCallback((next: ReleasesScope) => {
+    setScope(next);
+    try { localStorage.setItem(SCOPE_KEY, next); } catch { /* stockage indisponible */ }
+  }, []);
   const [providerIds, setProviderIds] = useState<number[]>(readProviders);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selected, setSelected] = useState<SeerrSearchResult | null>(null);
@@ -111,7 +121,9 @@ export function ReleasesPage() {
 
   const { from, to } = range;
 
-  const personal = usePersonalCalendar(from, to, mode === "personal", scope === "all");
+  /* Toujours l'intégralité des demandes : ne montrer que ce qui restait à venir
+   * donnait une page vide dès que tout était arrivé. */
+  const personal = usePersonalCalendar(from, to, mode === "personal", true, scope === "everyone");
   const global = useGlobalCalendar(
     { providerIds, mediaType: mediaFilter, from, to },
     mode === "all",
@@ -176,18 +188,25 @@ export function ReleasesPage() {
     setMediaFilter("both");
   }, [changeProviders]);
 
+  const everyone = mode === "personal" && scope === "everyone";
+
   const emptyKey = filtered
     ? "seer:releasesEmptyFiltered"
-    : mode === "personal" ? "seer:releasesEmptyPersonal" : "seer:releasesEmptyGlobal";
+    : everyone ? "seer:releasesEmptyEveryone"
+    : mode === "personal" ? "seer:releasesEmptyPersonal"
+    : "seer:releasesEmptyGlobal";
 
   const emptyHint = filtered
     ? t("seer:releasesEmptyFilteredHint")
+    : everyone ? t("seer:releasesEveryoneHint")
     : mode === "personal" ? t("seer:releasesEmptyPersonalHint") : undefined;
 
   return (
     <div className="px-4 pt-4 md:px-8">
       <h1 className="text-2xl font-bold text-tentacle-text-primary">{t("seer:releasesTitle")}</h1>
-      <p className="mb-4 text-sm text-tentacle-text-tertiary">{t("seer:releasesSubtitle")}</p>
+      <p className="mb-4 text-sm text-tentacle-text-tertiary">
+        {everyone ? t("seer:releasesEveryoneHint") : t("seer:releasesSubtitle")}
+      </p>
 
       <ReleasesTabs
         mode={mode}
@@ -195,7 +214,7 @@ export function ReleasesPage() {
         view={view}
         onViewChange={changeView}
         scope={scope}
-        onScopeChange={setScope}
+        onScopeChange={changeScope}
         activeFilterCount={activeFilterCount}
         onOpenFilters={() => setFiltersOpen(true)}
       />

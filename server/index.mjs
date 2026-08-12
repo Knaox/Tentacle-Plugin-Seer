@@ -2496,7 +2496,8 @@ function parseRequestId(id) {
 // server/seerr-requests-fetch.ts
 var PAGE_CONCURRENCY = 4;
 async function fetchSeerrRequestsPage(cfg, seerUserId, take, skip, filter = "all") {
-  const url = `${cfg.seerrUrl}/api/v1/request?take=${take}&skip=${skip}&filter=${encodeURIComponent(filter)}&sort=added&requestedBy=${seerUserId}`;
+  const who = seerUserId == null ? "" : `&requestedBy=${seerUserId}`;
+  const url = `${cfg.seerrUrl}/api/v1/request?take=${take}&skip=${skip}&filter=${encodeURIComponent(filter)}&sort=added${who}`;
   const res = await fetch(url, {
     headers: { "X-Api-Key": cfg.seerrApiKey },
     signal: AbortSignal.timeout(1e4)
@@ -2504,7 +2505,7 @@ async function fetchSeerrRequestsPage(cfg, seerUserId, take, skip, filter = "all
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(
-      `Jellyseerr GET /request?requestedBy=${seerUserId} failed: ${res.status} ${body.slice(0, 200)}`
+      `Jellyseerr GET /request${who || " (tous)"} failed: ${res.status} ${body.slice(0, 200)}`
     );
   }
   const data = await res.json();
@@ -4169,6 +4170,53 @@ function metaToCalendarItems(m, from, to) {
   return out;
 }
 
+// server/calendar-everyone.ts
+var LOCAL_PENDING_STATUSES2 = [
+  "queued",
+  "processing",
+  "retry_pending",
+  "failed",
+  "deleting",
+  "delete_failed"
+];
+var NO_STATS = { total: 0, byStatus: {}, byType: { movie: 0, tv: 0 } };
+async function buildEveryoneRows(prisma, cfg, log) {
+  const localPendingRows = await prisma.$queryRawUnsafe(
+    `SELECT * FROM seer_requests
+     WHERE status IN (${LOCAL_PENDING_STATUSES2.map(() => "?").join(",")})
+     ORDER BY created_at DESC`,
+    ...LOCAL_PENDING_STATUSES2
+  );
+  const localPending = localPendingRows.map(rowToRequest);
+  const localBySeerrId = /* @__PURE__ */ new Map();
+  const allLocalRows = await prisma.$queryRawUnsafe(
+    `SELECT * FROM seer_requests WHERE seerr_request_id IS NOT NULL`
+  );
+  for (const row of allLocalRows) {
+    const r = rowToRequest(row);
+    if (r.seerrRequestId) localBySeerrId.set(r.seerrRequestId, r);
+  }
+  let seerrRows = [];
+  try {
+    const all = await fetchAllSeerrRequests(cfg, null);
+    seerrRows = all.rows;
+  } catch (err) {
+    log?.(err, "Seerr fetch (tous) failed, falling back to local only");
+  }
+  const seerrSeenIds = new Set(seerrRows.map((r) => r.id));
+  const localOnly = localPending.filter(
+    (l) => !l.seerrRequestId || !seerrSeenIds.has(l.seerrRequestId)
+  );
+  return {
+    seerrRows,
+    localBySeerrId,
+    localOnly,
+    deletingIds: /* @__PURE__ */ new Set(),
+    stats: NO_STATS,
+    fetchedAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+
 // server/calendar-providers.ts
 var EPISODE_FETCH_BUDGET = 30;
 var MEDIA_STATUS_BLOCKLISTED = 6;
@@ -4486,16 +4534,24 @@ function registerCalendarRoutes(app, prisma, getWorkerConfig2) {
     const q = request.query;
     const { from, to } = readWindow(q);
     const includeSettled = q.all === "1";
+    const everyone = q.everyone === "1";
     const config = await getWorkerConfig2();
     if (!config) return EMPTY(from, to);
+    const key = everyone ? `seer:cal:everyone:${from}:${to}:${includeSettled ? "all" : "up"}` : `seer-cache:${user.userId}:cal:${from}:${to}:${includeSettled ? "all" : "up"}`;
     return cached(
-      `seer-cache:${user.userId}:cal:${from}:${to}:${includeSettled ? "all" : "up"}`,
+      key,
       PERSONAL_TTL_MS,
       async () => {
-        const rows = await cached(
+        const warn = (err, msg) => app.log?.warn?.({ err }, msg);
+        const rows = everyone ? await cached(
+          "seer:rows:everyone",
+          6e4,
+          () => buildEveryoneRows(prisma, config, warn),
+          { staleMs: 6e5 }
+        ) : await cached(
           rowsCacheKey(user.userId),
           6e4,
-          () => buildMergedRows(prisma, config, user, (err, msg) => app.log?.warn?.({ err }, msg)),
+          () => buildMergedRows(prisma, config, user, warn),
           { staleMs: 6e5 }
         );
         const res = await buildPersonalCalendar(prisma, config, user, rows, { from, to, includeSettled });

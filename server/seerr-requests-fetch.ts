@@ -23,17 +23,25 @@ export interface SeerrRequestsPage {
 
 const PAGE_CONCURRENCY = 4;
 
+/**
+ * Une page de demandes Jellyseerr.
+ *
+ * `seerUserId` à `null` retire le filtre `requestedBy` : l'endpoint renvoie
+ * alors les demandes de TOUT LE MONDE. C'est ce que sert l'agenda quand on
+ * choisit de voir l'activité du serveur entier plutôt que la sienne.
+ */
 export async function fetchSeerrRequestsPage(
   cfg: WorkerCfg,
-  seerUserId: number,
+  seerUserId: number | null,
   take: number,
   skip: number,
   filter = "all",
 ): Promise<SeerrRequestsPage> {
   // Endpoint général filtré par requestedBy — plus stable que /user/:id/requests
+  const who = seerUserId == null ? "" : `&requestedBy=${seerUserId}`;
   const url =
     `${cfg.seerrUrl}/api/v1/request?take=${take}&skip=${skip}` +
-    `&filter=${encodeURIComponent(filter)}&sort=added&requestedBy=${seerUserId}`;
+    `&filter=${encodeURIComponent(filter)}&sort=added${who}`;
   const res = await fetch(url, {
     headers: { "X-Api-Key": cfg.seerrApiKey },
     signal: AbortSignal.timeout(10_000),
@@ -41,7 +49,7 @@ export async function fetchSeerrRequestsPage(
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(
-      `Jellyseerr GET /request?requestedBy=${seerUserId} failed: ${res.status} ${body.slice(0, 200)}`,
+      `Jellyseerr GET /request${who || " (tous)"} failed: ${res.status} ${body.slice(0, 200)}`,
     );
   }
   const data = (await res.json()) as {
@@ -63,7 +71,8 @@ export interface FetchAllOpts {
 /** Première page en série, toutes les suivantes en parallèle. */
 export async function fetchAllSeerrRequests(
   cfg: WorkerCfg,
-  seerUserId: number,
+  /** `null` = toutes les demandes, tous utilisateurs confondus. */
+  seerUserId: number | null,
   opts: FetchAllOpts = {},
 ): Promise<{ rows: SeerrRequestRow[]; total: number; truncated: boolean }> {
   const take = opts.take ?? 100;
