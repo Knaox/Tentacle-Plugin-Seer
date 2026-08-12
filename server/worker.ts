@@ -9,7 +9,7 @@ import { notifyAvailableSeasons, notifyMovieAvailable } from "./seer-availabilit
 import { syncStatuses, retryFailedRequests, type WorkerConfig } from "./worker-sync";
 import { processCleanupQueue } from "./worker-cleanup";
 import { resolveJellyseerrUserId } from "./jellyseerr-user";
-import { warmTmdbCache, seedTmdbCacheOnce } from "./worker-tmdb";
+import { warmTmdbCache, seedTmdbCacheOnce, discoverSeerrRefs } from "./worker-tmdb";
 import { invalidate } from "./cache";
 import type { SeerProfile } from "./types";
 
@@ -79,6 +79,16 @@ export function startWorker(
     if (cycleCount % 5 === 0) {
       try { await warmTmdbCache(prisma, config); }
       catch (err) { console.error("[SeerWorker] Error warming TMDB cache:", err); }
+    }
+
+    /* Les demandes faites hors du plugin n'entrent dans la mémoire des fiches
+     * que si quelqu'un ouvre l'agenda. Une demi-heure suffit : une sortie ne se
+     * décide pas à la minute, et le remplissage part ensuite en tâche de fond. */
+    if (cycleCount % 30 === 0) {
+      try {
+        const n = await discoverSeerrRefs(prisma, config);
+        if (n > 0) console.log(`[SeerWorker] ${n} fiches découvertes hors du plugin`);
+      } catch (err) { console.error("[SeerWorker] Error discovering Seerr refs:", err); }
     }
   }
 

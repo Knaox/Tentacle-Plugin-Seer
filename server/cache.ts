@@ -18,13 +18,22 @@ const inflight = new Map<string, Promise<unknown>>();
 /** Un loader qui échoue n'est pas rejoué avant ce délai (Jellyseerr injoignable). */
 const REFRESH_BACKOFF_MS = 30_000;
 
-export interface CacheOpts {
+export interface CacheOpts<T = unknown> {
   /**
    * Fenêtre APRÈS expiration pendant laquelle la valeur périmée est servie
    * telle quelle, en déclenchant un rafraîchissement en arrière-plan.
    * 0 (défaut) = comportement historique : on attend le loader.
    */
   staleMs?: number;
+  /**
+   * Durée de vie décidée d'après la valeur produite, plutôt qu'en aveugle.
+   *
+   * Une réponse que son producteur annonce incomplète ne mérite pas la même
+   * durée qu'une réponse aboutie : le remplissage de fond tourne pendant ce
+   * temps-là. La figer quinze minutes — puis six heures de service périmé —
+   * transforme une carence d'une minute en défaut de la journée.
+   */
+  ttlFor?: (value: T) => number;
 }
 
 /**
@@ -41,7 +50,7 @@ export async function cached<T>(
   key: string,
   ttlMs: number,
   loader: () => Promise<T>,
-  opts?: CacheOpts,
+  opts?: CacheOpts<T>,
 ): Promise<T> {
   const now = Date.now();
   const hit = store.get(key) as CacheEntry<T> | undefined;
@@ -52,7 +61,7 @@ export async function cached<T>(
   if (hit && hit.stale > now) {
     const backoffOver = !hit.failedAt || now - hit.failedAt > REFRESH_BACKOFF_MS;
     if (backoffOver && !inflight.has(key)) {
-      void refresh(key, ttlMs, loader, opts?.staleMs ?? 0).catch(() => {
+      void refresh(key, ttlMs, loader, opts).catch(() => {
         /* Impératif : un rejet non capté ici tuerait le process host. */
       });
     }
@@ -62,19 +71,19 @@ export async function cached<T>(
   const pending = inflight.get(key) as Promise<T> | undefined;
   if (pending) return pending;
 
-  return refresh(key, ttlMs, loader, opts?.staleMs ?? 0);
+  return refresh(key, ttlMs, loader, opts);
 }
 
 function refresh<T>(
   key: string,
   ttlMs: number,
   loader: () => Promise<T>,
-  staleMs: number,
+  opts?: CacheOpts<T>,
 ): Promise<T> {
   const p = (async () => {
     try {
       const value = await loader();
-      put(key, value, ttlMs, staleMs);
+      put(key, value, opts?.ttlFor?.(value) ?? ttlMs, opts?.staleMs ?? 0);
       return value;
     } catch (err) {
       // L'entrée périmée n'est PAS effacée : mieux vaut servir vieux que rien.

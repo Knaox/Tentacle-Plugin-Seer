@@ -19,6 +19,21 @@ import { attachAirTimes, sonarrSeriesAirTimes } from "./sonarr-schedule";
 /** Le personnel bouge avec les demandes ; le global au mieux une fois par jour. */
 const PERSONAL_TTL_MS = 15 * 60_000;
 const PERSONAL_STALE_MS = 6 * 3_600_000;
+/**
+ * Une réponse incomplète ne vaut pas un quart d'heure : le remplissage de fond
+ * la complète en moins d'une minute. La garder aussi longtemps — puis six heures
+ * de service périmé par-dessus — faisait qu'une carence passagère survivait à
+ * la journée, et qu'une bascule vers « Toutes les demandes » redonnait
+ * indéfiniment la première réponse tronquée.
+ */
+const PARTIAL_TTL_MS = 10_000;
+/**
+ * « Tout le monde » brasse les demandes de toute l'instance, dont beaucoup n'ont
+ * jamais transité par le plugin et manquent donc en mémoire. Le budget de
+ * récupération immédiate y est plus large — sans excès : chaque fiche coûte un
+ * aller-retour, et le reste part de toute façon en tâche de fond.
+ */
+const EVERYONE_FETCH_BUDGET = 60;
 const GLOBAL_TTL_MS = 6 * 3_600_000;
 const GLOBAL_STALE_MS = 24 * 3_600_000;
 const PROVIDER_TTL_MS = 12 * 3_600_000;
@@ -84,11 +99,17 @@ export function registerCalendarRoutes(
               () => buildMergedRows(prisma, config, user, warn),
               { staleMs: 600_000 },
             );
-        const res = await buildPersonalCalendar(prisma, config, user, rows, { from, to, includeSettled });
+        const res = await buildPersonalCalendar(prisma, config, user, rows, {
+          from, to, includeSettled,
+          maxFetch: everyone ? EVERYONE_FETCH_BUDGET : undefined,
+        });
         // L'heure réelle des épisodes, quand Sonarr suit la série.
         return attachAirTimes(config, res);
       },
-      { staleMs: PERSONAL_STALE_MS },
+      {
+        staleMs: PERSONAL_STALE_MS,
+        ttlFor: (res) => (res.partial ? PARTIAL_TTL_MS : PERSONAL_TTL_MS),
+      },
     );
   });
 

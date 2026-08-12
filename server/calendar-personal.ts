@@ -21,6 +21,7 @@ import { tmdbKey } from "./tmdb-cache";
 import type { WorkerCfg, JellyfinUser } from "./seerr-unified";
 import type { MergedRows } from "./requests-list";
 import { resolveTmdbMeta, scheduleTmdbBackfill, DEFAULT_REGION } from "./tmdb-resolver";
+import { needsDateRefresh } from "./calendar-freshness";
 import { mapSeerrStatus } from "./worker-sync";
 import {
   type CalendarItem, type CalendarResponse, type CalendarKind,
@@ -88,7 +89,18 @@ export async function buildPersonalCalendar(
     maxFetch: opts.maxFetch ?? FETCH_BUDGET,
     region,
   });
-  if (missing.length > 0) scheduleTmdbBackfill(prisma, cfg, missing, region);
+  /* Une fiche connue mais sans aucune date n'est pas résolue pour autant : c'est
+   * l'amorçage qui l'a posée là, avec son seul titre. La compter comme acquise
+   * rendait le calendrier muet ET satisfait — personne ne la redemandait, et
+   * rien ne signalait le manque. C'est ce qui faisait ressembler « Toutes les
+   * demandes » à « À venir » : les demandes des autres, jamais passées par le
+   * plugin, n'existaient qu'à l'état d'amorce. */
+  const undated = list.filter((ref) => {
+    const m = meta.get(tmdbKey(ref));
+    return !!m && needsDateRefresh(m);
+  });
+  const toFill = [...missing, ...undated];
+  if (toFill.length > 0) scheduleTmdbBackfill(prisma, cfg, toFill, region);
 
   /* 3) Construction, purement en mémoire. */
   const items: CalendarItem[] = [];
@@ -109,7 +121,7 @@ export async function buildPersonalCalendar(
     from: opts.from,
     to: opts.to,
     items: capPerSeries(sortCalendarItems(items), MAX_PER_SERIES),
-    partial: missing.length > 0,
+    partial: toFill.length > 0,
   };
 }
 

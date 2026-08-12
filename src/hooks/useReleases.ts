@@ -2,7 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import {
   getPersonalCalendar, getGlobalCalendar, getCalendarProviders, currentRegion,
 } from "../api/client-releases";
-import type { CalendarMediaFilter } from "../api/types-releases";
+import type { CalendarMediaFilter, CalendarResponse } from "../api/types-releases";
+
+/** Tant qu'il reste des fiches à récupérer, on revient les chercher. */
+const PARTIAL_POLL_MS = 10_000;
 
 /**
  * Les sorties des demandes — suit les demandes, donc rafraîchi plus souvent que
@@ -15,6 +18,12 @@ export function usePersonalCalendar(
     queryKey: ["seer-calendar-personal", from ?? "", to ?? "", includeSettled, everyone],
     queryFn: () => getPersonalCalendar(from, to, includeSettled, everyone),
     enabled,
+    /* Le serveur annonce quand des fiches lui manquent encore et les récupère
+     * en tâche de fond. Sans cette relance, la page gardait sa première réponse
+     * — la plus incomplète — et il fallait la quitter pour la voir se remplir.
+     * Le sondage s'éteint de lui-même dès que tout est là. */
+    refetchInterval: (q: { state: { data?: CalendarResponse } }) =>
+      (q.state.data?.partial ? PARTIAL_POLL_MS : (false as const)),
     staleTime: 5 * 60_000,
     gcTime: 30 * 60_000,
     refetchOnWindowFocus: false,
