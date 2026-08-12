@@ -120,7 +120,7 @@ export function SeriesSeasonPicker({
           }
           disabled={!hasNewSelection || requesting}
           style={CTA_PRIMARY_HALO}
-          className={`${CTA_PRIMARY} min-h-[48px] w-full py-3 focus:outline-none focus:ring-2 focus:ring-tentacle-brand/50`}
+          className={`${CTA_PRIMARY} min-h-[48px] w-full py-3 focus:outline-none focus:ring-2 focus:ring-[rgba(var(--brand-rgb),0.5)]`}
         >
           {requesting ? t("seer:sending")
             : !hasNewSelection ? t("seer:selectSeasonsPrompt")

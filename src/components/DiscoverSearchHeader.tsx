@@ -61,7 +61,7 @@ export function DiscoverSearchHeader({
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           placeholder={t("seer:searchPlaceholder")}
-          className="w-full rounded-xl border border-tentacle-border-subtle bg-transparent py-3 pl-12 pr-24 text-sm text-tentacle-text-primary placeholder-tentacle-text-quaternary outline-none transition-all focus:border-tentacle-brand/30 focus:ring-2 focus:ring-tentacle-brand/50 focus:shadow-lg focus:shadow-tentacle-brand/5"
+          className="w-full rounded-xl border border-tentacle-border-subtle bg-transparent py-3 pl-12 pr-24 text-sm text-tentacle-text-primary placeholder-tentacle-text-quaternary outline-none transition-all focus:border-[rgba(var(--brand-rgb),0.3)] focus:ring-2 focus:ring-[rgba(var(--brand-rgb),0.5)]"
         />
         {query && (
           <button

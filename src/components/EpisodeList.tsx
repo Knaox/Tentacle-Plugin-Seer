@@ -52,7 +52,7 @@ export function EpisodeList({ tvId, seasonNumber }: { tvId: number; seasonNumber
               )}
             </div>
             {upcoming ? (
-              <span className="flex-shrink-0 rounded-full bg-tentacle-brand/15 px-2 py-0.5 text-[10px] font-bold text-tentacle-brand-light">
+              <span className="flex-shrink-0 rounded-full bg-[rgba(var(--brand-rgb),0.15)] px-2 py-0.5 text-[10px] font-bold text-tentacle-brand-light">
                 {relative}
               </span>
             ) : ep.airDate ? (

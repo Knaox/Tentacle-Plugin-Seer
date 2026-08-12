@@ -7,14 +7,14 @@ export function RequestsQueueBanner({ queue }: { queue: QueueStatus | undefined 
   if (!queue || (queue.queued === 0 && !queue.processing && queue.deleting === 0)) return null;
 
   return (
-    <div className="mb-4 flex items-center gap-3 rounded-xl border border-tentacle-brand/20 bg-tentacle-brand/10 px-4 py-3">
+    <div className="mb-4 flex items-center gap-3 rounded-xl border border-[rgba(var(--brand-rgb),0.2)] bg-[rgba(var(--brand-rgb),0.1)] px-4 py-3">
       <div className="h-2 w-2 animate-pulse rounded-full bg-tentacle-brand-light" />
       <div className="text-sm text-tentacle-brand-light">
         {queue.processing ? (
           <span>
             {t("seer:queueProcessing", { title: queue.processing.title })}
             {queue.queued > 0 && (
-              <span className="ml-2 text-tentacle-brand-light/60">
+              <span className="ml-2 text-tentacle-brand-light">
                 {t("seer:queuePending", { count: queue.queued })}
               </span>
             )}

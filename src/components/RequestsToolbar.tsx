@@ -1,6 +1,7 @@
 import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { searchShortcutLabel, showsKeyboardHints } from "../utils/host-env";
+import { pill } from "../styles/pills";
 
 export type StatusFilter =
   | "all" | "queued" | "sent_to_seer" | "approved"
@@ -58,7 +59,7 @@ export function RequestsToolbar({
           placeholder={t("seer:searchRequestsPlaceholder")}
           aria-label={t("seer:searchRequestsPlaceholder")}
           ref={searchInputRef}
-          className="w-full rounded-xl border border-tentacle-border-subtle bg-transparent py-3 pl-12 pr-12 text-sm text-tentacle-text-primary placeholder-tentacle-text-quaternary outline-none transition-all focus:border-tentacle-brand/30 focus:ring-2 focus:ring-tentacle-brand/50"
+          className="w-full rounded-xl border border-tentacle-border-subtle bg-transparent py-3 pl-12 pr-12 text-sm text-tentacle-text-primary placeholder-tentacle-text-quaternary outline-none transition-all focus:border-[rgba(var(--brand-rgb),0.3)] focus:ring-2 focus:ring-[rgba(var(--brand-rgb),0.5)]"
         />
         {search ? (
           <button
@@ -85,11 +86,7 @@ export function RequestsToolbar({
           <button
             key={tab.value}
             onClick={() => onStatusFilterChange(tab.value)}
-            className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-              statusFilter === tab.value
-                ? "bg-tentacle-cta-primary text-tentacle-cta-primary-fg shadow-sm"
-                : "bg-tentacle-fill-soft text-tentacle-text-secondary hover:bg-tentacle-fill-medium hover:text-tentacle-text-primary"
-            }`}
+            className={pill(statusFilter === tab.value)}
           >
             {t(tab.key)}
           </button>
@@ -102,11 +99,7 @@ export function RequestsToolbar({
           <button
             key={v}
             onClick={() => onTypeFilterChange(v)}
-            className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-              typeFilter === v
-                ? "bg-tentacle-cta-primary text-tentacle-cta-primary-fg shadow-sm"
-                : "bg-tentacle-fill-soft text-tentacle-text-secondary hover:bg-tentacle-fill-medium hover:text-tentacle-text-primary"
-            }`}
+            className={pill(typeFilter === v)}
           >
             {v === "all" ? t("filterAllType") : v === "movie" ? t("filterMovies") : t("filterSeries")}
           </button>
@@ -114,11 +107,7 @@ export function RequestsToolbar({
         {showSelectToggle && (
           <button
             onClick={onToggleSelectionMode}
-            className={`ml-auto rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-              selectionMode
-                ? "bg-tentacle-brand/30 text-tentacle-brand-light"
-                : "bg-tentacle-fill-soft text-tentacle-text-secondary hover:bg-tentacle-fill-medium"
-            }`}
+            className={`ml-auto ${pill(selectionMode)}`}
           >
             {selectionMode ? t("seer:bulkCancel") : t("seer:bulkSelect")}
           </button>

@@ -103,33 +103,40 @@ export function registerCalendarRoutes(
     );
   });
 
-  /* ── Catalogue des plateformes de la région ── */
+  /* ── Catalogue des plateformes de la région ──
+   *
+   * Les deux catalogues (films et séries) sont FUSIONNÉS : ils ne se recouvrent
+   * pas entièrement, et un film peut être proposé par une plateforme absente de
+   * la liste séries. Sans la fusion, son logo manquerait sans raison visible.
+   * Le sélecteur de plateforme comme les vignettes lisent la même table. */
   app.get("/calendar/providers", async (request) => {
-    const q = request.query as { region?: string; mediaType?: string };
+    const q = request.query as { region?: string };
     const config = await getWorkerConfig();
     if (!config) return { results: [] };
 
     const region = typeof q.region === "string" && /^[a-z]{2}$/i.test(q.region)
       ? q.region.toUpperCase()
       : DEFAULT_REGION;
-    const path = q.mediaType === "movie" ? "movies" : "tv";
 
-    return cached(`seer:providers:${path}:${region}`, 24 * 3_600_000, async () => {
-      try {
-        const res = await fetch(
-          `${config.seerrUrl}/api/v1/watchproviders/${path}?watchRegion=${region}`,
-          { headers: { "X-Api-Key": config.seerrApiKey }, signal: AbortSignal.timeout(10_000) },
-        );
-        if (!res.ok) return { results: [] };
-        const data = (await res.json()) as Array<{ id?: number; name?: string; logoPath?: string }>;
-        return {
-          results: (Array.isArray(data) ? data : [])
-            .filter((p) => typeof p.id === "number" && p.name)
-            .map((p) => ({ id: p.id as number, name: p.name as string, logoPath: p.logoPath ?? null })),
-        };
-      } catch {
-        return { results: [] };
+    return cached(`seer:providers:all:${region}`, 24 * 3_600_000, async () => {
+      const merged = new Map<number, { id: number; name: string; logoPath: string | null }>();
+
+      for (const path of ["tv", "movies"] as const) {
+        try {
+          const res = await fetch(
+            `${config.seerrUrl}/api/v1/watchproviders/${path}?watchRegion=${region}`,
+            { headers: { "X-Api-Key": config.seerrApiKey }, signal: AbortSignal.timeout(10_000) },
+          );
+          if (!res.ok) continue;
+          const data = (await res.json()) as Array<{ id?: number; name?: string; logoPath?: string }>;
+          for (const p of Array.isArray(data) ? data : []) {
+            if (typeof p.id !== "number" || !p.name || merged.has(p.id)) continue;
+            merged.set(p.id, { id: p.id, name: p.name, logoPath: p.logoPath ?? null });
+          }
+        } catch { /* un catalogue indisponible ne doit pas vider l'autre */ }
       }
+
+      return { results: Array.from(merged.values()) };
     });
   });
 }

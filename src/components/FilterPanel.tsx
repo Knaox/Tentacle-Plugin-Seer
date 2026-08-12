@@ -190,7 +190,7 @@ export function FilterPanel({
             <select
               value={filters.originalLanguage ?? ""}
               onChange={(e) => onLanguageChange(e.target.value || null)}
-              className="w-full rounded-lg border border-tentacle-border-subtle bg-tentacle-fill-subtle px-3 py-2 text-xs text-tentacle-text-primary outline-none focus:border-tentacle-brand/40 focus:ring-2 focus:ring-tentacle-brand/50"
+              className="w-full rounded-lg border border-tentacle-border-subtle bg-tentacle-fill-subtle px-3 py-2 text-xs text-tentacle-text-primary outline-none focus:border-[rgba(var(--brand-rgb),0.4)] focus:ring-2 focus:ring-[rgba(var(--brand-rgb),0.5)]"
             >
               <option value="" className="bg-tentacle-surface-1">{t("filterLanguageAll")}</option>
               {LANGUAGES.map((l) => (
@@ -216,7 +216,7 @@ export function FilterPanel({
                       onClick={() => onToggleTvStatus(s.value as TvStatus)}
                       className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                         active
-                          ? "bg-tentacle-brand/20 text-tentacle-brand ring-1 ring-tentacle-brand/50"
+                          ? "bg-[rgba(var(--brand-rgb),0.2)] text-tentacle-brand ring-1 ring-[rgba(var(--brand-rgb),0.5)]"
                           : "bg-tentacle-fill-subtle text-tentacle-text-tertiary hover:bg-tentacle-fill-medium hover:text-tentacle-text-secondary"
                       }`}
                     >

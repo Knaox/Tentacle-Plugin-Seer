@@ -30,7 +30,7 @@ export function BlockedResultsBanner({
     <div
       role="status"
       aria-live="polite"
-      className="mb-4 flex flex-col gap-3 rounded-xl border border-tentacle-brand/20 bg-tentacle-brand/[0.07] px-4 py-3 backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between"
+      className="mb-4 flex flex-col gap-3 rounded-xl border border-[rgba(var(--brand-rgb),0.2)] bg-tentacle-brand/[0.07] px-4 py-3 backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between"
     >
       <div className="flex items-start gap-2.5 sm:items-center">
         <svg
@@ -54,7 +54,7 @@ export function BlockedResultsBanner({
         type="button"
         onClick={onToggle}
         aria-pressed={showBlocked}
-        className="inline-flex min-h-[44px] shrink-0 items-center justify-center gap-1.5 rounded-lg border border-tentacle-border-subtle bg-tentacle-fill-subtle px-4 py-2 text-xs font-semibold text-tentacle-text-secondary transition-colors hover:bg-tentacle-fill-medium hover:text-tentacle-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tentacle-brand/60 sm:text-sm"
+        className="inline-flex min-h-[44px] shrink-0 items-center justify-center gap-1.5 rounded-lg border border-tentacle-border-subtle bg-tentacle-fill-subtle px-4 py-2 text-xs font-semibold text-tentacle-text-secondary transition-colors hover:bg-tentacle-fill-medium hover:text-tentacle-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(var(--brand-rgb),0.6)] sm:text-sm"
       >
         <svg
           aria-hidden="true"

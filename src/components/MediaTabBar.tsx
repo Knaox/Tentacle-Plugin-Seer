@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { segment, SEGMENT_GROUP } from "../styles/pills";
 import type { DiscoverMediaType } from "../api/types";
 
 interface MediaTabBarProps {
@@ -16,16 +17,14 @@ export function MediaTabBar({ value, onChange }: MediaTabBarProps) {
   ];
 
   return (
-    <div className="flex gap-1 rounded-lg bg-tentacle-surface-2/60 p-1">
+    <div className={SEGMENT_GROUP} role="tablist">
       {TABS.map((tab) => (
         <button
           key={tab.value}
+          role="tab"
+          aria-selected={value === tab.value}
           onClick={() => onChange(tab.value)}
-          className={`rounded-md px-4 py-1.5 text-sm font-medium transition-all ${
-            value === tab.value
-              ? "bg-tentacle-cta-primary text-tentacle-cta-primary-fg shadow-sm"
-              : "text-tentacle-text-tertiary hover:text-tentacle-text-secondary"
-          }`}
+          className={`${segment(value === tab.value)} px-4 py-1.5 text-sm`}
         >
           {t(tab.key)}
         </button>

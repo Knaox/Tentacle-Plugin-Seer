@@ -19,7 +19,7 @@ interface Props {
  */
 export function PlatformPicker({ value, onChange }: Props) {
   const { t } = useTranslation("seer");
-  const { data } = useCalendarProviders("tv");
+  const { data } = useCalendarProviders();
   const [search, setSearch] = useState("");
 
   const providers = useMemo(() => {
@@ -46,7 +46,7 @@ export function PlatformPicker({ value, onChange }: Props) {
         onChange={(e) => setSearch(e.target.value)}
         placeholder={t("seer:releasesSearchPlatform")}
         aria-label={t("seer:releasesSearchPlatform")}
-        className="mb-3 w-full rounded-xl border border-tentacle-border-subtle bg-tentacle-fill-subtle px-4 py-2.5 text-sm text-tentacle-text-primary placeholder-tentacle-text-quaternary outline-none transition-all focus:border-tentacle-brand/30 focus:ring-2 focus:ring-tentacle-brand/50"
+        className="mb-3 w-full rounded-xl border border-tentacle-border-subtle bg-tentacle-fill-subtle px-4 py-2.5 text-sm text-tentacle-text-primary placeholder-tentacle-text-quaternary outline-none transition-all focus:border-[rgba(var(--brand-rgb),0.3)] focus:ring-2 focus:ring-[rgba(var(--brand-rgb),0.5)]"
       />
 
       <div className="flex flex-wrap gap-2">

@@ -28,7 +28,7 @@ export function RequestsBulkBar({
       <button
         onClick={onOpenRetryModal}
         disabled={retrying}
-        className="rounded-lg bg-tentacle-brand/20 px-4 py-2 text-xs font-semibold text-tentacle-brand-light transition-colors hover:bg-tentacle-brand/30 disabled:opacity-50"
+        className="rounded-lg bg-[rgba(var(--brand-rgb),0.2)] px-4 py-2 text-xs font-semibold text-tentacle-brand-light transition-colors hover:bg-[rgba(var(--brand-rgb),0.3)] disabled:opacity-50"
       >
         {retrying ? "..." : t("seer:bulkRetry", { count })}
       </button>

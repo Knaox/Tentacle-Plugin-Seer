@@ -87,7 +87,7 @@ export function SeasonRow({
           onClick={onExpandToggle}
           aria-expanded={expanded}
           aria-label={t("seer:episodesTitle")}
-          className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-tentacle-text-tertiary transition-colors hover:bg-tentacle-fill-soft hover:text-tentacle-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-tentacle-brand/50"
+          className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-tentacle-text-tertiary transition-colors hover:bg-tentacle-fill-soft hover:text-tentacle-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(var(--brand-rgb),0.5)]"
         >
           <svg
             className="h-4 w-4 transition-transform duration-200"

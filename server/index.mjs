@@ -4263,21 +4263,24 @@ function registerCalendarRoutes(app, prisma, getWorkerConfig2) {
     const config = await getWorkerConfig2();
     if (!config) return { results: [] };
     const region = typeof q.region === "string" && /^[a-z]{2}$/i.test(q.region) ? q.region.toUpperCase() : DEFAULT_REGION;
-    const path = q.mediaType === "movie" ? "movies" : "tv";
-    return cached(`seer:providers:${path}:${region}`, 24 * 36e5, async () => {
-      try {
-        const res = await fetch(
-          `${config.seerrUrl}/api/v1/watchproviders/${path}?watchRegion=${region}`,
-          { headers: { "X-Api-Key": config.seerrApiKey }, signal: AbortSignal.timeout(1e4) }
-        );
-        if (!res.ok) return { results: [] };
-        const data = await res.json();
-        return {
-          results: (Array.isArray(data) ? data : []).filter((p) => typeof p.id === "number" && p.name).map((p) => ({ id: p.id, name: p.name, logoPath: p.logoPath ?? null }))
-        };
-      } catch {
-        return { results: [] };
+    return cached(`seer:providers:all:${region}`, 24 * 36e5, async () => {
+      const merged = /* @__PURE__ */ new Map();
+      for (const path of ["tv", "movies"]) {
+        try {
+          const res = await fetch(
+            `${config.seerrUrl}/api/v1/watchproviders/${path}?watchRegion=${region}`,
+            { headers: { "X-Api-Key": config.seerrApiKey }, signal: AbortSignal.timeout(1e4) }
+          );
+          if (!res.ok) continue;
+          const data = await res.json();
+          for (const p of Array.isArray(data) ? data : []) {
+            if (typeof p.id !== "number" || !p.name || merged.has(p.id)) continue;
+            merged.set(p.id, { id: p.id, name: p.name, logoPath: p.logoPath ?? null });
+          }
+        } catch {
+        }
       }
+      return { results: Array.from(merged.values()) };
     });
   });
 }

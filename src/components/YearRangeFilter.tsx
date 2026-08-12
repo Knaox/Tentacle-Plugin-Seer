@@ -29,7 +29,7 @@ export function YearRangeFilter({ yearFrom, yearTo, onYearFromChange, onYearToCh
           placeholder={t("filterYearFrom")}
           value={yearFrom ?? ""}
           onChange={(e) => onYearFromChange(parseYear(e.target.value))}
-          className="w-24 rounded-lg border border-tentacle-border-subtle bg-tentacle-fill-subtle px-3 py-1.5 text-xs text-tentacle-text-primary placeholder-tentacle-text-quaternary outline-none focus:border-tentacle-brand/40"
+          className="w-24 rounded-lg border border-tentacle-border-subtle bg-tentacle-fill-subtle px-3 py-1.5 text-xs text-tentacle-text-primary placeholder-tentacle-text-quaternary outline-none focus:border-[rgba(var(--brand-rgb),0.4)]"
         />
         <span className="text-xs text-tentacle-text-quaternary">&mdash;</span>
         <input
@@ -39,7 +39,7 @@ export function YearRangeFilter({ yearFrom, yearTo, onYearFromChange, onYearToCh
           placeholder={t("filterYearTo")}
           value={yearTo ?? ""}
           onChange={(e) => onYearToChange(parseYear(e.target.value))}
-          className="w-24 rounded-lg border border-tentacle-border-subtle bg-tentacle-fill-subtle px-3 py-1.5 text-xs text-tentacle-text-primary placeholder-tentacle-text-quaternary outline-none focus:border-tentacle-brand/40"
+          className="w-24 rounded-lg border border-tentacle-border-subtle bg-tentacle-fill-subtle px-3 py-1.5 text-xs text-tentacle-text-primary placeholder-tentacle-text-quaternary outline-none focus:border-[rgba(var(--brand-rgb),0.4)]"
         />
       </div>
     </div>

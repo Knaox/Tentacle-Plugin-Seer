@@ -21,7 +21,7 @@ interface ActiveFilterPillsProps {
 
 function Pill({ label, onRemove }: { label: string; onRemove: () => void }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-tentacle-brand/15 px-2.5 py-1 text-[11px] font-medium text-tentacle-brand">
+    <span className="inline-flex items-center gap-1 rounded-full bg-[rgba(var(--brand-rgb),0.15)] px-2.5 py-1 text-[11px] font-medium text-tentacle-brand">
       {label}
       <button onClick={onRemove} className="ml-0.5 hover:text-tentacle-text-primary">
         <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>

@@ -6,6 +6,7 @@ import { SeasonRow } from "./SeasonRow";
 import { SeriesSeasonPicker } from "./SeriesSeasonPicker";
 import { MovieRequestSection } from "./MovieRequestSection";
 import { AvailabilityPill } from "./AvailabilityPill";
+import { PlatformBadges } from "./PlatformBadges";
 import { useSingleAvailability } from "../hooks/useAvailability";
 import { WatchProviders } from "./WatchProviders";
 import { CastRow } from "./CastRow";
@@ -73,6 +74,9 @@ export function MediaDetailBody({
 }: MediaDetailBodyProps) {
   const { t } = useTranslation("seer");
   const availability = useSingleAvailability(currentItem.mediaType as "movie" | "tv", currentItem.id);
+  /* Plateformes d'abonnement uniquement : « je peux le voir maintenant » n'a
+   * pas le même sens qu'« il est en vente ». */
+  const streamingIds = (providers ?? []).map((p) => p.provider_id).filter((id) => id > 0);
 
   return (
     <div className="space-y-6 px-4 pb-6 sm:px-6">
@@ -97,7 +101,7 @@ export function MediaDetailBody({
           {overview.length > 200 && (
             <button
               onClick={onToggleSynopsis}
-              className="mt-1 min-h-[32px] rounded text-xs font-medium text-tentacle-brand-light focus:outline-none focus:ring-2 focus:ring-tentacle-brand/50"
+              className="mt-1 min-h-[32px] rounded text-xs font-medium text-tentacle-brand-light focus:outline-none focus:ring-2 focus:ring-[rgba(var(--brand-rgb),0.5)]"
             >
               {synopsisExpanded ? t("showLess") : t("showMore")}
             </button>
@@ -154,6 +158,14 @@ export function MediaDetailBody({
       {availability && availability.kind !== "released" && (
         <div className="flex justify-center">
           <AvailabilityPill verdict={availability} variant="detail" />
+        </div>
+      )}
+
+      {/* Où le regarder tout de suite, si c'est déjà quelque part. */}
+      {streamingIds.length > 0 && (
+        <div className="flex items-center justify-center gap-2">
+          <span className="text-xs text-tentacle-text-tertiary">{t("seer:streamingLabel")}</span>
+          <PlatformBadges providerIds={streamingIds} max={5} />
         </div>
       )}
 

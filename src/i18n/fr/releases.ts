@@ -29,7 +29,7 @@ export default {
   releasesTabPersonal: "Mes sorties",
   releasesTabAll: "Tout",
   releasesTabProvider: "Par plateforme",
-  releasesViewList: "Liste",
+  releasesViewWeek: "Semaine",
   releasesViewMonth: "Mois",
   releasesEmptyPersonal: "Aucune sortie à venir parmi vos demandes",
   releasesEmptyPersonalHint:
@@ -51,10 +51,18 @@ export default {
   releasesKindEpisode: "Épisode",
   releasesKindPremiere: "Sortie",
   releasesRequested: "Demandé",
+
+  // Plateformes de streaming — « où puis-je déjà le regarder »
+  streamingOn: "En streaming sur {{platforms}}",
+  streamingLabel: "À voir sur",
+  streamingNone: "Sur aucune plateforme d'abonnement",
   releasesCount_one: "{{count}} sortie",
   releasesCount_other: "{{count}} sorties",
   releasesMonthPrev: "Mois précédent",
   releasesMonthNext: "Mois suivant",
+  releasesWeekPrev: "Semaine précédente",
+  releasesWeekNext: "Semaine suivante",
+  releasesThisWeek: "Cette semaine",
   releasesWindow30: "30 jours",
   releasesWindow90: "3 mois",
   releasesWindow180: "6 mois",

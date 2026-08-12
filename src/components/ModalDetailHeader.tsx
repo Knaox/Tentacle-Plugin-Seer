@@ -61,7 +61,7 @@ export function ModalDetailHeader({ item, detail, mediaType, navStack, onBack, o
         onClick={onBack}
         aria-label={t("seer:cancel")}
         title={navStack.length > 0 ? mediaTitle(navStack[navStack.length - 1]) || "" : ""}
-        className="absolute left-3 top-3 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-white/70 backdrop-blur-sm transition-colors hover:text-white focus:outline-none focus:ring-2 focus:ring-tentacle-brand/50"
+        className="absolute left-3 top-3 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-white/70 backdrop-blur-sm transition-colors hover:text-white focus:outline-none focus:ring-2 focus:ring-[rgba(var(--brand-rgb),0.5)]"
       >
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
@@ -70,7 +70,7 @@ export function ModalDetailHeader({ item, detail, mediaType, navStack, onBack, o
       <button
         onClick={onClose}
         aria-label={t("seer:cancel")}
-        className="absolute right-3 top-3 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-white/70 backdrop-blur-sm transition-colors hover:text-white focus:outline-none focus:ring-2 focus:ring-tentacle-brand/50"
+        className="absolute right-3 top-3 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-white/70 backdrop-blur-sm transition-colors hover:text-white focus:outline-none focus:ring-2 focus:ring-[rgba(var(--brand-rgb),0.5)]"
       >
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />

@@ -61,7 +61,7 @@ export function ConfirmModal({
         <div className="mt-5 flex justify-end gap-3">
           <button
             onClick={handleClose}
-            className={`${CTA_SECONDARY} px-4 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-tentacle-brand/50`}
+            className={`${CTA_SECONDARY} px-4 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[rgba(var(--brand-rgb),0.5)]`}
           >
             {t("cancel")}
           </button>
@@ -69,7 +69,7 @@ export function ConfirmModal({
             ref={confirmRef}
             onClick={onConfirm}
             style={danger ? undefined : CTA_PRIMARY_HALO}
-            className={`px-4 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-tentacle-brand/50 ${
+            className={`px-4 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[rgba(var(--brand-rgb),0.5)] ${
               danger ? CTA_DANGER : CTA_PRIMARY
             }`}
           >

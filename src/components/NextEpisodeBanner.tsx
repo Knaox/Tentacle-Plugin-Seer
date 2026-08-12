@@ -18,7 +18,7 @@ export function NextEpisodeBanner({ episode }: { episode: SeerrEpisode }) {
   const code = `S${episode.seasonNumber}E${episode.episodeNumber}`;
 
   return (
-    <div className="relative overflow-hidden rounded-xl border border-tentacle-brand/25 bg-gradient-to-r from-tentacle-brand/15 via-tentacle-brand/5 to-transparent">
+    <div className="relative overflow-hidden rounded-xl border border-[rgba(var(--brand-rgb),0.25)] bg-gradient-to-r from-[rgba(var(--brand-rgb),0.15)] via-[rgba(var(--brand-rgb),0.05)] to-transparent">
       <div className="flex items-center gap-4 p-4">
         {/* Vignette épisode */}
         {still ? (

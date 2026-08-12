@@ -81,7 +81,7 @@ export function SimilarMedia({ items, onSelect }: SimilarMediaProps) {
             <button
               key={`${item.mediaType}-${item.id}`}
               onClick={() => onSelect(item)}
-              className="flex w-[100px] flex-shrink-0 flex-col transition-transform duration-300 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-tentacle-brand/50 rounded-lg"
+              className="flex w-[100px] flex-shrink-0 flex-col transition-transform duration-300 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-[rgba(var(--brand-rgb),0.5)] rounded-lg"
             >
               <div className="relative">
                 {poster ? (

@@ -45,7 +45,7 @@ export function MovieRequestSection({
         onClick={onRequest}
         disabled={requesting || requestSuccess}
         style={CTA_PRIMARY_HALO}
-        className={`${CTA_PRIMARY} min-h-[48px] w-full gap-2 py-3 focus:outline-none focus:ring-2 focus:ring-tentacle-brand/50`}
+        className={`${CTA_PRIMARY} min-h-[48px] w-full gap-2 py-3 focus:outline-none focus:ring-2 focus:ring-[rgba(var(--brand-rgb),0.5)]`}
       >
         {requesting ? (
           <>

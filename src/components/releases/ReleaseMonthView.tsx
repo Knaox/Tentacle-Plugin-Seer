@@ -1,27 +1,39 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { CalendarItem } from "../../api/types-releases";
+import { ReleaseEntry } from "./ReleaseEntry";
 import { ReleaseRow } from "./ReleaseRow";
-import { monthMatrix, weekdayInitials, today, monthHeading } from "../../utils/calendar-groups";
-import { KIND_STYLE } from "../../utils/calendar-kind";
+import { ICON_BUTTON } from "../../styles/pills";
+import { monthMatrix, weekdayInitials, today, monthHeading, dayHeading } from "../../utils/calendar-groups";
 import { parseAirDate } from "../../utils/episode-dates";
+import { collapseSeriesInDay, type CollapsedItem } from "../../utils/calendar-collapse";
 
 interface Props {
   items: CalendarItem[];
   onOpen?: (item: CalendarItem) => void;
+  onRangeChange?: (from: string, to: string) => void;
 }
 
-/** Vue d'ensemble : une pastille par sortie, le détail au clic sur un jour. */
-export function ReleaseMonthView({ items, onOpen }: Props) {
+/** Entrées visibles dans une case avant le repli « +N ». */
+const PER_CELL = 3;
+
+/**
+ * Le mois — la vue d'ensemble, **avec les titres**.
+ *
+ * La version précédente n'affichait que des pastilles de couleur : on voyait
+ * qu'il se passait quelque chose le 14 sans savoir quoi, et il fallait cliquer
+ * pour l'apprendre. Chaque case porte donc maintenant les titres, repliés
+ * au-delà de trois par un « +N » qui ouvre le détail du jour.
+ */
+export function ReleaseMonthView({ items, onOpen, onRangeChange }: Props) {
   const { t } = useTranslation("seer");
   const ref = today();
 
   const [cursor, setCursor] = useState(() => {
-    const first = items[0]?.date ?? ref;
-    const d = parseAirDate(first) ?? new Date();
+    const d = parseAirDate(items[0]?.date ?? ref) ?? new Date();
     return { year: d.getFullYear(), month: d.getMonth() };
   });
-  const [selected, setSelected] = useState<string | null>(null);
+  const [openDay, setOpenDay] = useState<string | null>(null);
 
   const byDate = useMemo(() => {
     const map = new Map<string, CalendarItem[]>();
@@ -33,79 +45,148 @@ export function ReleaseMonthView({ items, onOpen }: Props) {
     return map;
   }, [items]);
 
+  /* Cases repliées : une saison entière ne remplit pas la journée. */
+  const collapsedByDate = useMemo(() => {
+    const out = new Map<string, CollapsedItem[]>();
+    for (const [date, list] of byDate) out.set(date, collapseSeriesInDay(list));
+    return out;
+  }, [byDate]);
+
   const weeks = useMemo(() => monthMatrix(cursor.year, cursor.month), [cursor]);
   const initials = useMemo(() => weekdayInitials(), []);
-  const monthLabel = monthHeading(
-    `${cursor.year}-${String(cursor.month + 1).padStart(2, "0")}-01`,
-  );
+  const firstOfMonth = `${cursor.year}-${String(cursor.month + 1).padStart(2, "0")}-01`;
 
-  const shift = (delta: number) =>
-    setCursor((c) => {
-      const d = new Date(c.year, c.month + delta, 1);
-      return { year: d.getFullYear(), month: d.getMonth() };
-    });
+  const shift = (delta: number) => {
+    const d = new Date(cursor.year, cursor.month + delta, 1);
+    setCursor({ year: d.getFullYear(), month: d.getMonth() });
+    setOpenDay(null);
+    const p = (n: number) => String(n).padStart(2, "0");
+    const from = `${d.getFullYear()}-${p(d.getMonth() + 1)}-01`;
+    const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    onRangeChange?.(from, `${last.getFullYear()}-${p(last.getMonth() + 1)}-${p(last.getDate())}`);
+  };
 
-  const dayItems = selected ? byDate.get(selected) ?? [] : [];
+  const dayItems = openDay ? byDate.get(openDay) ?? [] : [];
 
   return (
     <div className="pb-10">
       <div className="mb-3 flex items-center justify-between">
-        <button
-          onClick={() => shift(-1)}
-          aria-label={t("seer:releasesMonthPrev")}
-          className="rounded-lg bg-tentacle-fill-subtle px-3 py-1.5 text-sm text-tentacle-text-secondary transition-colors hover:bg-tentacle-fill-medium"
-        >
-          ‹
+        <button onClick={() => shift(-1)} aria-label={t("seer:releasesMonthPrev")} className={ICON_BUTTON}>
+          <Chevron dir="left" />
         </button>
-        <span className="text-sm font-semibold capitalize text-tentacle-text-primary">{monthLabel}</span>
-        <button
-          onClick={() => shift(1)}
-          aria-label={t("seer:releasesMonthNext")}
-          className="rounded-lg bg-tentacle-fill-subtle px-3 py-1.5 text-sm text-tentacle-text-secondary transition-colors hover:bg-tentacle-fill-medium"
-        >
-          ›
+        <span className="text-sm font-semibold capitalize text-tentacle-text-primary">
+          {monthHeading(firstOfMonth)}
+        </span>
+        <button onClick={() => shift(1)} aria-label={t("seer:releasesMonthNext")} className={ICON_BUTTON}>
+          <Chevron dir="right" />
         </button>
       </div>
 
-      <div className="grid grid-cols-7 gap-1 text-center text-[10px] uppercase text-tentacle-text-quaternary">
+      <div className="grid grid-cols-7 gap-1 pb-1 text-center text-[10px] font-medium uppercase tracking-wide text-tentacle-text-quaternary">
         {initials.map((d, i) => <span key={i}>{d}</span>)}
       </div>
 
-      <div className="mt-1 grid grid-cols-7 gap-1">
-        {weeks.flat().map((date) => {
-          const dayList = byDate.get(date) ?? [];
-          const inMonth = Number(date.slice(5, 7)) === cursor.month + 1;
-          const isToday = date === ref;
-          const isSelected = date === selected;
+      {/* Une sous-grille par semaine, pour pouvoir insérer le détail d'un jour
+          JUSTE SOUS sa ligne. Rendu après toute la grille, il apparaissait
+          plusieurs centaines de pixels plus bas — hors écran sur téléphone,
+          donc invisible au moment même où l'on venait de cliquer. */}
+      <div className="space-y-1">
+        {weeks.map((week) => (
+          <div key={week[0]}>
+            <div className="grid grid-cols-7 gap-1">
+              {week.map((date) => (
+                <MonthCell
+                  key={date}
+                  date={date}
+                  items={collapsedByDate.get(date) ?? []}
+                  inMonth={Number(date.slice(5, 7)) === cursor.month + 1}
+                  isToday={date === ref}
+                  isOpen={date === openDay}
+                  onExpand={() => setOpenDay(date === openDay ? null : date)}
+                  onOpen={onOpen}
+                />
+              ))}
+            </div>
 
-          return (
-            <button
-              key={date}
-              type="button"
-              onClick={() => setSelected(dayList.length > 0 ? (isSelected ? null : date) : null)}
-              disabled={dayList.length === 0}
-              className={`flex aspect-square flex-col items-center justify-start gap-0.5 rounded-lg p-1 text-[11px] transition-colors ${
-                isSelected ? "bg-tentacle-fill-medium" : dayList.length > 0 ? "bg-tentacle-fill-subtle hover:bg-tentacle-fill-medium" : ""
-              } ${inMonth ? "text-tentacle-text-secondary" : "text-tentacle-text-disabled"} ${
-                isToday ? "ring-1 ring-tentacle-brand" : ""
-              }`}
-            >
-              <span className={isToday ? "font-bold text-tentacle-brand" : ""}>{Number(date.slice(8, 10))}</span>
-              <span className="flex flex-wrap justify-center gap-0.5">
-                {dayList.slice(0, 4).map((it) => (
-                  <span key={it.id} className={`h-1.5 w-1.5 rounded-full ${KIND_STYLE[it.kind].dot}`} />
-                ))}
-              </span>
-            </button>
-          );
-        })}
+            {openDay && week.includes(openDay) && dayItems.length > 0 && (
+              <div className="mt-1.5" style={{ animation: "fadeSlideUp 200ms ease forwards" }}>
+                <h3 className="mb-1.5 text-sm font-semibold text-tentacle-text-secondary">
+                  {dayHeading(openDay, t)}
+                </h3>
+                <div className="space-y-2">
+                  {dayItems.map((item) => <ReleaseRow key={item.id} item={item} onOpen={onOpen} />)}
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
       </div>
+    </div>
+  );
+}
 
-      {selected && dayItems.length > 0 && (
-        <div className="mt-4 space-y-2" style={{ animation: "fadeSlideUp 250ms ease forwards" }}>
-          {dayItems.map((item) => <ReleaseRow key={item.id} item={item} onOpen={onOpen} />)}
-        </div>
+function MonthCell({
+  date, items, inMonth, isToday, isOpen, onExpand, onOpen,
+}: {
+  date: string;
+  items: CollapsedItem[];
+  inMonth: boolean;
+  isToday: boolean;
+  isOpen: boolean;
+  onExpand: () => void;
+  onOpen?: (item: CalendarItem) => void;
+}) {
+  const shown = items.slice(0, PER_CELL);
+  const extra = items.length - shown.length;
+  const dayNum = Number(date.slice(8, 10));
+
+  return (
+    <div
+      className={`flex min-h-[76px] flex-col gap-0.5 rounded-lg p-1 transition-colors ${
+        isOpen
+          ? "bg-[var(--surface-2)] ring-1 ring-[rgba(var(--brand-rgb),0.6)]"
+          : items.length > 0
+            ? "bg-tentacle-fill-faint"
+            : ""
+      } ${isToday ? "ring-1 ring-[rgba(var(--brand-rgb),0.45)]" : ""}`}
+    >
+      <span
+        className={`px-1 text-[11px] font-semibold tabular-nums ${
+          isToday
+            ? "text-[var(--brand-light)]"
+            : inMonth
+              ? "text-tentacle-text-tertiary"
+              : "text-tentacle-text-disabled"
+        }`}
+      >
+        {dayNum}
+      </span>
+
+      {shown.map((item) => (
+        <ReleaseEntry key={item.id} item={item} density="month" onOpen={onOpen} />
+      ))}
+
+      {extra > 0 && (
+        <button
+          type="button"
+          onClick={onExpand}
+          className="mt-auto rounded px-1 text-left text-[10px] font-medium text-[var(--brand-light)] transition-colors hover:bg-tentacle-fill-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[rgba(var(--brand-rgb),0.6)]"
+        >
+          +{extra}
+        </button>
       )}
     </div>
+  );
+}
+
+function Chevron({ dir }: { dir: "left" | "right" }) {
+  return (
+    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d={dir === "left" ? "M15.75 19.5 8.25 12l7.5-7.5" : "m8.25 4.5 7.5 7.5-7.5 7.5"}
+      />
+    </svg>
   );
 }

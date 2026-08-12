@@ -64,7 +64,7 @@ export function TrailerModal({ open, onClose, trailers, initialIndex = 0 }: Trai
           <button
             onClick={onClose}
             aria-label={t("seer:cancel")}
-            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-tentacle-fill-soft text-tentacle-text-secondary transition-colors hover:bg-tentacle-fill-medium hover:text-tentacle-text-primary focus:outline-none focus:ring-2 focus:ring-tentacle-brand/50"
+            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-tentacle-fill-soft text-tentacle-text-secondary transition-colors hover:bg-tentacle-fill-medium hover:text-tentacle-text-primary focus:outline-none focus:ring-2 focus:ring-[rgba(var(--brand-rgb),0.5)]"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
@@ -119,7 +119,7 @@ export function TrailerModal({ open, onClose, trailers, initialIndex = 0 }: Trai
                   onClick={() => setIndex(i)}
                   className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
                     i === index
-                      ? "border-tentacle-brand/45 bg-tentacle-brand/15 text-tentacle-brand-light"
+                      ? "border-[rgba(var(--brand-rgb),0.45)] bg-[rgba(var(--brand-rgb),0.15)] text-tentacle-brand-light"
                       : "border-tentacle-border-subtle bg-tentacle-fill-subtle text-tentacle-text-secondary hover:bg-tentacle-fill-medium hover:text-tentacle-text-primary"
                   }`}
                 >

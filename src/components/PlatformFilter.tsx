@@ -23,7 +23,7 @@ export function PlatformFilter({ selected, onToggle }: PlatformFilterProps) {
               onClick={() => onToggle(p.id)}
               className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
                 active
-                  ? "border border-tentacle-brand/50 bg-tentacle-brand/10 text-tentacle-brand"
+                  ? "border border-[rgba(var(--brand-rgb),0.5)] bg-[rgba(var(--brand-rgb),0.1)] text-tentacle-brand"
                   : "border border-tentacle-border-subtle bg-tentacle-fill-subtle text-tentacle-text-tertiary hover:bg-tentacle-fill-medium hover:text-tentacle-text-secondary"
               }`}
             >

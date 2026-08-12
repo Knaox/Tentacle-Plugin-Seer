@@ -35,7 +35,7 @@ export function ProfilesConfig({ profiles, onChange }: ProfilesConfigProps) {
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-white">{t("seer:profilesTitle")}</h3>
         <button onClick={() => onChange([...profiles, emptyProfile()])}
-          className="rounded-lg bg-tentacle-brand/20 px-3 py-1.5 text-xs font-medium text-tentacle-brand-light hover:bg-tentacle-brand/30">
+          className="rounded-lg bg-[rgba(var(--brand-rgb),0.2)] px-3 py-1.5 text-xs font-medium text-tentacle-brand-light hover:bg-[rgba(var(--brand-rgb),0.3)]">
           + {t("seer:profileAdd")}
         </button>
       </div>
@@ -83,7 +83,7 @@ function ProfileCard({ profile, radarrServers, sonarrServers, onUpdate, onSetDef
           className="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white placeholder-white/20 outline-none focus:border-tentacle-brand" />
         <button onClick={onSetDefault}
           className={`rounded-lg px-2 py-1.5 text-[10px] font-medium transition-colors ${
-            profile.isDefault ? "bg-tentacle-brand/30 text-tentacle-brand-light" : "bg-white/5 text-white/30 hover:bg-white/10"
+            profile.isDefault ? "bg-[rgba(var(--brand-rgb),0.3)] text-tentacle-brand-light" : "bg-white/5 text-white/30 hover:bg-white/10"
           }`}>
           {t("seer:profileDefault")}
         </button>
@@ -104,7 +104,7 @@ function ProfileCard({ profile, radarrServers, sonarrServers, onUpdate, onSetDef
               onClick={() => onUpdate({ targetMediaType: opt.value })}
               className={`rounded-md border px-2.5 py-1 text-[10px] font-medium transition-all ${
                 target === opt.value
-                  ? "border-tentacle-brand bg-tentacle-brand/20 text-white"
+                  ? "border-tentacle-brand bg-[rgba(var(--brand-rgb),0.2)] text-white"
                   : "border-white/10 bg-white/5 text-white/40 hover:border-white/20"
               }`}>
               {opt.label}
@@ -204,7 +204,7 @@ function TagsSection({ radarrServers, sonarrServers, selectedTags, onChange, t }
             <button key={tag.id} type="button" onClick={() => toggle(tag.id)}
               className={`rounded-md border px-2 py-1 text-[10px] font-medium transition-all ${
                 selectedTags.includes(tag.id)
-                  ? "border-tentacle-brand bg-tentacle-brand/20 text-tentacle-brand-light"
+                  ? "border-tentacle-brand bg-[rgba(var(--brand-rgb),0.2)] text-tentacle-brand-light"
                   : "border-white/10 bg-white/5 text-white/30 hover:border-white/20"
               }`}>
               {tag.label}

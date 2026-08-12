@@ -37,11 +37,11 @@ export function useGlobalCalendar(
   });
 }
 
-/** Catalogue des plateformes de la région (80 pour la France). */
-export function useCalendarProviders(mediaType: "movie" | "tv" = "tv") {
+/** Catalogue des plateformes de la région, films et séries confondus. */
+export function useCalendarProviders() {
   return useQuery({
-    queryKey: ["seer-calendar-providers", mediaType, currentRegion()],
-    queryFn: () => getCalendarProviders(mediaType),
+    queryKey: ["seer-calendar-providers", currentRegion()],
+    queryFn: getCalendarProviders,
     staleTime: 24 * 60 * 60_000,
     gcTime: 24 * 60 * 60_000,
     refetchOnWindowFocus: false,

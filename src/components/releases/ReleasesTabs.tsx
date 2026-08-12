@@ -1,7 +1,8 @@
 import { useTranslation } from "react-i18next";
 import type { CalendarMediaFilter, CalendarMode } from "../../api/types-releases";
+import { pill, segment, SEGMENT_GROUP } from "../../styles/pills";
 
-export type ReleasesView = "list" | "month";
+export type ReleasesView = "week" | "month";
 
 interface Props {
   mode: CalendarMode;
@@ -24,18 +25,11 @@ const MEDIA: Array<{ value: CalendarMediaFilter; key: string }> = [
   { value: "tv", key: "seer:releasesFilterTv" },
 ];
 
-/** Mode (mes sorties / tout / plateforme), filtre film-série, et vue. */
+/** Mode (mes sorties / tout / plateforme), filtre film-série, et vue semaine/mois. */
 export function ReleasesTabs({
   mode, onModeChange, view, onViewChange, mediaFilter, onMediaFilterChange,
 }: Props) {
   const { t } = useTranslation("seer");
-
-  const pill = (active: boolean) =>
-    `rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-      active
-        ? "bg-tentacle-brand text-tentacle-cta-brand-fg"
-        : "bg-tentacle-fill-subtle text-tentacle-text-secondary hover:bg-tentacle-fill-medium"
-    }`;
 
   return (
     <div className="mb-4 space-y-3">
@@ -54,20 +48,17 @@ export function ReleasesTabs({
           ))}
         </div>
 
-        <div className="flex gap-1 rounded-lg bg-tentacle-fill-subtle p-0.5">
-          {(["list", "month"] as const).map((v) => (
+        <div className={SEGMENT_GROUP} role="tablist">
+          {(["week", "month"] as const).map((v) => (
             <button
               key={v}
               type="button"
+              role="tab"
+              aria-selected={view === v}
               onClick={() => onViewChange(v)}
-              aria-pressed={view === v}
-              className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                view === v
-                  ? "bg-tentacle-fill-medium text-tentacle-text-primary"
-                  : "text-tentacle-text-tertiary hover:text-tentacle-text-secondary"
-              }`}
+              className={segment(view === v)}
             >
-              {t(v === "list" ? "seer:releasesViewList" : "seer:releasesViewMonth")}
+              {t(v === "week" ? "seer:releasesViewWeek" : "seer:releasesViewMonth")}
             </button>
           ))}
         </div>

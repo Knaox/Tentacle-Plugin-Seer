@@ -60,8 +60,8 @@ export async function getGlobalCalendar(opts: {
   return backendFetch(`/calendar/global?${p}`);
 }
 
-export async function getCalendarProviders(
-  mediaType: "movie" | "tv" = "tv",
-): Promise<{ results: CalendarProvider[] }> {
-  return backendFetch(`/calendar/providers?region=${currentRegion()}&mediaType=${mediaType}`);
+/** Catalogue fusionné films + séries : un film peut être sur une plateforme
+ *  absente de la liste séries. */
+export async function getCalendarProviders(): Promise<{ results: CalendarProvider[] }> {
+  return backendFetch(`/calendar/providers?region=${currentRegion()}`);
 }

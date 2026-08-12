@@ -8,8 +8,8 @@ import { useRequestMedia } from "../../hooks/useRequestMedia";
 import { useToast } from "../../hooks/useToast";
 import { formatSeerError } from "../../api/seer-client";
 import { mediaTitle, mediaYear } from "../../utils/media-helpers";
-import { ReleaseListView } from "./ReleaseListView";
 import { ReleaseMonthView } from "./ReleaseMonthView";
+import { ReleaseWeekView } from "./ReleaseWeekView";
 import { PlatformPicker } from "./PlatformPicker";
 import { ReleasesTabs, type ReleasesView } from "./ReleasesTabs";
 import { EmptyState } from "../EmptyState";
@@ -50,16 +50,37 @@ export function ReleasesPage() {
   const [selected, setSelected] = useState<SeerrSearchResult | null>(null);
 
   const [view, setView] = useState<ReleasesView>(() => {
-    try { return localStorage.getItem(VIEW_KEY) === "month" ? "month" : "list"; }
-    catch { return "list"; }
+    // Une valeur « list » héritée de la version précédente doit être relue
+    // comme « week » : la vue liste n'existe plus.
+    try { return localStorage.getItem(VIEW_KEY) === "month" ? "month" : "week"; }
+    catch { return "week"; }
   });
   const changeView = useCallback((next: ReleasesView) => {
     setView(next);
     try { localStorage.setItem(VIEW_KEY, next); } catch { /* stockage indisponible */ }
   }, []);
 
-  const from = today();
-  const to = addDays(from, WINDOW_DAYS);
+  /* Fenêtre de données pilotée par la navigation de l'agenda.
+   *
+   * Elle était figée à « aujourd'hui → +90 jours » : dès qu'on avançait d'une
+   * semaine au-delà, la vue se vidait et paraissait cassée. Les vues signalent
+   * donc la période qu'elles affichent, et la fenêtre s'élargit pour la couvrir
+   * — sans jamais rétrécir, ce qui garde le résultat en cache d'un aller-retour
+   * à l'autre. */
+  const [range, setRange] = useState(() => {
+    const start = today();
+    return { from: start, to: addDays(start, WINDOW_DAYS) };
+  });
+
+  const coverRange = useCallback((wantFrom: string, wantTo: string) => {
+    setRange((cur) => {
+      const from = wantFrom < cur.from ? wantFrom : cur.from;
+      const to = wantTo > cur.to ? wantTo : cur.to;
+      return from === cur.from && to === cur.to ? cur : { from, to };
+    });
+  }, []);
+
+  const { from, to } = range;
 
   const personal = usePersonalCalendar(from, to, mode === "personal");
   const global = useGlobalCalendar(
@@ -148,9 +169,9 @@ export function ReleasesPage() {
           subtitle={mode === "personal" ? t("seer:releasesEmptyPersonalHint") : undefined}
         />
       ) : view === "month" ? (
-        <ReleaseMonthView items={items} onOpen={openItem} />
+        <ReleaseMonthView items={items} onOpen={openItem} onRangeChange={coverRange} />
       ) : (
-        <ReleaseListView items={items} onOpen={openItem} />
+        <ReleaseWeekView items={items} onOpen={openItem} onRangeChange={coverRange} />
       )}
 
       {selected && (

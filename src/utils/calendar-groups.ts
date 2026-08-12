@@ -62,6 +62,35 @@ export function monthKey(date: string): string {
   return date.slice(0, 7);
 }
 
+/** Lundi de la semaine contenant `date`. La semaine commence le lundi en France. */
+export function startOfWeek(date: string): string {
+  const parsed = parseAirDate(date);
+  if (!parsed) return date;
+  // getDay() : 0 = dimanche. On ramène lundi à 0.
+  const offset = (parsed.getDay() + 6) % 7;
+  return addDays(date, -offset);
+}
+
+/** Les sept jours de la semaine contenant `date`, du lundi au dimanche. */
+export function weekDays(date: string): string[] {
+  const monday = startOfWeek(date);
+  return Array.from({ length: 7 }, (_, i) => addDays(monday, i));
+}
+
+/** « 11 – 17 août 2026 » — l'intitulé d'une semaine, mois répété seulement si besoin. */
+export function weekHeading(date: string): string {
+  const days = weekDays(date);
+  const from = parseAirDate(days[0]);
+  const to = parseAirDate(days[6]);
+  if (!from || !to) return "";
+
+  const lang = getCurrentLanguage();
+  const sameMonth = from.getMonth() === to.getMonth();
+  const left = new Intl.DateTimeFormat(lang, sameMonth ? { day: "numeric" } : { day: "numeric", month: "short" }).format(from);
+  const right = new Intl.DateTimeFormat(lang, { day: "numeric", month: "long", year: "numeric" }).format(to);
+  return `${left} – ${right}`;
+}
+
 /**
  * Matrice d'un mois pour la vue grille : semaines commençant le lundi,
  * cellules des mois voisins comprises pour que la grille reste pleine.

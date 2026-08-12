@@ -82,7 +82,7 @@ export function SeasonActionModal({ request, action, onConfirm, onClose }: Seaso
 
             <button onClick={() => setSelected(new Set(seasons))}
               className={`mb-3 w-full flex-shrink-0 rounded-lg px-3 py-2 text-xs font-medium transition-all ${
-                allSelected ? "bg-tentacle-brand/20 text-tentacle-brand-light ring-1 ring-tentacle-brand/30"
+                allSelected ? "bg-[rgba(var(--brand-rgb),0.2)] text-tentacle-brand-light ring-1 ring-[rgba(var(--brand-rgb),0.3)]"
                   : "bg-tentacle-fill-subtle text-tentacle-text-tertiary hover:bg-tentacle-fill-medium"
               }`}>
               {t("seer:seasonActionAll")}
