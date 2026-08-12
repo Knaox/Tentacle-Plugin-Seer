@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import type { SeerrSearchResult } from "../api/types";
+import { useNearViewport, HERO_GUARD } from "../hooks/useNearViewport";
 import { backdropUrl, posterUrl, mediaTitle, mediaYear } from "../utils/media-helpers";
 import { navigateToMedia } from "../utils/navigate-media";
 import { CTA_PRIMARY, CTA_PRIMARY_HALO, CTA_SECONDARY } from "../styles/cta";
@@ -18,16 +19,36 @@ export function HeroCarousel({ items, onSelect, onRequest }: HeroCarouselProps) 
   const [paused, setPaused] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const slides = items.slice(0, 5);
+  const [onScreen, heroRef] = useNearViewport(HERO_GUARD);
+  const [tabAwake, setTabAwake] = useState(true);
 
   const advance = useCallback(() => {
     setIndex((i) => (i + 1) % slides.length);
   }, [slides.length]);
 
   useEffect(() => {
-    if (paused || slides.length <= 1) return;
+    const sync = () => setTabAwake(document.visibilityState === "visible");
+    sync();
+    document.addEventListener("visibilitychange", sync);
+    return () => document.removeEventListener("visibilitychange", sync);
+  }, []);
+
+  /*
+   * Le minuteur ne tourne QUE devant quelqu'un. Il tournait jusqu'ici sans fin,
+   * y compris huit mille pixels plus bas dans le catalogue, et chaque tour
+   * coûtait cher : cinq arrière-plans en pleine largeur maintenus au chaud —
+   * les plus grosses images de l'application — plus le remontage complet du
+   * contenu que provoque le `key={index}`, animation d'entrée comprise. Une
+   * animation infinie se garde par visibilité (règle GPU du projet).
+   *
+   * Au retour, le délai repart entier : le diaporama ne saute pas d'une vue à
+   * l'instant précis où on le regarde à nouveau.
+   */
+  useEffect(() => {
+    if (paused || !onScreen || !tabAwake || slides.length <= 1) return;
     timerRef.current = setTimeout(advance, 6000);
     return () => clearTimeout(timerRef.current);
-  }, [index, paused, advance, slides.length]);
+  }, [index, paused, onScreen, tabAwake, advance, slides.length]);
 
   if (slides.length === 0) return null;
   const item = slides[index];
@@ -41,6 +62,7 @@ export function HeroCarousel({ items, onSelect, onRequest }: HeroCarouselProps) 
 
   return (
     <div
+      ref={heroRef}
       className="relative h-[380px] overflow-hidden sm:h-[440px] lg:h-[500px]"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
