@@ -74,7 +74,8 @@ export function RequestCard({
   const isTvPartial = request.mediaType === "tv" && request.seasons && request.seasons.length > 0;
   const canAddSeasons = isTvPartial && !["deleting", "processing", "delete_failed"].includes(request.status);
 
-  const poster = posterUrl(request.posterPath);
+  // 80 × 120 : la taille de catalogue en gardait trois fois trop en mémoire.
+  const poster = posterUrl(request.posterPath, "w185");
   const typeLabel = request.mediaType === "movie" ? t("seer:typeMovie") : t("seer:typeSeries");
   const progressIdx = getProgressIndex(request.status);
   /* Purement visuel : le statut en base reste « downloading ». Le fichier est

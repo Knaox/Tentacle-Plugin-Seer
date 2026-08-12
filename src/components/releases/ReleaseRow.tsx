@@ -15,7 +15,11 @@ interface Props {
 /** Une sortie : affiche, titre, type, et le contexte utile (épisode, chaîne). */
 export const ReleaseRow = memo(function ReleaseRow({ item, onOpen }: Props) {
   const { t } = useTranslation("seer");
-  const poster = posterUrl(item.posterPath);
+  /* Une vignette de 48 × 72 n'a pas besoin d'une affiche de catalogue : la
+   * taille par défaut réservait sept fois trop de mémoire pour cette boîte, et
+   * l'agenda en aligne des dizaines. Celle-ci couvre encore le double sur écran
+   * dense, donc rien ne se voit. */
+  const poster = posterUrl(item.posterPath, "w154");
   const kind = KIND_STYLE[item.kind];
   const ep = episodeLabel(item.seasonNumber, item.episodeNumber);
 

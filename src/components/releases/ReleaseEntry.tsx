@@ -49,7 +49,8 @@ export const ReleaseEntry = memo(function ReleaseEntry({ item, density = "week",
     );
   }
 
-  const poster = posterUrl(item.posterPath);
+  // 40 × 56 dans une case de calendrier : même raison qu'en vue semaine.
+  const poster = posterUrl(item.posterPath, "w154");
 
   return (
     <button
