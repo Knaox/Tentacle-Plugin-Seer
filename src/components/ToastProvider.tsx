@@ -1,6 +1,7 @@
 import { createContext, useCallback, useState } from "react";
 import { Toast } from "./Toast";
 import type { ToastData, ToastType } from "./Toast";
+import { CHROME_BOTTOM } from "../utils/host-chrome";
 
 export interface ToastContextValue {
   show: (type: ToastType, message: string, posterUrl?: string) => void;
@@ -33,7 +34,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={{ show }}>
       {children}
-      <div className="pointer-events-none fixed bottom-4 right-4 z-[9999] flex w-80 flex-col gap-2">
+      {/* Au-dessus de la barre de l'hôte : un toast posé à 16 px du bord
+          disparaissait derrière la barre d'onglets de l'application mobile. */}
+      <div
+        className="pointer-events-none fixed right-4 z-[9999] flex w-80 flex-col gap-2"
+        style={{ bottom: `calc(1rem + ${CHROME_BOTTOM})` }}
+      >
         {toasts.map((t) => (
           <div key={t.id} className="pointer-events-auto">
             <Toast toast={t} onDismiss={dismiss} />

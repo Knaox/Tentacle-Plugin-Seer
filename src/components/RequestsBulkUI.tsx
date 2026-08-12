@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { ProfileSelector } from "./ProfileSelector";
 import { CTA_PRIMARY, CTA_PRIMARY_HALO } from "../styles/cta";
+import { CHROME_BOTTOM } from "../utils/host-chrome";
 
 interface RequestsBulkBarProps {
   count: number;
@@ -17,7 +18,10 @@ export function RequestsBulkBar({
 }: RequestsBulkBarProps) {
   const { t } = useTranslation("seer");
   return (
-    <div className="fixed bottom-4 left-1/2 z-40 flex max-w-[calc(100vw-16px)] -translate-x-1/2 flex-wrap items-center justify-center gap-2 rounded-xl border border-tentacle-border-subtle bg-tentacle-surface-dropdown px-4 py-3 shadow-2xl backdrop-blur-sm sm:gap-3 sm:px-5">
+    <div
+      className="fixed left-1/2 z-40 flex max-w-[calc(100vw-16px)] -translate-x-1/2 flex-wrap items-center justify-center gap-2 rounded-xl border border-tentacle-border-subtle bg-tentacle-surface-dropdown px-4 py-3 shadow-2xl backdrop-blur-sm sm:gap-3 sm:px-5"
+      style={{ bottom: `calc(1rem + ${CHROME_BOTTOM})` }}
+    >
       <button
         onClick={onBulkDelete}
         disabled={deleting}

@@ -13,6 +13,7 @@ import { MediaDetailBody } from "./MediaDetailBody";
 import { TrailerModal } from "./TrailerModal";
 import { mediaTitle, mediaYear } from "../utils/media-helpers";
 import { openTrailersViaHost } from "../utils/external";
+import { CHROME_BOTTOM } from "../utils/host-chrome";
 import type { SeerrSearchResult, SeerrTvDetail, SeerrMovieDetail } from "../api/types";
 
 interface MediaDetailModalProps {
@@ -186,7 +187,7 @@ export function MediaDetailModal({ item, onClose, lockedSeasons, defaultProfileI
       <div className="absolute inset-0 bg-black/90 backdrop-blur-sm" />
       <div
         ref={scrollRef}
-        className="relative max-h-[94dvh] w-full max-w-3xl overflow-y-auto overscroll-contain rounded-t-2xl bg-tentacle-surface-1 pb-[env(safe-area-inset-bottom)] sm:max-h-[90vh] sm:rounded-2xl lg:max-w-4xl"
+        className="relative max-h-[94dvh] w-full max-w-3xl overflow-y-auto overscroll-contain rounded-t-2xl bg-tentacle-surface-1 sm:max-h-[90vh] sm:rounded-2xl lg:max-w-4xl"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -195,6 +196,9 @@ export function MediaDetailModal({ item, onClose, lockedSeasons, defaultProfileI
           animation: isClosing ? "fadeOut 200ms ease forwards" : "fadeSlideUp 300ms ease forwards",
           scrollbarWidth: "thin",
           scrollbarColor: "var(--brand) transparent",
+          // La fiche monte du bas sur mobile : sans cette réserve, sa fin —
+          // donc le bouton de demande — se termine derrière la barre de l'hôte.
+          paddingBottom: `calc(env(safe-area-inset-bottom, 0px) + ${CHROME_BOTTOM})`,
         }}
       >
         <ModalDetailHeader

@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import type { LocalRequest } from "../api/types";
 import { STATUS_STYLE } from "../styles/status";
+import { CHROME_BOTTOM } from "../utils/host-chrome";
 
 export type MarkTarget = "available" | "partial" | "processing" | "unknown";
 
@@ -73,8 +74,13 @@ export function MarkMenuSheet({ request, onSelect, onClose }: MarkMenuSheetProps
       aria-label={t("seer:markAs")}
     >
       <div
-        className="w-full max-w-sm rounded-t-2xl border border-tentacle-border-subtle bg-tentacle-surface-dropdown pb-[max(env(safe-area-inset-bottom),8px)] shadow-2xl sm:mx-4 sm:rounded-2xl sm:pb-2"
-        style={{ animation: "fadeSlideUp 250ms cubic-bezier(0.22,1,0.36,1) forwards" }}
+        className="w-full max-w-sm rounded-t-2xl border border-tentacle-border-subtle bg-tentacle-surface-dropdown shadow-2xl sm:mx-4 sm:rounded-2xl"
+        style={{
+          animation: "fadeSlideUp 250ms cubic-bezier(0.22,1,0.36,1) forwards",
+          // La barre de l'hôte (mobile) recouvrait la dernière option de la
+          // feuille — celle qu'on vise le plus souvent, en bas de liste.
+          paddingBottom: `calc(max(env(safe-area-inset-bottom), 8px) + ${CHROME_BOTTOM})`,
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="border-b border-tentacle-border-subtle px-5 pb-3 pt-4">
