@@ -54,6 +54,13 @@ auto-bumpé par le message du commit (`feat`→mineure, `fix`→patch, `!`→maj
 - **Le catalogue ne gonfle plus quand on le fait défiler longtemps.** Chaque affiche parcourue restait en mémoire jusqu'à la fin de la session, y compris des centaines d'écrans plus haut : vingt pages, c'étaient plusieurs centaines de mégaoctets retenus pour des images que personne ne regardait. Une affiche trop loin de l'écran est maintenant libérée, et récupérée bien avant de redevenir visible — le défilement, lui, ne change en rien
 - Le diaporama en tête du catalogue **ne travaille plus quand il n'est pas à l'écran**. Il faisait tourner ses cinq grandes images de fond toutes les six secondes, indéfiniment, pendant qu'on parcourait la grille bien plus bas ou qu'on regardait un autre onglet
 - Les vignettes de l'agenda et de Mes demandes **ne chargent plus des affiches cinq fois trop grandes** pour la place qu'elles occupent
+- **« Toutes les demandes » montre enfin autre chose que les vôtres.** Trois défauts se cumulaient, et chacun rendait le suivant invisible : une fiche connue mais sans aucune date comptait comme acquise — c'est le cas de toutes celles amorcées depuis vos demandes, titre seul — la réponse tronquée qui en résultait était ensuite gardée un quart d'heure puis servie six heures de plus, et rien n'allait jamais chercher les demandes faites ailleurs que dans le plugin. La page se complète maintenant d'elle-même pendant qu'on la regarde
+- **Les Sorties se trient et se filtrent** : par popularité, note ou titre, avec une note minimum et une langue originale — comme le catalogue, en gardant les critères qui ont un sens sur un agenda. Le tri s'applique à l'intérieur d'une journée : en vue mois, où une case n'affiche que les premières sorties, c'est lui qui décide de ce qu'on voit
+- **Le type Animés arrive sur les Sorties.** Il ne se déduit pas du genre Animation, qui rangerait Pixar et les Simpson avec les productions japonaises
+- **Le mode « Tout » ne noie plus vos demandes** : elles portent leur pastille au milieu des sorties de la région, et un bouton permet de n'afficher qu'elles
+- **Le catalogue se filtre par canal de sortie** — au cinéma, en streaming, en Blu-ray
+- Les réglages de l'agenda sont tous retenus d'une visite à l'autre ; le type de média était le seul à repartir de zéro
+- Correctif : régler une note minimum et vider l'agenda annonçait « vous n'avez aucune demande à venir », ce qui était faux — c'était le filtre, pas l'absence de demandes
 
 ### EN
 - **The plugin is now called Vigie.** It is affiliated with neither Jellyseerr nor Overseerr: it is an independent plugin connecting to your own instance. Stated in the README, on the marketplace listing and on the settings page
@@ -89,6 +96,13 @@ auto-bumpé par le message du commit (`feat`→mineure, `fix`→patch, `!`→maj
 - **The catalog no longer bloats when scrolled for a long time.** Every poster scrolled past stayed in memory until the end of the session, including ones hundreds of screens above: twenty pages meant several hundred megabytes held for images nobody was looking at. A poster far enough from the screen is now released, and fetched back well before it becomes visible again — scrolling itself is unchanged
 - The slideshow at the top of the catalog **no longer works while off-screen**. It kept cycling its five large background images every six seconds, indefinitely, while you browsed the grid far below or looked at another tab
 - Thumbnails on the calendar and My Requests **no longer load posters five times larger** than the space they occupy
+- **"All requests" finally shows more than your own.** Three flaws stacked up, each hiding the next: a title known but carrying no date at all counted as resolved — which is the case for every entry seeded from your requests, title only — the truncated response that followed was then kept for a quarter of an hour and served six hours beyond that, and nothing ever went looking for requests made outside the plugin. The page now fills itself in while you watch it
+- **Releases can be sorted and filtered**: by popularity, rating or title, with a minimum rating and an original language — like the catalog, keeping only the criteria that make sense on a calendar. Sorting applies WITHIN a day: in month view, where a cell shows only the first few releases, it decides what you see at all
+- **The Anime type comes to Releases.** It is not inferred from the Animation genre, which would file Pixar and the Simpsons alongside Japanese productions
+- **"Everything" no longer drowns your requests**: they carry their badge among the region's releases, and a button shows them alone
+- **The catalog can be filtered by release channel** — in theaters, streaming, Blu-ray
+- Every calendar setting is now remembered between visits; the media type was the only one starting over each time
+- Fix: setting a minimum rating and emptying the calendar announced "you have no upcoming requests", which was untrue — it was the filter, not a lack of requests
 
 ## [1.13.2]
 ### FR
