@@ -61,7 +61,7 @@ function setCacheForType(type: "sonarr" | "radarr", data: ArrServerConfig | null
   else radarrCache = entry;
 }
 
-function buildArrUrl(server: ArrServerConfig): string {
+export function buildArrUrl(server: ArrServerConfig): string {
   const protocol = server.useSsl ? "https" : "http";
   const base = server.baseUrl ? `/${server.baseUrl.replace(/^\/|\/$/g, "")}` : "";
   return `${protocol}://${server.hostname}:${server.port}${base}`;

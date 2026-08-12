@@ -34,6 +34,12 @@ export interface CalendarItem {
   kind: CalendarKind;
   seasonNumber: number | null;
   episodeNumber: number | null;
+  /**
+   * Instant réel de diffusion (ISO UTC), quand Sonarr suit la série. TMDB ne
+   * donne que la date, et celle de la chaîne d'origine : le jour LOCAL se
+   * déduit d'ici côté client, seul endroit qui connaisse le fuseau.
+   */
+  airDateUtc?: string | null;
   networks: string | null;
   providerIds: number[];
   /** Renseignés en mode personnel uniquement. */

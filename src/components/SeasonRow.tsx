@@ -16,6 +16,8 @@ interface SeasonRowProps {
   onToggle?: () => void;
   expanded: boolean;
   onExpandToggle: () => void;
+  /** « S1E2 » → instant ISO, quand Sonarr suit la série. */
+  airTimes?: Map<string, string>;
 }
 
 function statusBadge(status: number | undefined, locked: boolean | undefined, t: (k: string) => string) {
@@ -32,7 +34,7 @@ function statusBadge(status: number | undefined, locked: boolean | undefined, t:
  * chevron pour déplier les épisodes avec leurs dates de diffusion.
  */
 export function SeasonRow({
-  tvId, season, status, locked, selectable, checked, onToggle, expanded, onExpandToggle,
+  tvId, season, status, locked, selectable, checked, onToggle, expanded, onExpandToggle, airTimes,
 }: SeasonRowProps) {
   const { t } = useTranslation("seer");
   const badge = statusBadge(status, locked, t);
@@ -101,7 +103,7 @@ export function SeasonRow({
 
       {expanded && (
         <div className="border-t border-tentacle-border-subtle px-4 pb-2" style={{ animation: "fadeIn 200ms ease" }}>
-          <EpisodeList tvId={tvId} seasonNumber={season.seasonNumber} />
+          <EpisodeList tvId={tvId} seasonNumber={season.seasonNumber} airTimes={airTimes} />
         </div>
       )}
     </div>

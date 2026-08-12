@@ -4,6 +4,7 @@ import type { CalendarItem } from "../../api/types-releases";
 import type { CollapsedItem } from "../../utils/calendar-collapse";
 import { posterUrl } from "../../utils/media-helpers";
 import { KIND_STYLE, KIND_I18N, episodeLabel } from "../../utils/calendar-kind";
+import { formatAirTime } from "../../utils/episode-dates";
 import { PlatformBadges } from "../PlatformBadges";
 import { PosterImage } from "../PosterImage";
 
@@ -70,6 +71,12 @@ export const ReleaseEntry = memo(function ReleaseEntry({ item, density = "week",
           <span className={`rounded px-1 py-px text-[9px] font-medium ${kind.chip}`}>
             {ep || t(KIND_I18N[item.kind])}
           </span>
+          {/* L'heure quand Sonarr la connaît — sinon rien, jamais d'invention. */}
+          {formatAirTime(item.airDateUtc) && (
+            <span className="text-[9px] tabular-nums text-tentacle-text-quaternary">
+              {formatAirTime(item.airDateUtc)}
+            </span>
+          )}
           <PlatformBadges providerIds={item.providerIds} max={2} size="sm" />
         </div>
       </div>

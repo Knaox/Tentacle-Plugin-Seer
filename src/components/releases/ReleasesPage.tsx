@@ -16,6 +16,7 @@ import { EmptyState } from "../EmptyState";
 import { SkeletonList } from "../SkeletonList";
 import { MediaDetailModal } from "../MediaDetailModal";
 import { today, addDays } from "../../utils/calendar-groups";
+import { applyLocalDays } from "../../utils/calendar-localtime";
 
 const VIEW_KEY = "seer_releases_view";
 const MODE_KEY = "seer_releases_mode";
@@ -118,7 +119,8 @@ export function ReleasesPage() {
 
   const active = mode === "personal" ? personal : global;
   const items = useMemo(() => {
-    let list = active.data?.items ?? [];
+    // Au bon jour d'abord : un épisode annoncé le 14 peut sortir le 13 au soir.
+    let list = applyLocalDays(active.data?.items ?? []);
     if (mediaFilter !== "both") list = list.filter((i) => i.mediaType === mediaFilter);
     /* Le serveur applique déjà les plateformes au mode « Tout » ; « Mes
      * sorties » vient de vos demandes et se filtre donc ici, sur les

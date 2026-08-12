@@ -13,6 +13,7 @@ import { isDayString, addDays, type CalendarResponse } from "./calendar-types";
 import { todayString } from "./tmdb-fetch";
 import { rowsCacheKey } from "./routes-requests-read";
 import { DEFAULT_REGION } from "./tmdb-resolver";
+import { attachAirTimes, sonarrSeriesAirTimes } from "./sonarr-schedule";
 
 /** Le personnel bouge avec les demandes ; le global au mieux une fois par jour. */
 const PERSONAL_TTL_MS = 15 * 60_000;
@@ -66,7 +67,9 @@ export function registerCalendarRoutes(
           () => buildMergedRows(prisma, config, user, (err, msg) => app.log?.warn?.({ err }, msg)),
           { staleMs: 600_000 },
         );
-        return buildPersonalCalendar(prisma, config, user, rows, { from, to, includeSettled });
+        const res = await buildPersonalCalendar(prisma, config, user, rows, { from, to, includeSettled });
+        // L'heure réelle des épisodes, quand Sonarr suit la série.
+        return attachAirTimes(config, res);
       },
       { staleMs: PERSONAL_STALE_MS },
     );
@@ -106,9 +109,29 @@ export function registerCalendarRoutes(
     return cached(
       key,
       ttl,
-      () => buildGlobalCalendar(prisma, config, { providerIds, mediaType, region, from, to }),
+      async () => attachAirTimes(
+        config,
+        await buildGlobalCalendar(prisma, config, { providerIds, mediaType, region, from, to }),
+      ),
       { staleMs: GLOBAL_STALE_MS },
     );
+  });
+
+  /* ── Heures de diffusion d'une série, pour la fiche détaillée ──
+   *
+   * TMDB ne donne que la date. Sonarr connaît l'instant, mais uniquement pour
+   * les séries qu'il suit : une réponse vide signifie « on ne sait pas », et la
+   * fiche affiche alors la date seule plutôt qu'une heure inventée. */
+  app.get("/calendar/airtimes", async (request) => {
+    const q = request.query as { tmdbId?: string };
+    const tmdbId = Number(q.tmdbId);
+    if (!Number.isFinite(tmdbId) || tmdbId <= 0) return { times: {} };
+
+    const config = await getWorkerConfig();
+    if (!config) return { times: {} };
+
+    const times = await sonarrSeriesAirTimes(config, tmdbId);
+    return { times: Object.fromEntries(times) };
   });
 
   /* ── Catalogue des plateformes de la région ──

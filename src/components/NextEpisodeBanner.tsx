@@ -1,19 +1,28 @@
 import { useTranslation } from "react-i18next";
 import type { SeerrEpisode } from "../api/types";
-import { formatAirDateLong, relativeAirLabel, daysUntil } from "../utils/episode-dates";
+import {
+  formatAirDateLong, formatAirTime, localDayFromUtc, relativeAirLabel, daysUntil,
+} from "../utils/episode-dates";
 import { backdropUrl } from "../utils/media-helpers";
 import { STATUS_STYLE } from "../styles/status";
 
 /**
  * Bannière « Prochain épisode » : SxEy + titre + date complète localisée
  * + badge countdown. Affichée pour les séries en cours (nextEpisodeToAir TMDB).
+ *
+ * Quand Sonarr suit la série, l'heure exacte s'ajoute — et la date affichée
+ * devient la vraie : celle de TMDB est celle du fuseau de la chaîne d'origine.
  */
-export function NextEpisodeBanner({ episode }: { episode: SeerrEpisode }) {
+export function NextEpisodeBanner({
+  episode, airDateUtc,
+}: { episode: SeerrEpisode; airDateUtc?: string | null }) {
   const { t } = useTranslation("seer");
   if (!episode.airDate) return null;
 
-  const days = daysUntil(episode.airDate);
-  const relative = relativeAirLabel(episode.airDate, t);
+  const airDate = localDayFromUtc(airDateUtc) ?? episode.airDate;
+  const time = formatAirTime(airDateUtc);
+  const days = daysUntil(airDate);
+  const relative = relativeAirLabel(airDate, t);
   const still = backdropUrl(episode.stillPath, "w300");
   const code = `S${episode.seasonNumber}E${episode.episodeNumber}`;
 
@@ -47,7 +56,11 @@ export function NextEpisodeBanner({ episode }: { episode: SeerrEpisode }) {
             <span className="text-tentacle-text-tertiary">{code}</span>
             {episode.name && <span> · {episode.name}</span>}
           </p>
-          <p className="mt-0.5 text-xs capitalize text-tentacle-text-tertiary">{formatAirDateLong(episode.airDate)}</p>
+          <p className="mt-0.5 text-xs capitalize text-tentacle-text-tertiary">
+            {time
+              ? t("seer:episodeAirTime", { date: formatAirDateLong(airDate), time })
+              : formatAirDateLong(airDate)}
+          </p>
         </div>
 
         {/* Countdown */}

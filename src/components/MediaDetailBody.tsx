@@ -9,6 +9,7 @@ import { AvailabilityPill } from "./AvailabilityPill";
 import { hasSignal } from "../utils/availability-labels";
 import { PlatformBadges } from "./PlatformBadges";
 import { useSingleAvailability } from "../hooks/useAvailability";
+import { airTimeKey, useSeriesAirTimes } from "../hooks/useAirTimes";
 import { WatchProviders } from "./WatchProviders";
 import { CastRow } from "./CastRow";
 import { DetailMetaGrid } from "./DetailMetaGrid";
@@ -75,6 +76,9 @@ export function MediaDetailBody({
 }: MediaDetailBodyProps) {
   const { t } = useTranslation("seer");
   const availability = useSingleAvailability(currentItem.mediaType as "movie" | "tv", currentItem.id);
+  /* L'heure exacte des épisodes, quand Sonarr suit la série. Map vide sinon :
+   * on affiche alors la date seule, sans rien inventer. */
+  const airTimes = useSeriesAirTimes(currentItem.id, isTv);
   /* Plateformes d'abonnement uniquement : « je peux le voir maintenant » n'a
    * pas le même sens qu'« il est en vente ». */
   const streamingIds = (providers ?? []).map((p) => p.provider_id).filter((id) => id > 0);
@@ -91,7 +95,13 @@ export function MediaDetailBody({
 
       {/* Prochain épisode (séries en cours) */}
       {isTv && tvDetail?.nextEpisodeToAir?.airDate && (
-        <NextEpisodeBanner episode={tvDetail.nextEpisodeToAir} />
+        <NextEpisodeBanner
+          episode={tvDetail.nextEpisodeToAir}
+          airDateUtc={airTimes.get(airTimeKey(
+            tvDetail.nextEpisodeToAir.seasonNumber ?? null,
+            tvDetail.nextEpisodeToAir.episodeNumber ?? null,
+          ))}
+        />
       )}
 
       {/* Synopsis */}
@@ -130,6 +140,7 @@ export function MediaDetailBody({
               status={requestedSeasonMap.get(season.seasonNumber)}
               expanded={expandedSeason === season.seasonNumber}
               onExpandToggle={() => onExpandSeasonToggle(season.seasonNumber)}
+              airTimes={airTimes}
             />
           ))}
         </div>

@@ -40,6 +40,8 @@ export default {
   progressEpisodes_one: "{{count}} episode in progress",
   progressEpisodes_other: "{{count}} episodes in progress",
   // Per-season breakdown of a series request
+  // Real air time of an episode, when Sonarr tracks the series
+  episodeAirTime: "{{date}} · {{time}}",
   progressSeason: "Season {{season}}",
   progressSeasonWaiting: "Waiting",
   progressNoSeason: "Outside a season",

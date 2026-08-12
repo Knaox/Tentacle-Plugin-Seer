@@ -107,6 +107,12 @@ export interface CalendarItem {
   kind: CalendarKind;
   seasonNumber: number | null;
   episodeNumber: number | null;
+  /**
+   * Instant réel de diffusion (ISO UTC), quand Sonarr suit la série. Le jour
+   * affiché s'en déduit : `date` porte celui de la chaîne d'origine, qui peut
+   * tomber la veille ou le lendemain une fois ramené à l'heure locale.
+   */
+  airDateUtc?: string | null;
   networks: string | null;
   providerIds: number[];
   requestId: string | null;

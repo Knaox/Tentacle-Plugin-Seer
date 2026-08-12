@@ -40,6 +40,32 @@ export function formatAirDateShort(airDate?: string): string {
 }
 
 /**
+ * Jour LOCAL d'un instant ISO, en 'YYYY-MM-DD'.
+ *
+ * C'est la correction qui compte : la date de TMDB est celle du fuseau de la
+ * chaîne d'origine. Un épisode annoncé le 14 août sort en réalité le 13 à
+ * 17 h 15 à Paris — l'agenda le rangeait donc un jour trop tard. Le calcul se
+ * fait ici, côté navigateur : lui seul connaît le fuseau du spectateur.
+ */
+export function localDayFromUtc(iso?: string | null): string | null {
+  if (!iso) return null;
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return null;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
+}
+
+/** Heure locale localisée : "17:15" / "5:15 PM". Vide si l'instant est absent. */
+export function formatAirTime(iso?: string | null): string {
+  if (!iso) return "";
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return "";
+  return new Intl.DateTimeFormat(getCurrentLanguage(), {
+    hour: "numeric", minute: "2-digit",
+  }).format(at);
+}
+
+/**
  * Libellé relatif i18n : "Aujourd'hui" / "Demain" / "Dans X jours" /
  * "" (déjà diffusé — l'appelant affiche la date). `t` = i18next du namespace seer.
  */

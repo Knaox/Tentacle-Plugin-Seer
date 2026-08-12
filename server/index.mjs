@@ -3308,12 +3308,12 @@ function registerProfileRoutes(app, getPluginConfig2, getSeerrConfig) {
     const seerr = getSeerrConfig();
     if (!seerr) return reply.status(503).send({ message: "Seerr not configured" });
     try {
-      const [radarr, sonarr] = await Promise.all([
+      const [radarr, sonarr2] = await Promise.all([
         fetchArrOptions(seerr, "radarr"),
         fetchArrOptions(seerr, "sonarr")
       ]);
-      console.log(`[SeerProfiles] Found ${radarr.length} Radarr, ${sonarr.length} Sonarr`);
-      return { radarr, sonarr };
+      console.log(`[SeerProfiles] Found ${radarr.length} Radarr, ${sonarr2.length} Sonarr`);
+      return { radarr, sonarr: sonarr2 };
     } catch (err) {
       console.error("[SeerProfiles] Failed to fetch options:", err);
       return reply.status(502).send({
@@ -4257,6 +4257,116 @@ function collectItems(buckets, opts) {
   return { items: Array.from(unique.values()), scanned };
 }
 
+// server/sonarr-schedule.ts
+var SERIES_TTL_MS = 30 * 6e4;
+var SERIES_STALE_MS = 6 * 36e5;
+var CALENDAR_TTL_MS = 30 * 6e4;
+var CALENDAR_STALE_MS = 6 * 36e5;
+var EPISODES_TTL_MS = 36e5;
+var EPISODES_STALE_MS = 12 * 36e5;
+function airTimeKey(season, episode) {
+  return `S${season}E${episode}`;
+}
+async function sonarr(cfg) {
+  return getArrServerConfig(cfg.seerrUrl, cfg.seerrApiKey, "sonarr");
+}
+async function arrGet(server, path) {
+  try {
+    const res = await fetch(`${buildArrUrl(server)}${path}`, {
+      headers: { "X-Api-Key": server.apiKey },
+      signal: AbortSignal.timeout(15e3)
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+async function sonarrSeriesIndex(cfg) {
+  return cached(
+    "seer:sonarr:series",
+    SERIES_TTL_MS,
+    async () => {
+      const server = await sonarr(cfg);
+      if (!server) return /* @__PURE__ */ new Map();
+      const rows = await arrGet(server, "/api/v3/series");
+      const index = /* @__PURE__ */ new Map();
+      for (const s of rows ?? []) {
+        if (s.tmdbId && s.id) index.set(s.tmdbId, s.id);
+      }
+      return index;
+    },
+    { staleMs: SERIES_STALE_MS }
+  );
+}
+async function sonarrWindowAirTimes(cfg, from, to) {
+  return cached(
+    `seer:sonarr:cal:${from}:${to}`,
+    CALENDAR_TTL_MS,
+    async () => {
+      const server = await sonarr(cfg);
+      if (!server) return /* @__PURE__ */ new Map();
+      const rows = await arrGet(
+        server,
+        `/api/v3/calendar?start=${from}&end=${to}&includeSeries=false`
+      );
+      const times = /* @__PURE__ */ new Map();
+      for (const e of rows ?? []) {
+        if (!e.airDateUtc || e.seriesId == null || e.seasonNumber == null || e.episodeNumber == null) continue;
+        times.set(`${e.seriesId}:${airTimeKey(e.seasonNumber, e.episodeNumber)}`, e.airDateUtc);
+      }
+      return times;
+    },
+    { staleMs: CALENDAR_STALE_MS }
+  );
+}
+async function attachAirTimes(cfg, res) {
+  const episodes = res.items.filter((i) => i.kind === "episode");
+  if (episodes.length === 0) return res;
+  try {
+    const [index, times] = await Promise.all([
+      sonarrSeriesIndex(cfg),
+      // Fenêtre élargie d'un jour : un épisode peut basculer d'une journée à
+      // l'autre une fois ramené à l'heure locale, dans un sens comme dans l'autre.
+      sonarrWindowAirTimes(cfg, shiftDay(res.from, -1), shiftDay(res.to, 1))
+    ]);
+    if (index.size === 0 || times.size === 0) return res;
+    for (const item of episodes) {
+      const seriesId = index.get(item.tmdbId);
+      if (!seriesId || item.seasonNumber == null || item.episodeNumber == null) continue;
+      const at = times.get(`${seriesId}:${airTimeKey(item.seasonNumber, item.episodeNumber)}`);
+      if (at) item.airDateUtc = at;
+    }
+  } catch {
+  }
+  return res;
+}
+function shiftDay(day, delta) {
+  const [y, m, d] = day.split("-").map(Number);
+  const date = new Date(y, m - 1, d + delta);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+async function sonarrSeriesAirTimes(cfg, tmdbId) {
+  return cached(
+    `seer:sonarr:eps:${tmdbId}`,
+    EPISODES_TTL_MS,
+    async () => {
+      const [server, index] = await Promise.all([sonarr(cfg), sonarrSeriesIndex(cfg)]);
+      const seriesId = index.get(tmdbId);
+      if (!server || !seriesId) return /* @__PURE__ */ new Map();
+      const rows = await arrGet(server, `/api/v3/episode?seriesId=${seriesId}`);
+      const times = /* @__PURE__ */ new Map();
+      for (const e of rows ?? []) {
+        if (!e.airDateUtc || e.seasonNumber == null || e.episodeNumber == null) continue;
+        times.set(airTimeKey(e.seasonNumber, e.episodeNumber), e.airDateUtc);
+      }
+      return times;
+    },
+    { staleMs: EPISODES_STALE_MS }
+  );
+}
+
 // server/routes-calendar.ts
 var PERSONAL_TTL_MS = 15 * 6e4;
 var PERSONAL_STALE_MS = 6 * 36e5;
@@ -4293,7 +4403,8 @@ function registerCalendarRoutes(app, prisma, getWorkerConfig2) {
           () => buildMergedRows(prisma, config, user, (err, msg) => app.log?.warn?.({ err }, msg)),
           { staleMs: 6e5 }
         );
-        return buildPersonalCalendar(prisma, config, user, rows, { from, to, includeSettled });
+        const res = await buildPersonalCalendar(prisma, config, user, rows, { from, to, includeSettled });
+        return attachAirTimes(config, res);
       },
       { staleMs: PERSONAL_STALE_MS }
     );
@@ -4312,9 +4423,21 @@ function registerCalendarRoutes(app, prisma, getWorkerConfig2) {
     return cached(
       key,
       ttl,
-      () => buildGlobalCalendar(prisma, config, { providerIds, mediaType, region, from, to }),
+      async () => attachAirTimes(
+        config,
+        await buildGlobalCalendar(prisma, config, { providerIds, mediaType, region, from, to })
+      ),
       { staleMs: GLOBAL_STALE_MS }
     );
+  });
+  app.get("/calendar/airtimes", async (request) => {
+    const q = request.query;
+    const tmdbId = Number(q.tmdbId);
+    if (!Number.isFinite(tmdbId) || tmdbId <= 0) return { times: {} };
+    const config = await getWorkerConfig2();
+    if (!config) return { times: {} };
+    const times = await sonarrSeriesAirTimes(config, tmdbId);
+    return { times: Object.fromEntries(times) };
   });
   app.get("/calendar/providers", async (request) => {
     const q = request.query;

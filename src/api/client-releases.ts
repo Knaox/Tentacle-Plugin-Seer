@@ -65,6 +65,14 @@ export async function getGlobalCalendar(opts: {
   return backendFetch(`/calendar/global?${p}`);
 }
 
+/**
+ * Heures de diffusion d'une série, indexées « S1E2 ».
+ * Objet vide quand Sonarr ne suit pas la série : on n'invente pas d'heure.
+ */
+export async function getSeriesAirTimes(tmdbId: number): Promise<{ times: Record<string, string> }> {
+  return backendFetch(`/calendar/airtimes?tmdbId=${tmdbId}`);
+}
+
 /** Catalogue fusionné films + séries : un film peut être sur une plateforme
  *  absente de la liste séries. */
 export async function getCalendarProviders(): Promise<{ results: CalendarProvider[] }> {
