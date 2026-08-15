@@ -19,6 +19,28 @@ auto-bumpé par le message du commit (`feat`→mineure, `fix`→patch, `!`→maj
 
 ---
 
+## [1.14.1]
+### FR
+- **La page Sorties devient « Calendrier »**, et ses onglets disent enfin ce qu'ils montrent : **« Mes demandes »** (avec « Toutes mes demandes » / « Toutes les demandes ») et **« Toutes les sorties »** — tous les calendriers de la période, contenus non demandés compris
+- **Les jours passés de la semaine et du mois affichent leurs sorties.** Un samedi, le calendrier ne savait plus ce qui était sorti lundi : la fenêtre de données démarrait à aujourd'hui, et les séries n'avaient aucune source de dates passées. Le calendrier de Sonarr les fournit désormais, épisodes passés compris
+- **La vue semaine de « Toutes les sorties » n'est plus vide** sans filtre : elle ne recevait que des premières diffusions et des sorties salle, rarement dans les sept jours. Les prochains épisodes des séries en cours y figurent maintenant d'office, plus besoin de cocher une plateforme pour voir quelque chose
+- **Le calendrier général est construit une seule fois pour tout le serveur**, mis en cache six heures et rafraîchi en arrière-plan — préchauffé dès le démarrage : le premier visiteur ne paie plus la construction entière. « Mes demandes » est dérivé de ce même calendrier par filtrage, quasi instantané une fois chaud ; une demande toute fraîche reste visible immédiatement
+- **Le premier chargement se voit** : squelette en forme de calendrier (plus de saut de mise en page), bandeau « Construction du calendrier en cours — les sorties s'ajoutent au fur et à mesure », et revenir sur la page se peint immédiatement grâce à la dernière réponse mémorisée dans le navigateur
+- **Le filtre « Animés » fonctionne**, films d'animation compris — une fiche jamais évaluée n'éteint plus le filtre. Les plateformes **filtrent** en mode « Toutes les sorties » au lieu de remplacer le calendrier, et changer n'importe quel filtre ne recharge plus rien
+- **« Semaine précédente » et « Mois précédent » gardent leur position** au lieu de revenir à la période courante ; la vue mois s'ouvre sur le mois courant (plus de saut au mois du premier titre) et gagne un bouton « Ce mois-ci »
+- Une nouvelle demande apparaît immédiatement dans « Toutes les demandes » — le cache partagé n'était jamais purgé et pouvait retarder l'affichage d'un quart d'heure
+- L'option de tri « Date » n'est plus étiquetée « Titre »
+### EN
+- **The Releases page is now “Calendar”**, with tabs that say what they show: **“My requests”** (with “All my requests” / “All requests”) and **“All releases”** — every calendar for the period, unrequested content included
+- **Past days of the current week and month show their releases.** On a Saturday the calendar no longer knew what came out on Monday: the data window started at today, and series had no source of past dates. Sonarr's calendar now provides them, past episodes included
+- **The week view of “All releases” is no longer empty** without filters: it only received premieres and theatrical dates, rarely within seven days. Next episodes of ongoing series now show up out of the box
+- **The general calendar is built once for the whole server**, cached for six hours and refreshed in the background — warmed up at startup, so the first visitor no longer pays for the full build. “My requests” derives from that same calendar by filtering, near-instant once warm; a brand-new request still shows up immediately
+- **The first load is visible**: a calendar-shaped skeleton (no more layout jump), a “Building the calendar” banner, and returning to the page paints instantly from the last response kept in the browser
+- **The “Anime” filter works**, animated movies included. Platforms now **filter** in “All releases” instead of replacing the calendar, and changing any filter no longer refetches anything
+- **“Previous week” and “Previous month” keep their position** instead of snapping back; the month view opens on the current month and gains a “This month” button
+- A new request shows up immediately in “All requests” — the shared cache was never purged and could delay it by fifteen minutes
+- The “Date” sort option is no longer labeled “Title”
+
 ## [1.14.0]
 ### FR
 - **Le plugin s'appelle désormais Vigie.** Il n'est affilié ni à Jellyseerr ni à Overseerr : c'est un plugin indépendant qui se connecte à votre propre instance. La mention figure dans le README, sur la fiche de la marketplace et sur la page de configuration
