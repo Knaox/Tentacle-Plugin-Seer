@@ -63,14 +63,16 @@ export default {
   progressSeasonWaiting: "En attente",
   progressNoSeason: "Hors saison",
 
-  // Page Sorties
-  navReleases: "Sorties",
-  releasesTitle: "Sorties",
-  releasesSubtitle: "Les prochaines dates de vos demandes et des plateformes",
-  releasesTabPersonal: "Sorties",
+  // Page Calendrier. Les libellés disent ce que chaque vue MONTRE :
+  // « Sorties » partout (page, onglet…) n'évoquait rien et ne distinguait rien.
+  navReleases: "Calendrier",
+  releasesTitle: "Calendrier",
+  releasesSubtitle: "Les dates de sortie de vos demandes et de toutes les plateformes",
+  releasesTabPersonal: "Mes demandes",
   releasesOnlyRequested: "Seulement les demandes",
-  releasesTabAll: "Tout",
-  releasesScopeUpcoming: "À venir",
+  // Tous les calendriers de la période, contenus non demandés compris.
+  releasesTabAll: "Toutes les sorties",
+  releasesScopeUpcoming: "Toutes mes demandes",
   releasesScopeAll: "Toutes les demandes",
   // Dit franchement ce que la vue partagée montre : ce que les autres ont
   // demandé. C'est un choix assumé, pas un effet de bord.

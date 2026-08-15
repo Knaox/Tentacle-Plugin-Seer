@@ -30,9 +30,10 @@ const MEDIA: Array<{ value: CalendarMediaFilter; key: string }> = [
   { value: "anime", key: "seer:filterAnimes" },
 ];
 
-/** « date » d'abord : c'est l'ordre historique, alphabétique dans la journée. */
+/** « date » d'abord : c'est l'ordre historique, alphabétique dans la journée.
+ *  Longtemps étiquetée « Titre » — le libellé mentait sur ce que faisait l'option. */
 const SORTS: Array<{ value: ReleasesSort; key: string }> = [
-  { value: "date", key: "seer:sortTitle" },
+  { value: "date", key: "seer:sortDate" },
   { value: "popularity", key: "seer:sortPopularity" },
   { value: "rating", key: "seer:sortRating" },
 ];

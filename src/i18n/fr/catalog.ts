@@ -59,6 +59,7 @@ export default {
   filterTvStatus: "Statut",
 
   // Sort
+  sortDate: "Date",
   sortPopularity: "Popularité",
   sortTrending: "Tendances",
   sortRating: "Note",

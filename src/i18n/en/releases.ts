@@ -62,14 +62,16 @@ export default {
   progressSeasonWaiting: "Waiting",
   progressNoSeason: "Outside a season",
 
-  // Releases page
-  navReleases: "Releases",
-  releasesTitle: "Releases",
-  releasesSubtitle: "Upcoming dates for your requests and streaming platforms",
-  releasesTabPersonal: "Releases",
+  // Calendar page. Labels state what each view SHOWS: "Releases" everywhere
+  // (page, tab…) hinted at nothing and told the tabs apart even less.
+  navReleases: "Calendar",
+  releasesTitle: "Calendar",
+  releasesSubtitle: "Release dates for your requests and across all platforms",
+  releasesTabPersonal: "My requests",
   releasesOnlyRequested: "Requested only",
-  releasesTabAll: "Everything",
-  releasesScopeUpcoming: "Upcoming",
+  // Every calendar for the period, unrequested content included.
+  releasesTabAll: "All releases",
+  releasesScopeUpcoming: "All my requests",
   releasesScopeAll: "All requests",
   // States plainly what the shared view shows: what other people requested.
   releasesEveryoneHint: "Requests from every user on this server.",
