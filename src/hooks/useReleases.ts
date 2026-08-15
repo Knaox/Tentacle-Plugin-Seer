@@ -1,29 +1,39 @@
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   getPersonalCalendar, getGlobalCalendar, getCalendarProviders, currentRegion,
 } from "../api/client-releases";
-import type { CalendarMediaFilter, CalendarResponse } from "../api/types-releases";
+import { readPersistedGlobal, persistGlobal } from "../utils/releases-cache";
+import type { CalendarResponse } from "../api/types-releases";
 
 /** Tant qu'il reste des fiches à récupérer, on revient les chercher. */
 const PARTIAL_POLL_MS = 10_000;
 
+const partialPoll = (q: { state: { data?: CalendarResponse } }) =>
+  (q.state.data?.partial ? PARTIAL_POLL_MS : (false as const));
+
 /**
  * Les sorties des demandes — suit les demandes, donc rafraîchi plus souvent que
  * le calendrier global. `everyone` bascule des siennes à celles de tous.
+ *
+ * `placeholderData` garde la réponse précédente pendant qu'une nouvelle fenêtre
+ * charge : élargir la plage ne démonte plus la vue — c'est ce démontage qui
+ * faisait revenir « semaine précédente » à la semaine courante.
  */
 export function usePersonalCalendar(
   from?: string, to?: string, enabled = true, includeSettled = false, everyone = false,
 ) {
   return useQuery({
-    queryKey: ["seer-calendar-personal", from ?? "", to ?? "", includeSettled, everyone],
+    queryKey: [
+      "seer-calendar-personal", from ?? "", to ?? "", includeSettled, everyone, currentRegion(),
+    ],
     queryFn: () => getPersonalCalendar(from, to, includeSettled, everyone),
     enabled,
     /* Le serveur annonce quand des fiches lui manquent encore et les récupère
      * en tâche de fond. Sans cette relance, la page gardait sa première réponse
-     * — la plus incomplète — et il fallait la quitter pour la voir se remplir.
-     * Le sondage s'éteint de lui-même dès que tout est là. */
-    refetchInterval: (q: { state: { data?: CalendarResponse } }) =>
-      (q.state.data?.partial ? PARTIAL_POLL_MS : (false as const)),
+     * — la plus incomplète — et il fallait la quitter pour la voir se remplir. */
+    refetchInterval: partialPoll,
+    placeholderData: (prev: CalendarResponse | undefined) => prev,
     staleTime: 5 * 60_000,
     gcTime: 30 * 60_000,
     refetchOnWindowFocus: false,
@@ -31,30 +41,35 @@ export function usePersonalCalendar(
 }
 
 /**
- * Tout ce qui sort — identique pour tous les utilisateurs, et ces listes ne
- * bougent au mieux qu'une fois par jour : on les garde longtemps.
+ * Tout ce qui sort — le calendrier maître du serveur, identique pour tous.
+ * Plus aucun filtre dans la clé : type, plateformes, note et langue se
+ * départagent côté client, changer un filtre ne recharge rien.
+ *
+ * Au premier montage, la dernière réponse persistée sert de placeholder :
+ * l'iframe du plugin meurt à chaque navigation, c'est le seul cache qui
+ * survive — l'agenda se peint immédiatement, la revalidation suit.
  */
-export function useGlobalCalendar(
-  opts: { providerIds?: readonly number[]; mediaType: CalendarMediaFilter; from?: string; to?: string },
-  enabled = true,
-) {
-  /* Clé triée, comme côté serveur : cocher Netflix puis Disney+ doit tomber
-   * sur la même entrée de cache que l'ordre inverse. */
-  const scope = opts.providerIds?.length
-    ? [...opts.providerIds].sort((a, b) => a - b).join("-")
-    : "all";
-
-  return useQuery({
-    queryKey: [
-      "seer-calendar-global",
-      scope, opts.mediaType, opts.from ?? "", opts.to ?? "", currentRegion(),
-    ],
-    queryFn: () => getGlobalCalendar(opts),
+export function useGlobalCalendar(from?: string, to?: string, enabled = true) {
+  const region = currentRegion();
+  const query = useQuery({
+    queryKey: ["seer-calendar-global", from ?? "", to ?? "", region],
+    queryFn: () => getGlobalCalendar({ from, to }),
     enabled,
+    refetchInterval: partialPoll,
+    placeholderData: (prev: CalendarResponse | undefined) => prev ?? readPersistedGlobal(region),
     staleTime: 60 * 60_000,
     gcTime: 6 * 60 * 60_000,
     refetchOnWindowFocus: false,
   });
+
+  const { data } = query;
+  useEffect(() => {
+    // Jamais une réponse incomplète : elle se peindrait au prochain montage
+    // avec ses trous, et le sondage de complétion ne court pas pour un placeholder.
+    if (data && !data.partial) persistGlobal(region, data);
+  }, [data, region]);
+
+  return query;
 }
 
 /** Catalogue des plateformes de la région, films et séries confondus. */

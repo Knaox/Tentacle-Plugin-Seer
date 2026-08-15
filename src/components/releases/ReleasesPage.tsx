@@ -4,7 +4,9 @@ import type { CalendarItem, CalendarMode } from "../../api/types-releases";
 import type { SeerrSearchResult } from "../../api/types";
 import { usePersonalCalendar, useGlobalCalendar } from "../../hooks/useReleases";
 import { useReleasesFilters } from "../../hooks/useReleasesFilters";
-import { matchesReleaseFilters, sortReleases } from "../../utils/calendar-filter";
+import {
+  matchesReleaseFilters, sortReleases, activeReleasesFilterCount,
+} from "../../utils/calendar-filter";
 import { useScrollTopOnMount } from "../../hooks/useSearchHotkey";
 import { useRequestMedia } from "../../hooks/useRequestMedia";
 import { useToast } from "../../hooks/useToast";
@@ -110,17 +112,11 @@ export function ReleasesPage() {
    * pastille qu'on lui posait. La requête est de toute façon déjà en cache dès
    * qu'on a consulté « Sorties » une fois. */
   const personal = usePersonalCalendar(from, to, true, true, scope === "everyone");
-  const global = useGlobalCalendar(
-    /* Le serveur ne connaît pas « Animés » et retomberait en silence sur
-     * « tout » : on lui demande les séries, le tri fin se fait ici sur la
-     * fiche — exactement ce que fait déjà le catalogue. */
-    {
-      providerIds: filters.providerIds,
-      mediaType: filters.mediaFilter === "anime" ? "tv" : filters.mediaFilter,
-      from, to,
-    },
-    mode === "all",
-  );
+  /* Plus aucun filtre dans la requête : le serveur rend son calendrier maître
+   * entier, et type, plateformes, note ou langue se départagent plus bas —
+   * changer un filtre ne recharge rien, et « Animés » couvre enfin les films
+   * d'animation (l'ancien détour par mediaType=tv les excluait d'office). */
+  const global = useGlobalCalendar(from, to, mode === "all");
 
   const active = mode === "personal" ? personal : global;
 
@@ -139,17 +135,24 @@ export function ReleasesPage() {
     return out;
   }, [mode, personal.data, global.data]);
 
+  /* En mode « Mes demandes », « seulement les demandes » n'a aucun sens — tout
+   * en est — mais son réglage persistant continuait de filtrer en silence,
+   * sans le moindre bouton pour s'en apercevoir. On le neutralise là où il ne
+   * veut rien dire, et il sort du compteur de filtres actifs par la même
+   * occasion. */
+  const effectiveFilters = useMemo(
+    () => (mode === "personal" ? { ...filters, requestedOnly: false } : filters),
+    [mode, filters],
+  );
+
   const items = useMemo(() => {
     // Au bon jour d'abord : un épisode annoncé le 14 peut sortir le 13 au soir.
     const list = applyLocalDays(source);
-    /* En mode « Tout », le serveur a DÉJÀ trié par plateforme — il interroge
-     * TMDB avec elles. Repasser le filtre ici écartait les séries et les
-     * animés : ils arrivent par le calendrier des prochains épisodes, dont les
-     * plateformes ne sont renseignées que si la mémoire des fiches les connaît.
-     * Le serveur les avait retenus à juste titre, on les jetait juste après. */
-    const aAppliquer = mode === "all" ? { ...filters, providerIds: [] } : filters;
-    return sortReleases(list.filter((i) => matchesReleaseFilters(i, aAppliquer)), filters.sortBy);
-  }, [source, mode, filters]);
+    return sortReleases(
+      list.filter((i) => matchesReleaseFilters(i, effectiveFilters)),
+      effectiveFilters.sortBy,
+    );
+  }, [source, effectiveFilters]);
 
   /* Ouvrir une sortie mène à la fiche habituelle : depuis le calendrier, on
    * peut donc demander directement un titre encore à paraître. */
@@ -190,8 +193,12 @@ export function ReleasesPage() {
 
   /* Sur `activeFilterCount` et non sur les seules plateformes : sinon régler
    * « note ≥ 8 » et vider l'agenda annonçait « vous n'avez aucune demande à
-   * venir » — un mensonge, et le pire message possible pour un filtre. */
-  const { activeFilterCount } = releasesFilters;
+   * venir » — un mensonge, et le pire message possible pour un filtre. Compté
+   * sur les filtres EFFECTIFS : un réglage neutralisé ne mérite pas de pastille. */
+  const activeFilterCount = useMemo(
+    () => activeReleasesFilterCount(effectiveFilters),
+    [effectiveFilters],
+  );
   const filtered = activeFilterCount > 0;
 
   const everyone = mode === "personal" && scope === "everyone";

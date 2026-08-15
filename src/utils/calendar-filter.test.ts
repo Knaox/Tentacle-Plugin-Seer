@@ -58,12 +58,23 @@ test("une langue inconnue n'est jamais exclue", () => {
 });
 
 test("le type Animés se lit sur la fiche, pas sur le type de média", () => {
+  // Verdict strict assumé : le serveur pose désormais `isAnime` sur TOUTES les
+  // entrées (repli langue + genre pour les fiches froides) — une absence
+  // signifie « non », plus « pas encore évalué ».
   const serie = item({ mediaType: "tv" });
   const anime = item({ mediaType: "tv", isAnime: true });
   assert.equal(matchesReleaseFilters(serie, filtres({ mediaFilter: "anime" })), false);
   assert.equal(matchesReleaseFilters(anime, filtres({ mediaFilter: "anime" })), true);
   // Un animé reste une série quand on demande les séries.
   assert.equal(matchesReleaseFilters(anime, filtres({ mediaFilter: "tv" })), true);
+});
+
+test("un film d'animation passe le filtre Animés", () => {
+  // L'ancien détour serveur (« anime » → mediaType=tv) les excluait d'office.
+  const filmAnime = item({ mediaType: "movie", isAnime: true });
+  assert.equal(matchesReleaseFilters(filmAnime, filtres({ mediaFilter: "anime" })), true);
+  // Et il reste un film quand on demande les films.
+  assert.equal(matchesReleaseFilters(filmAnime, filtres({ mediaFilter: "movie" })), true);
 });
 
 test("les plateformes sont un OU", () => {

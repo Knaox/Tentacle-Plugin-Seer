@@ -7,7 +7,7 @@ import { getCurrentLanguage } from "../utils/media-helpers";
 import type { MediaType } from "./types";
 import type {
   AvailabilityResponse, RequestsProgressResponse, QueueResponse,
-  CalendarResponse, CalendarProvider, CalendarMediaFilter,
+  CalendarResponse, CalendarProvider,
 } from "./types-releases";
 
 /**
@@ -38,7 +38,9 @@ export async function getRequestsProgress(): Promise<RequestsProgressResponse> {
 export async function getPersonalCalendar(
   from?: string, to?: string, includeSettled = false, everyone = false,
 ): Promise<CalendarResponse> {
-  const p = new URLSearchParams();
+  // La région décide des plateformes affichées sur chaque entrée — le serveur
+  // s'en sert aussi pour retrouver le même calendrier maître que la vue globale.
+  const p = new URLSearchParams({ region: currentRegion() });
   if (from) p.set("from", from);
   if (to) p.set("to", to);
   // Y compris ce qui est déjà arrivé : sans cela la page paraissait vide dès
@@ -46,22 +48,19 @@ export async function getPersonalCalendar(
   if (includeSettled) p.set("all", "1");
   // Les demandes de tout le monde, pas seulement les siennes.
   if (everyone) p.set("everyone", "1");
-  const qs = p.toString();
-  return backendFetch(`/calendar/personal${qs ? `?${qs}` : ""}`);
+  return backendFetch(`/calendar/personal?${p}`);
 }
 
+/**
+ * Tout ce qui sort sur la période. Plus AUCUN filtre dans la requête : le
+ * serveur rend le calendrier maître entier de la fenêtre, et type, plateformes,
+ * note ou langue se départagent ici — changer un filtre ne recharge plus rien.
+ */
 export async function getGlobalCalendar(opts: {
-  /** Vide = tout ce qui sort. Plusieurs valeurs se lisent comme un OU. */
-  providerIds?: readonly number[];
-  mediaType: CalendarMediaFilter;
   from?: string;
   to?: string;
 }): Promise<CalendarResponse> {
-  const p = new URLSearchParams({
-    mediaType: opts.mediaType,
-    region: currentRegion(),
-  });
-  if (opts.providerIds?.length) p.set("providerIds", opts.providerIds.join(","));
+  const p = new URLSearchParams({ region: currentRegion() });
   if (opts.from) p.set("from", opts.from);
   if (opts.to) p.set("to", opts.to);
   return backendFetch(`/calendar/global?${p}`);

@@ -37,7 +37,12 @@ export const DEFAULT_RELEASES_FILTERS: ReleasesFilterState = {
   sortBy: "date",
 };
 
-/** Le type demandé, sachant qu'un animé reste une série pour le serveur. */
+/**
+ * Le type demandé. « Animés » se lit sur le verdict de la fiche, tous types
+ * confondus — films d'animation compris. Le verdict est STRICT à dessein : le
+ * serveur le pose sur toutes les entrées (repli langue + genre pour les fiches
+ * d'avant la colonne), une absence signifie donc « non ».
+ */
 function matchesType(item: CalendarItem, filtre: CalendarMediaFilter): boolean {
   if (filtre === "both") return true;
   if (filtre === "anime") return item.isAnime === true;
