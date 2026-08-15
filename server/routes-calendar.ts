@@ -2,21 +2,30 @@
 /*  Seer Plugin — Routes du calendrier des sorties                     */
 /* ------------------------------------------------------------------ */
 
+/*
+ * Les deux vues se servent du CALENDRIER MAÎTRE (calendar-store) : construit
+ * une fois par région pour toute l'instance, tranché ici par fenêtre et par
+ * utilisateur. Le global n'a plus de cache de réponse — le store EST le
+ * cache, et l'ancienne clé par combinaison de filtres multipliait les entrées
+ * froides pour un même contenu.
+ */
+
 import type { FastifyInstance } from "fastify";
 import type { PrismaClient } from "@prisma/client";
 import { cached } from "./cache";
 import { getUser, type WorkerCfg } from "./seerr-unified";
 import { buildMergedRows, type MergedRows } from "./requests-list";
-import { buildPersonalCalendar } from "./calendar-personal";
+import { buildPersonalFromStore } from "./calendar-personal-store";
 import { buildEveryoneRows } from "./calendar-everyone";
-import { buildGlobalCalendar } from "./calendar-global";
+import { buildGlobalFromStore } from "./calendar-service";
+import { initCalendarStoreMaintenance } from "./calendar-store";
 import { isDayString, addDays, type CalendarResponse } from "./calendar-types";
 import { todayString } from "./tmdb-fetch";
 import { rowsCacheKey } from "./routes-requests-read";
 import { DEFAULT_REGION } from "./tmdb-resolver";
-import { attachAirTimes, sonarrSeriesAirTimes } from "./sonarr-schedule";
+import { sonarrSeriesAirTimes } from "./sonarr-schedule";
 
-/** Le personnel bouge avec les demandes ; le global au mieux une fois par jour. */
+/** Le personnel bouge avec les demandes ; le store maître vit sa propre vie. */
 const PERSONAL_TTL_MS = 15 * 60_000;
 const PERSONAL_STALE_MS = 6 * 3_600_000;
 /**
@@ -34,9 +43,6 @@ const PARTIAL_TTL_MS = 10_000;
  * aller-retour, et le reste part de toute façon en tâche de fond.
  */
 const EVERYONE_FETCH_BUDGET = 60;
-const GLOBAL_TTL_MS = 6 * 3_600_000;
-const GLOBAL_STALE_MS = 24 * 3_600_000;
-const PROVIDER_TTL_MS = 12 * 3_600_000;
 /** Plafond de plateformes combinables — au-delà, le filtre ne filtre plus. */
 const MAX_PROVIDERS = 8;
 
@@ -53,6 +59,12 @@ function readWindow(q: { from?: string; to?: string }): { from: string; to: stri
   return { from, to: to > hardMax ? hardMax : to < from ? from : to };
 }
 
+function readRegion(q: { region?: string }): string {
+  return typeof q.region === "string" && /^[a-z]{2}$/i.test(q.region)
+    ? q.region.toUpperCase()
+    : DEFAULT_REGION;
+}
+
 const EMPTY = (from: string, to: string): CalendarResponse => ({ from, to, items: [], partial: false });
 
 export function registerCalendarRoutes(
@@ -60,24 +72,34 @@ export function registerCalendarRoutes(
   prisma: PrismaClient,
   getWorkerConfig: () => Promise<WorkerCfg | null>,
 ): void {
+  const warn = (err: unknown, msg: string) => app.log?.warn?.({ err }, msg);
+
+  /* Préchauffage + entretien du calendrier maître. Branché ici plutôt que
+   * dans index.ts, déjà au-delà du budget de lignes du projet. */
+  const stopMaintenance = initCalendarStoreMaintenance(prisma, getWorkerConfig, warn);
+  app.addHook("onClose", async () => stopMaintenance());
 
   /* ── Les sorties des demandes — les miennes, ou celles de tout le monde ── */
   app.get("/calendar/personal", async (request) => {
     const user = getUser(request);
-    const q = request.query as { from?: string; to?: string; all?: string; everyone?: string };
+    const q = request.query as {
+      from?: string; to?: string; all?: string; everyone?: string; region?: string;
+    };
     const { from, to } = readWindow(q);
     const includeSettled = q.all === "1";
     const everyone = q.everyone === "1";
+    const region = readRegion(q);
 
     const config = await getWorkerConfig();
     if (!config) return EMPTY(from, to);
 
     /* Vue « tout le monde » : le résultat ne dépend d'aucun utilisateur, donc
      * une seule entrée de cache sert toute l'instance. La vue personnelle,
-     * elle, reste préfixée par le compte. */
+     * elle, reste préfixée par le compte. La région fait partie de la clé :
+     * elle décide des plateformes affichées sur chaque entrée. */
     const key = everyone
-      ? `seer:cal:everyone:${from}:${to}:${includeSettled ? "all" : "up"}`
-      : `seer-cache:${user.userId}:cal:${from}:${to}:${includeSettled ? "all" : "up"}`;
+      ? `seer:cal:everyone:${region}:${from}:${to}:${includeSettled ? "all" : "up"}`
+      : `seer-cache:${user.userId}:cal:${region}:${from}:${to}:${includeSettled ? "all" : "up"}`;
 
     return cached(
       key,
@@ -85,7 +107,6 @@ export function registerCalendarRoutes(
       async () => {
         // Réutilise la liste déjà chargée : arriver depuis « Mes demandes »
         // ne coûte alors aucun appel réseau.
-        const warn = (err: unknown, msg: string) => app.log?.warn?.({ err }, msg);
         const rows: MergedRows = everyone
           ? await cached(
               "seer:rows:everyone",
@@ -99,12 +120,10 @@ export function registerCalendarRoutes(
               () => buildMergedRows(prisma, config, user, warn),
               { staleMs: 600_000 },
             );
-        const res = await buildPersonalCalendar(prisma, config, rows, {
-          from, to, includeSettled,
+        return buildPersonalFromStore(prisma, config, rows, {
+          from, to, includeSettled, region,
           maxFetch: everyone ? EVERYONE_FETCH_BUDGET : undefined,
-        });
-        // L'heure réelle des épisodes, quand Sonarr suit la série.
-        return attachAirTimes(config, res);
+        }, warn);
       },
       {
         staleMs: PERSONAL_STALE_MS,
@@ -113,7 +132,10 @@ export function registerCalendarRoutes(
     );
   });
 
-  /* ── Tout ce qui sort — indépendant des demandes ── */
+  /* ── Tout ce qui sort — indépendant des demandes ──
+   *
+   * Pas de cached() ici : la tranche d'un store en mémoire coûte une boucle,
+   * et la pastille « demandé » doit rester à jour à la minute. */
   app.get("/calendar/global", async (request) => {
     const q = request.query as {
       providerIds?: string; mediaType?: string;
@@ -124,35 +146,18 @@ export function registerCalendarRoutes(
     const config = await getWorkerConfig();
     if (!config) return EMPTY(from, to);
 
-    /* Au-delà d'une poignée de plateformes, le OU ne veut plus rien dire — et
-     * chacune ajoute des séries à résoudre pour un agenda encore froid. */
+    /* Params encore envoyés par un bundle client antérieur — le client actuel
+     * filtre tout chez lui et ne les envoie plus. */
     const providerIds = String(q.providerIds ?? "")
       .split(",")
       .map(Number)
       .filter((n) => Number.isFinite(n) && n > 0)
       .slice(0, MAX_PROVIDERS);
-
     const mediaType = q.mediaType === "movie" || q.mediaType === "tv" ? q.mediaType : "both";
-    const region = typeof q.region === "string" && /^[a-z]{2}$/i.test(q.region)
-      ? q.region.toUpperCase()
-      : DEFAULT_REGION;
 
-    /* Clé sans utilisateur : le résultat est le même pour tout le monde. Elle
-     * est TRIÉE, sans quoi « 8,337 » et « 337,8 » occuperaient deux entrées
-     * pour un résultat identique. */
-    const scope = providerIds.length > 0 ? [...providerIds].sort((a, b) => a - b).join("-") : "all";
-    const key = `seer:cal:${scope}:${mediaType}:${region}:${from}:${to}`;
-    const ttl = providerIds.length > 0 ? PROVIDER_TTL_MS : GLOBAL_TTL_MS;
-
-    return cached(
-      key,
-      ttl,
-      async () => attachAirTimes(
-        config,
-        await buildGlobalCalendar(prisma, config, { providerIds, mediaType, region, from, to }),
-      ),
-      { staleMs: GLOBAL_STALE_MS },
-    );
+    return buildGlobalFromStore(prisma, config, {
+      providerIds, mediaType, region: readRegion(q), from, to,
+    }, warn);
   });
 
   /* ── Heures de diffusion d'une série, pour la fiche détaillée ──
@@ -183,9 +188,7 @@ export function registerCalendarRoutes(
     const config = await getWorkerConfig();
     if (!config) return { results: [] };
 
-    const region = typeof q.region === "string" && /^[a-z]{2}$/i.test(q.region)
-      ? q.region.toUpperCase()
-      : DEFAULT_REGION;
+    const region = readRegion(q);
 
     return cached(`seer:providers:all:${region}`, 24 * 3_600_000, async () => {
       const merged = new Map<number, { id: number; name: string; logoPath: string | null }>();

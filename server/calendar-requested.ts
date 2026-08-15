@@ -21,6 +21,27 @@
 
 import type { PrismaClient } from "@prisma/client";
 import type { CalendarItem } from "./calendar-types";
+import { cached } from "./cache";
+
+/**
+ * Les identifiants demandés de l'instance, cachés une minute : le calendrier
+ * global n'a plus de cache de réponse (le store maître le remplace), cette
+ * requête partirait donc à CHAQUE tranche servie. La purge suit les demandes
+ * via invalidateRequestCaches — la pastille reste immédiate.
+ */
+async function requestedIds(prisma: PrismaClient): Promise<Set<string>> {
+  return cached(
+    "seer:requested:index",
+    60_000,
+    async () => {
+      const rows = await prisma.$queryRawUnsafe<Array<{ media_type: string; tmdb_id: number }>>(
+        `SELECT DISTINCT media_type, tmdb_id FROM seer_requests WHERE tmdb_id > 0`,
+      );
+      return new Set(rows.map((r) => `${r.media_type}:${Number(r.tmdb_id)}`));
+    },
+    { staleMs: 600_000 },
+  );
+}
 
 export async function markRequested(
   prisma: PrismaClient,
@@ -29,12 +50,9 @@ export async function markRequested(
   if (items.length === 0) return;
 
   try {
-    const rows = await prisma.$queryRawUnsafe<Array<{ media_type: string; tmdb_id: number }>>(
-      `SELECT DISTINCT media_type, tmdb_id FROM seer_requests WHERE tmdb_id > 0`,
-    );
-    if (rows.length === 0) return;
+    const demandes = await requestedIds(prisma);
+    if (demandes.size === 0) return;
 
-    const demandes = new Set(rows.map((r) => `${r.media_type}:${Number(r.tmdb_id)}`));
     for (const item of items) {
       if (demandes.has(`${item.mediaType}:${item.tmdbId}`)) {
         /* Le statut exact n'est pas recherché : la vue n'affiche qu'une

@@ -19,8 +19,7 @@
 import type { PrismaClient } from "@prisma/client";
 import type { WorkerCfg } from "./seerr-unified";
 import { cached } from "./cache";
-import { toDayString } from "./tmdb-fetch";
-import { detectAnime, detectAnimeLoose } from "./tmdb-traits";
+import { detectAnimeLoose } from "./tmdb-traits";
 import { tmdbKey, type TmdbRef } from "./tmdb-cache";
 import { resolveTmdbMeta, scheduleTmdbBackfill } from "./tmdb-resolver";
 import { buildEveryoneRows } from "./calendar-everyone";
@@ -29,19 +28,15 @@ import { buildProviderEpisodes } from "./calendar-providers";
 import { attachAirTimes, sonarrWindowEpisodes, type SonarrWindowEpisode } from "./sonarr-schedule";
 import {
   discoverUpcomingMovies, discoverRecentMovies, discoverTvFirsts,
-  discoverTvReturning, discoverTvTopProviders, type DiscoverRow,
+  discoverTvReturning, discoverTvTopProviders, discoverRowsToItems,
+  type DiscoverRow,
 } from "./calendar-store-sources";
-import {
-  type CalendarItem, type CalendarKind,
-  makeItemId, sortCalendarItems,
-} from "./calendar-types";
+import { type CalendarItem, makeItemId, sortCalendarItems } from "./calendar-types";
 
 /** Fiches des demandes récupérées en direct au build — le reste part en fond. */
 const REQUESTS_FETCH_BUDGET = 60;
 /** Garde-fou mémoire : ~600 o par entrée, au-delà on tronque après tri. */
 const MAX_STORE_ITEMS = 4000;
-/** Statut Jellyseerr d'un média bloqué par tags — retiré comme sur le catalogue. */
-const MEDIA_STATUS_BLOCKLISTED = 6;
 
 export interface CalendarStore {
   region: string;
@@ -137,49 +132,6 @@ function dedupeRows(rows: DiscoverRow[]): DiscoverRow[] {
     if (!r.id || seen.has(r.id)) continue;
     seen.add(r.id);
     out.push(r);
-  }
-  return out;
-}
-
-/** Transforme des résultats de découverte en entrées, fenêtre appliquée. */
-export function discoverRowsToItems(
-  rows: DiscoverRow[], type: "movie" | "tv", from: string, to: string,
-): CalendarItem[] {
-  const out: CalendarItem[] = [];
-  for (const r of rows) {
-    if (!r.id) continue;
-    if (r.mediaInfo?.status === MEDIA_STATUS_BLOCKLISTED) continue;
-
-    const date = toDayString(r.releaseDate ?? r.firstAirDate);
-    // Garde-fou : hors fenêtre = bruit TMDB (dates 2030…), on jette.
-    if (!date || date < from || date > to) continue;
-
-    const mediaType = (r.mediaType === "tv" || r.mediaType === "movie")
-      ? (r.mediaType as "movie" | "tv")
-      : type;
-    const kind: CalendarKind = mediaType === "movie" ? "theatrical" : "premiere";
-
-    out.push({
-      id: makeItemId(mediaType, r.id, kind, date),
-      date, mediaType, tmdbId: r.id,
-      title: r.title ?? r.name ?? "",
-      posterPath: r.posterPath ?? null,
-      backdropPath: r.backdropPath ?? null,
-      overview: r.overview ?? null,
-      kind,
-      seasonNumber: null,
-      episodeNumber: null,
-      networks: null,
-      voteAverage: typeof r.voteAverage === "number" ? r.voteAverage : null,
-      popularity: typeof r.popularity === "number" ? r.popularity : null,
-      originalLanguage: r.originalLanguage ?? null,
-      isAnime: detectAnime(r),
-      // Complété par l'enrichissement final : recopier la plateforme demandée
-      // reviendrait à jurer qu'un film est sur toutes les plateformes cochées.
-      providerIds: [],
-      requestId: null,
-      requestStatus: null,
-    });
   }
   return out;
 }

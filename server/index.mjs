@@ -1158,6 +1158,7 @@ function invalidateRequestCaches(userId) {
   invalidate(userId ? `seer-cache:${userId}` : "seer-cache");
   invalidate("seer:rows:everyone");
   invalidate("seer:cal:everyone");
+  invalidate("seer:requested:index");
 }
 setInterval(() => {
   const now = Date.now();
@@ -1874,6 +1875,14 @@ function detectAnime(raw) {
   if (lireMotsCles(raw.keywords).some((k) => k?.id === KEYWORD_ANIME)) return true;
   const asiatique = LANGUES.has(raw.originalLanguage ?? "") || (raw.originCountry ?? []).some((c) => ORIGINES.has((c ?? "").toUpperCase()));
   return asiatique && lireGenres(raw).includes(GENRE_ANIMATION);
+}
+function detectAnimeLoose(m) {
+  if (m.isAnime === true) return true;
+  return detectAnime({
+    genreIds: m.genreIds,
+    originalLanguage: m.originalLanguage ?? void 0,
+    originCountry: m.originCountry
+  });
 }
 
 // server/tmdb-fetch.ts
@@ -4159,17 +4168,141 @@ async function collectActiveRows(prisma, config, userId, username) {
   return Array.from(out.values());
 }
 
-// server/calendar-freshness.ts
-function isDateless(m) {
-  return !m.releaseDate && !m.digitalDate && !m.theatricalDate && !m.physicalDate && !m.nextAirDate;
+// server/sonarr-schedule.ts
+var SERIES_TTL_MS = 30 * 6e4;
+var SERIES_STALE_MS = 6 * 36e5;
+var CALENDAR_TTL_MS = 30 * 6e4;
+var CALENDAR_STALE_MS = 6 * 36e5;
+var EPISODES_TTL_MS = 36e5;
+var EPISODES_STALE_MS = 12 * 36e5;
+function airTimeKey(season, episode) {
+  return `S${season}E${episode}`;
 }
-function needsDateRefresh(m, now = Date.now()) {
-  if (!isDateless(m)) return false;
-  const expires = Date.parse(m.expiresAt);
-  return !Number.isFinite(expires) || expires <= now;
+async function sonarr(cfg) {
+  return getArrServerConfig(cfg.seerrUrl, cfg.seerrApiKey, "sonarr");
 }
-function needsTraitsRefresh(m) {
-  return !m.originalLanguage;
+async function arrGet(server, path) {
+  try {
+    const res = await fetch(`${buildArrUrl(server)}${path}`, {
+      headers: { "X-Api-Key": server.apiKey },
+      signal: AbortSignal.timeout(15e3)
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+async function sonarrSeriesIndex(cfg) {
+  return cached(
+    "seer:sonarr:series",
+    SERIES_TTL_MS,
+    async () => {
+      const server = await sonarr(cfg);
+      if (!server) return /* @__PURE__ */ new Map();
+      const rows = await arrGet(server, "/api/v3/series");
+      const index = /* @__PURE__ */ new Map();
+      for (const s of rows ?? []) {
+        if (s.tmdbId && s.id) index.set(s.tmdbId, s.id);
+      }
+      return index;
+    },
+    { staleMs: SERIES_STALE_MS }
+  );
+}
+async function sonarrCalendarRaw(cfg, from, to) {
+  return cached(
+    `seer:sonarr:calraw:${from}:${to}`,
+    CALENDAR_TTL_MS,
+    async () => {
+      const server = await sonarr(cfg);
+      if (!server) return [];
+      const rows = await arrGet(
+        server,
+        `/api/v3/calendar?start=${from}&end=${to}&includeSeries=false`
+      );
+      return rows ?? [];
+    },
+    { staleMs: CALENDAR_STALE_MS }
+  );
+}
+async function sonarrWindowAirTimes(cfg, from, to) {
+  const rows = await sonarrCalendarRaw(cfg, from, to);
+  const times = /* @__PURE__ */ new Map();
+  for (const e of rows) {
+    if (!e.airDateUtc || e.seriesId == null || e.seasonNumber == null || e.episodeNumber == null) continue;
+    times.set(`${e.seriesId}:${airTimeKey(e.seasonNumber, e.episodeNumber)}`, e.airDateUtc);
+  }
+  return times;
+}
+async function sonarrWindowEpisodes(cfg, from, to) {
+  const [rows, index] = await Promise.all([
+    sonarrCalendarRaw(cfg, from, to),
+    sonarrSeriesIndex(cfg)
+  ]);
+  if (rows.length === 0 || index.size === 0) return [];
+  const tmdbBySeriesId = /* @__PURE__ */ new Map();
+  for (const [tmdbId, seriesId] of index) tmdbBySeriesId.set(seriesId, tmdbId);
+  const out = [];
+  for (const e of rows) {
+    if (!e.airDateUtc || e.seriesId == null || e.seasonNumber == null || e.episodeNumber == null) continue;
+    const tmdbId = tmdbBySeriesId.get(e.seriesId);
+    if (!tmdbId) continue;
+    out.push({
+      tmdbId,
+      seasonNumber: e.seasonNumber,
+      episodeNumber: e.episodeNumber,
+      airDateUtc: e.airDateUtc,
+      airDate: e.airDate && /^\d{4}-\d{2}-\d{2}$/.test(e.airDate) ? e.airDate : null
+    });
+  }
+  return out;
+}
+async function attachAirTimes(cfg, res) {
+  const episodes = res.items.filter((i) => i.kind === "episode");
+  if (episodes.length === 0) return res;
+  try {
+    const [index, times] = await Promise.all([
+      sonarrSeriesIndex(cfg),
+      // Fenêtre élargie d'un jour : un épisode peut basculer d'une journée à
+      // l'autre une fois ramené à l'heure locale, dans un sens comme dans l'autre.
+      sonarrWindowAirTimes(cfg, shiftDay(res.from, -1), shiftDay(res.to, 1))
+    ]);
+    if (index.size === 0 || times.size === 0) return res;
+    for (const item of episodes) {
+      const seriesId = index.get(item.tmdbId);
+      if (!seriesId || item.seasonNumber == null || item.episodeNumber == null) continue;
+      const at = times.get(`${seriesId}:${airTimeKey(item.seasonNumber, item.episodeNumber)}`);
+      if (at) item.airDateUtc = at;
+    }
+  } catch {
+  }
+  return res;
+}
+function shiftDay(day, delta) {
+  const [y, m, d] = day.split("-").map(Number);
+  const date = new Date(y, m - 1, d + delta);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+async function sonarrSeriesAirTimes(cfg, tmdbId) {
+  return cached(
+    `seer:sonarr:eps:${tmdbId}`,
+    EPISODES_TTL_MS,
+    async () => {
+      const [server, index] = await Promise.all([sonarr(cfg), sonarrSeriesIndex(cfg)]);
+      const seriesId = index.get(tmdbId);
+      if (!server || !seriesId) return /* @__PURE__ */ new Map();
+      const rows = await arrGet(server, `/api/v3/episode?seriesId=${seriesId}`);
+      const times = /* @__PURE__ */ new Map();
+      for (const e of rows ?? []) {
+        if (!e.airDateUtc || e.seasonNumber == null || e.episodeNumber == null) continue;
+        times.set(airTimeKey(e.seasonNumber, e.episodeNumber), e.airDateUtc);
+      }
+      return times;
+    },
+    { staleMs: EPISODES_STALE_MS }
+  );
 }
 
 // server/calendar-types.ts
@@ -4203,20 +4336,93 @@ function capPerSeries(items, max) {
   }
   return out;
 }
+function capPerSeriesFuture(items, max, today) {
+  const seen = /* @__PURE__ */ new Map();
+  const out = [];
+  for (const item of items) {
+    if (item.mediaType !== "tv" || item.date < today) {
+      out.push(item);
+      continue;
+    }
+    const n = (seen.get(item.tmdbId) ?? 0) + 1;
+    seen.set(item.tmdbId, n);
+    if (n <= max) out.push(item);
+  }
+  return out;
+}
+
+// server/calendar-everyone.ts
+var LOCAL_PENDING_STATUSES2 = [
+  "queued",
+  "processing",
+  "retry_pending",
+  "failed",
+  "deleting",
+  "delete_failed"
+];
+var NO_STATS = { total: 0, byStatus: {}, byType: { movie: 0, tv: 0 } };
+async function buildEveryoneRows(prisma, cfg, log) {
+  const localPendingRows = await prisma.$queryRawUnsafe(
+    `SELECT * FROM seer_requests
+     WHERE status IN (${LOCAL_PENDING_STATUSES2.map(() => "?").join(",")})
+     ORDER BY created_at DESC`,
+    ...LOCAL_PENDING_STATUSES2
+  );
+  const localPending = localPendingRows.map(rowToRequest);
+  const localBySeerrId = /* @__PURE__ */ new Map();
+  const allLocalRows = await prisma.$queryRawUnsafe(
+    `SELECT * FROM seer_requests WHERE seerr_request_id IS NOT NULL`
+  );
+  for (const row of allLocalRows) {
+    const r = rowToRequest(row);
+    if (r.seerrRequestId) localBySeerrId.set(r.seerrRequestId, r);
+  }
+  let seerrRows = [];
+  try {
+    const all = await fetchAllSeerrRequests(cfg, null);
+    seerrRows = all.rows;
+  } catch (err) {
+    log?.(err, "Seerr fetch (tous) failed, falling back to local only");
+  }
+  const seerrSeenIds = new Set(seerrRows.map((r) => r.id));
+  const localOnly = localPending.filter(
+    (l) => !l.seerrRequestId || !seerrSeenIds.has(l.seerrRequestId)
+  );
+  return {
+    seerrRows,
+    localBySeerrId,
+    localOnly,
+    deletingIds: /* @__PURE__ */ new Set(),
+    stats: NO_STATS,
+    fetchedAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+
+// server/calendar-freshness.ts
+function isDateless(m) {
+  return !m.releaseDate && !m.digitalDate && !m.theatricalDate && !m.physicalDate && !m.nextAirDate;
+}
+function needsDateRefresh(m, now = Date.now()) {
+  if (!isDateless(m)) return false;
+  const expires = Date.parse(m.expiresAt);
+  return !Number.isFinite(expires) || expires <= now;
+}
+function needsTraitsRefresh(m) {
+  return !m.originalLanguage;
+}
 
 // server/calendar-personal.ts
 var FETCH_BUDGET2 = 25;
 var MAX_PER_SERIES = 3;
 var SETTLED_MEDIA_STATUS = /* @__PURE__ */ new Set([5]);
-async function buildPersonalCalendar(prisma, cfg, rows, opts) {
-  const region = opts.region ?? DEFAULT_REGION;
+function collectRequestRefs(rows, includeSettled) {
   const refs = /* @__PURE__ */ new Map();
   const statusByKey = /* @__PURE__ */ new Map();
   for (const sr of rows.seerrRows) {
     if (!sr.media?.tmdbId) continue;
     const ref = { mediaType: sr.media.mediaType, tmdbId: sr.media.tmdbId };
     const key = tmdbKey(ref);
-    if (!opts.includeSettled && sr.media.mediaType === "movie" && SETTLED_MEDIA_STATUS.has(sr.media.status ?? 0)) continue;
+    if (!includeSettled && sr.media.mediaType === "movie" && SETTLED_MEDIA_STATUS.has(sr.media.status ?? 0)) continue;
     refs.set(key, ref);
     if (!statusByKey.has(key)) {
       const local = rows.localBySeerrId.get(sr.id);
@@ -4232,6 +4438,11 @@ async function buildPersonalCalendar(prisma, cfg, rows, opts) {
     refs.set(key, { mediaType: l.mediaType, tmdbId: l.tmdbId });
     if (!statusByKey.has(key)) statusByKey.set(key, { status: l.status, requestId: l.id });
   }
+  return { refs, statusByKey };
+}
+async function buildPersonalCalendar(prisma, cfg, rows, opts) {
+  const region = opts.region ?? DEFAULT_REGION;
+  const { refs, statusByKey } = collectRequestRefs(rows, opts.includeSettled ?? false);
   const list = Array.from(refs.values());
   const { meta, missing } = await resolveTmdbMeta(prisma, cfg, list, {
     maxFetch: opts.maxFetch ?? FETCH_BUDGET2,
@@ -4307,71 +4518,6 @@ function metaToCalendarItems(m, from, to) {
   return out;
 }
 
-// server/calendar-everyone.ts
-var LOCAL_PENDING_STATUSES2 = [
-  "queued",
-  "processing",
-  "retry_pending",
-  "failed",
-  "deleting",
-  "delete_failed"
-];
-var NO_STATS = { total: 0, byStatus: {}, byType: { movie: 0, tv: 0 } };
-async function buildEveryoneRows(prisma, cfg, log) {
-  const localPendingRows = await prisma.$queryRawUnsafe(
-    `SELECT * FROM seer_requests
-     WHERE status IN (${LOCAL_PENDING_STATUSES2.map(() => "?").join(",")})
-     ORDER BY created_at DESC`,
-    ...LOCAL_PENDING_STATUSES2
-  );
-  const localPending = localPendingRows.map(rowToRequest);
-  const localBySeerrId = /* @__PURE__ */ new Map();
-  const allLocalRows = await prisma.$queryRawUnsafe(
-    `SELECT * FROM seer_requests WHERE seerr_request_id IS NOT NULL`
-  );
-  for (const row of allLocalRows) {
-    const r = rowToRequest(row);
-    if (r.seerrRequestId) localBySeerrId.set(r.seerrRequestId, r);
-  }
-  let seerrRows = [];
-  try {
-    const all = await fetchAllSeerrRequests(cfg, null);
-    seerrRows = all.rows;
-  } catch (err) {
-    log?.(err, "Seerr fetch (tous) failed, falling back to local only");
-  }
-  const seerrSeenIds = new Set(seerrRows.map((r) => r.id));
-  const localOnly = localPending.filter(
-    (l) => !l.seerrRequestId || !seerrSeenIds.has(l.seerrRequestId)
-  );
-  return {
-    seerrRows,
-    localBySeerrId,
-    localOnly,
-    deletingIds: /* @__PURE__ */ new Set(),
-    stats: NO_STATS,
-    fetchedAt: (/* @__PURE__ */ new Date()).toISOString()
-  };
-}
-
-// server/calendar-requested.ts
-async function markRequested(prisma, items) {
-  if (items.length === 0) return;
-  try {
-    const rows = await prisma.$queryRawUnsafe(
-      `SELECT DISTINCT media_type, tmdb_id FROM seer_requests WHERE tmdb_id > 0`
-    );
-    if (rows.length === 0) return;
-    const demandes = new Set(rows.map((r) => `${r.media_type}:${Number(r.tmdb_id)}`));
-    for (const item of items) {
-      if (demandes.has(`${item.mediaType}:${item.tmdbId}`)) {
-        item.requestStatus = item.requestStatus ?? "processing";
-      }
-    }
-  } catch {
-  }
-}
-
 // server/calendar-providers.ts
 var EPISODE_FETCH_BUDGET = 30;
 var MEDIA_STATUS_BLOCKLISTED = 6;
@@ -4420,22 +4566,16 @@ async function buildProviderEpisodes(prisma, cfg, rows, opts) {
   }
   return { items, partial: missing.length > 0 };
 }
-async function attachProviderIds(prisma, cfg, items, region) {
-  const refs = items.filter((i) => i.providerIds.length === 0).map((i) => ({ mediaType: i.mediaType, tmdbId: i.tmdbId }));
-  if (refs.length === 0) return;
-  const { meta } = await resolveTmdbMeta(prisma, cfg, refs, { maxFetch: 0, region });
-  for (const item of items) {
-    if (item.providerIds.length > 0) continue;
-    const m = meta.get(tmdbKey({ mediaType: item.mediaType, tmdbId: item.tmdbId }));
-    if (m?.providerIds?.length) item.providerIds = m.providerIds;
-  }
-}
 
-// server/calendar-global.ts
-var PAGES = 3;
-var MAX_PER_SERIES2 = 2;
+// server/calendar-store-sources.ts
 var MEDIA_STATUS_BLOCKLISTED2 = 6;
+var PAGES = 3;
+var SRC_TTL_MS = 36e5;
+var SRC_STALE_MS = 6 * 36e5;
 var TMDB_STATUS_RETURNING = "0";
+var UNION_CHUNK = 8;
+var UNION_PROVIDERS_MAX = 16;
+var PRIORITY_PROVIDER_IDS = [8, 119, 337, 283, 350, 381, 415, 1899];
 async function discover(cfg, path, params, page) {
   const qs = new URLSearchParams({ ...params, page: String(page) });
   try {
@@ -4458,225 +4598,440 @@ async function discoverPages(cfg, path, params) {
   );
   return pages.flatMap((p) => p ?? []);
 }
-async function buildGlobalCalendar(prisma, cfg, opts) {
-  const wantMovies = opts.mediaType === "movie" || opts.mediaType === "both";
-  const wantTv = opts.mediaType === "tv" || opts.mediaType === "both";
-  const tasks = [];
-  if (opts.providerIds.length > 0) {
-    const shared = {
-      // Le tube est un OU côté TMDB : « 8|337 » = Netflix ou Disney+.
-      watchProviders: opts.providerIds.join("|"),
-      watchRegion: opts.region
-    };
-    const seriesRows = wantTv ? await discoverPages(cfg, "tv", {
-      ...shared,
+async function discoverUpcomingMovies(cfg) {
+  return cached(
+    "seer:src:mov-up",
+    SRC_TTL_MS,
+    () => discoverPages(cfg, "movies/upcoming", {}),
+    { staleMs: SRC_STALE_MS }
+  );
+}
+async function discoverRecentMovies(cfg, from, to) {
+  return cached(
+    `seer:src:mov-recent:${from}:${to}`,
+    SRC_TTL_MS,
+    () => discoverPages(cfg, "movies", {
+      sortBy: "primary_release_date.desc",
+      primaryReleaseDateGte: from,
+      primaryReleaseDateLte: to
+    }),
+    { staleMs: SRC_STALE_MS }
+  );
+}
+async function discoverTvFirsts(cfg, from) {
+  return cached(
+    `seer:src:tv-first:${from}`,
+    SRC_TTL_MS,
+    () => discoverPages(cfg, "tv", {
+      sortBy: "first_air_date.asc",
+      firstAirDateGte: from
+    }),
+    { staleMs: SRC_STALE_MS }
+  );
+}
+async function discoverTvReturning(cfg) {
+  return cached(
+    "seer:src:tv-ret",
+    SRC_TTL_MS,
+    () => discoverPages(cfg, "tv", {
+      sortBy: "popularity.desc",
+      status: TMDB_STATUS_RETURNING
+    }),
+    { staleMs: SRC_STALE_MS }
+  );
+}
+async function discoverTvReturningByProviders(cfg, ids, region) {
+  if (ids.length === 0) return [];
+  const key = [...ids].sort((a, b) => a - b).join("-");
+  return cached(
+    `seer:src:tv-prov:${key}:${region}`,
+    SRC_TTL_MS,
+    () => discoverPages(cfg, "tv", {
+      watchProviders: ids.join("|"),
+      watchRegion: region,
       sortBy: "first_air_date.desc",
       status: TMDB_STATUS_RETURNING
-    }) : [];
-    if (wantMovies) {
-      tasks.push(async () => ({
-        type: "movie",
-        rows: await discoverPages(cfg, "movies", { ...shared, sortBy: "primary_release_date.desc" })
-      }));
+    }),
+    { staleMs: SRC_STALE_MS }
+  );
+}
+async function discoverTvTopProviders(cfg, region) {
+  const ids = await topRegionProviderIds(cfg, region);
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += UNION_CHUNK) chunks.push(ids.slice(i, i + UNION_CHUNK));
+  const buckets = await mapLimit(chunks, 2, (c) => discoverTvReturningByProviders(cfg, c, region));
+  return buckets.flatMap((b) => b ?? []);
+}
+function discoverRowsToItems(rows, type, from, to) {
+  const out = [];
+  for (const r of rows) {
+    if (!r.id) continue;
+    if (r.mediaInfo?.status === MEDIA_STATUS_BLOCKLISTED2) continue;
+    const date = toDayString(r.releaseDate ?? r.firstAirDate);
+    if (!date || date < from || date > to) continue;
+    const mediaType = r.mediaType === "tv" || r.mediaType === "movie" ? r.mediaType : type;
+    const kind = mediaType === "movie" ? "theatrical" : "premiere";
+    out.push({
+      id: makeItemId(mediaType, r.id, kind, date),
+      date,
+      mediaType,
+      tmdbId: r.id,
+      title: r.title ?? r.name ?? "",
+      posterPath: r.posterPath ?? null,
+      backdropPath: r.backdropPath ?? null,
+      overview: r.overview ?? null,
+      kind,
+      seasonNumber: null,
+      episodeNumber: null,
+      networks: null,
+      voteAverage: typeof r.voteAverage === "number" ? r.voteAverage : null,
+      popularity: typeof r.popularity === "number" ? r.popularity : null,
+      originalLanguage: r.originalLanguage ?? null,
+      isAnime: detectAnime(r),
+      // Complété par l'enrichissement final du build : recopier la plateforme
+      // demandée jurerait qu'un film est sur toutes les plateformes cochées.
+      providerIds: [],
+      requestId: null,
+      requestStatus: null
+    });
+  }
+  return out;
+}
+async function topRegionProviderIds(cfg, region) {
+  return cached(
+    `seer:src:top-prov:${region}`,
+    24 * 36e5,
+    async () => {
+      const catalog = [];
+      for (const path of ["tv", "movies"]) {
+        try {
+          const res = await fetch(
+            `${cfg.seerrUrl}/api/v1/watchproviders/${path}?watchRegion=${region}`,
+            { headers: { "X-Api-Key": cfg.seerrApiKey }, signal: AbortSignal.timeout(1e4) }
+          );
+          if (!res.ok) continue;
+          const data = await res.json();
+          for (const p of Array.isArray(data) ? data : []) {
+            if (typeof p.id === "number" && !catalog.includes(p.id)) catalog.push(p.id);
+          }
+        } catch {
+        }
+      }
+      const out = [];
+      for (const id of PRIORITY_PROVIDER_IDS) {
+        if (catalog.includes(id) && !out.includes(id)) out.push(id);
+      }
+      for (const id of catalog) {
+        if (out.length >= UNION_PROVIDERS_MAX) break;
+        if (!out.includes(id)) out.push(id);
+      }
+      return out.slice(0, UNION_PROVIDERS_MAX);
     }
-    const movieBuckets = await mapLimit(tasks, 2, (t) => t());
-    const episodes = await buildProviderEpisodes(prisma, cfg, seriesRows, opts);
-    const movies = collectItems(movieBuckets, opts);
-    const merged = /* @__PURE__ */ new Map();
-    for (const it of [...episodes.items, ...movies.items]) if (!merged.has(it.id)) merged.set(it.id, it);
-    const items2 = capPerSeries(sortCalendarItems(Array.from(merged.values())), MAX_PER_SERIES2);
-    await attachProviderIds(prisma, cfg, items2, opts.region);
-    await markRequested(prisma, items2);
-    return {
-      from: opts.from,
-      to: opts.to,
-      items: items2,
-      partial: episodes.partial,
-      scanned: seriesRows.length + movies.scanned
-    };
+  );
+}
+
+// server/calendar-store-build.ts
+var REQUESTS_FETCH_BUDGET = 60;
+var MAX_STORE_ITEMS = 4e3;
+async function buildCalendarStore(prisma, cfg, region, from, to, warn) {
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const [movUp, movRecent, tvFirsts, tvReturning, tvProviders, sonarrEps, rows] = await Promise.all([
+    discoverUpcomingMovies(cfg),
+    discoverRecentMovies(cfg, from, today),
+    discoverTvFirsts(cfg, from),
+    discoverTvReturning(cfg),
+    discoverTvTopProviders(cfg, region),
+    sonarrWindowEpisodes(cfg, from, to),
+    cached("seer:rows:everyone", 6e4, () => buildEveryoneRows(prisma, cfg, warn), {
+      staleMs: 6e5
+    })
+  ]);
+  const requests = await buildPersonalCalendar(prisma, cfg, rows, {
+    from,
+    to,
+    includeSettled: true,
+    maxFetch: REQUESTS_FETCH_BUDGET,
+    region
+  });
+  const requestItems = requests.items.map((it) => ({
+    ...it,
+    requestId: null,
+    requestStatus: null
+  }));
+  const { items: sonarrItems, missing: sonarrMissing } = await sonarrEpisodesToItems(prisma, sonarrEps, from, to);
+  if (sonarrMissing.length > 0) scheduleTmdbBackfill(prisma, cfg, sonarrMissing, region);
+  const seriesRows = dedupeRows([...tvReturning, ...tvProviders]);
+  const episodes = await buildProviderEpisodes(prisma, cfg, seriesRows, { region, from, to });
+  const discoverItems = [
+    ...discoverRowsToItems(movUp, "movie", from, to),
+    ...discoverRowsToItems(movRecent, "movie", from, to),
+    ...discoverRowsToItems(tvFirsts, "tv", from, to)
+  ];
+  const merged = dedupeStoreItems([
+    ...requestItems,
+    ...sonarrItems,
+    ...episodes.items,
+    ...discoverItems
+  ]);
+  await enrichFromMeta(prisma, cfg, merged, region);
+  let items = sortCalendarItems(merged);
+  if (items.length > MAX_STORE_ITEMS) {
+    warn?.(null, `[seer] store ${region} tronqu\xE9 : ${items.length} \u2192 ${MAX_STORE_ITEMS} entr\xE9es`);
+    items = items.slice(0, MAX_STORE_ITEMS);
   }
-  if (wantMovies) {
-    tasks.push(async () => ({
-      type: "movie",
-      rows: await discoverPages(cfg, "movies/upcoming", {})
-    }));
+  const res = await attachAirTimes(cfg, { from, to, items, partial: false });
+  return {
+    region,
+    from,
+    to,
+    items: res.items,
+    partial: requests.partial || episodes.partial || sonarrMissing.length > 0,
+    builtAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+function dedupeRows(rows) {
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const r of rows) {
+    if (!r.id || seen.has(r.id)) continue;
+    seen.add(r.id);
+    out.push(r);
   }
-  if (wantTv) {
-    tasks.push(async () => ({
-      type: "tv",
-      rows: await discoverPages(cfg, "tv", {
-        sortBy: "first_air_date.asc",
-        firstAirDateGte: opts.from
-      })
-    }));
+  return out;
+}
+function dedupeStoreItems(items) {
+  const byKey = /* @__PURE__ */ new Map();
+  const identifiedDays = /* @__PURE__ */ new Set();
+  const anonymous = [];
+  for (const it of items) {
+    if (it.kind === "episode" && (it.seasonNumber == null || it.episodeNumber == null)) {
+      anonymous.push(it);
+      continue;
+    }
+    const key = it.kind === "episode" ? `${it.mediaType}:${it.tmdbId}:S${it.seasonNumber}E${it.episodeNumber}` : `${it.mediaType}:${it.tmdbId}:${it.kind}`;
+    const prev = byKey.get(key);
+    if (!prev) byKey.set(key, it);
+    else if (!prev.airDateUtc && it.airDateUtc) byKey.set(key, it);
   }
-  const collected = await mapLimit(tasks, 2, (t) => t());
-  const { items, scanned } = collectItems(collected, opts);
+  for (const it of byKey.values()) {
+    if (it.kind === "episode") identifiedDays.add(`${it.tmdbId}:${it.date}`);
+  }
+  for (const it of anonymous) {
+    const key = `${it.mediaType}:${it.tmdbId}:episode:${it.date}`;
+    if (identifiedDays.has(`${it.tmdbId}:${it.date}`) || byKey.has(key)) continue;
+    byKey.set(key, it);
+  }
+  return Array.from(byKey.values());
+}
+async function sonarrEpisodesToItems(prisma, eps, from, to) {
+  if (eps.length === 0) return { items: [], missing: [] };
+  const refs = Array.from(new Set(eps.map((e) => e.tmdbId))).map((tmdbId) => ({ mediaType: "tv", tmdbId }));
+  const { meta, missing } = await resolveTmdbMeta(prisma, null, refs, { maxFetch: 0 });
+  const items = [];
+  for (const e of eps) {
+    const m = meta.get(tmdbKey({ mediaType: "tv", tmdbId: e.tmdbId }));
+    if (!m || !m.title) continue;
+    const date = e.airDate ?? e.airDateUtc.slice(0, 10);
+    if (date < from || date > to) continue;
+    items.push({
+      id: makeItemId("tv", e.tmdbId, "episode", date),
+      date,
+      mediaType: "tv",
+      tmdbId: e.tmdbId,
+      title: m.title,
+      posterPath: m.posterPath,
+      backdropPath: m.backdropPath,
+      overview: m.overview,
+      kind: "episode",
+      seasonNumber: e.seasonNumber,
+      episodeNumber: e.episodeNumber,
+      airDateUtc: e.airDateUtc,
+      networks: m.networks,
+      providerIds: m.providerIds ?? [],
+      voteAverage: m.voteAverage ?? null,
+      popularity: m.popularity ?? null,
+      originalLanguage: m.originalLanguage ?? null,
+      isAnime: detectAnimeLoose(m),
+      requestId: null,
+      requestStatus: null
+    });
+  }
+  return { items, missing };
+}
+async function enrichFromMeta(prisma, cfg, items, region) {
+  const refs = items.map((i) => ({ mediaType: i.mediaType, tmdbId: i.tmdbId }));
+  const { meta } = await resolveTmdbMeta(prisma, cfg, refs, { maxFetch: 0, region });
+  for (const it of items) {
+    const m = meta.get(tmdbKey({ mediaType: it.mediaType, tmdbId: it.tmdbId }));
+    if (!m) continue;
+    if (it.providerIds.length === 0 && m.providerIds?.length) it.providerIds = m.providerIds;
+    if (it.voteAverage == null && m.voteAverage != null) it.voteAverage = m.voteAverage;
+    if (it.popularity == null && m.popularity != null) it.popularity = m.popularity;
+    if (!it.originalLanguage && m.originalLanguage) it.originalLanguage = m.originalLanguage;
+    if (it.isAnime !== true && detectAnimeLoose(m)) it.isAnime = true;
+  }
+}
+
+// server/calendar-store.ts
+var STORE_TTL_MS = 6 * 36e5;
+var STORE_STALE_MS = 24 * 36e5;
+var STORE_PARTIAL_TTL_MS = 6e4;
+var PAST_GRID_MARGIN_DAYS = 7;
+var FUTURE_DAYS = 180;
+var seenRegions = /* @__PURE__ */ new Set([DEFAULT_REGION]);
+function calendarStoreHorizon(today) {
+  const [y, m] = today.split("-").map(Number);
+  const prevFirst = m === 1 ? `${y - 1}-12-01` : `${y}-${String(m - 1).padStart(2, "0")}-01`;
+  return { from: addDays(prevFirst, -PAST_GRID_MARGIN_DAYS), to: addDays(today, FUTURE_DAYS) };
+}
+async function getCalendarStore(prisma, cfg, region, warn) {
+  const reg = /^[A-Z]{2}$/.test(region) ? region : DEFAULT_REGION;
+  seenRegions.add(reg);
+  const { from, to } = calendarStoreHorizon(todayString());
+  return cached(
+    `seer:store:${reg}:${from}`,
+    STORE_TTL_MS,
+    () => buildCalendarStore(prisma, cfg, reg, from, to, warn),
+    {
+      staleMs: STORE_STALE_MS,
+      ttlFor: (s) => s.partial ? STORE_PARTIAL_TTL_MS : STORE_TTL_MS
+    }
+  );
+}
+function initCalendarStoreMaintenance(prisma, getCfg, warn) {
+  let stopped = false;
+  const warm = async () => {
+    if (stopped) return;
+    const cfg = await getCfg();
+    if (!cfg) return;
+    for (const region of seenRegions) {
+      if (stopped) return;
+      await getCalendarStore(prisma, cfg, region, warn).catch((err) => {
+        warn?.(err, `[seer] \xE9chec du pr\xE9chauffage du calendrier (${region})`);
+      });
+    }
+  };
+  const boot = setTimeout(() => {
+    void warm();
+  }, 15e3);
+  const tick = setInterval(() => {
+    void warm();
+  }, 30 * 6e4);
+  boot.unref?.();
+  tick.unref?.();
+  return () => {
+    stopped = true;
+    clearTimeout(boot);
+    clearInterval(tick);
+  };
+}
+
+// server/calendar-requested.ts
+async function requestedIds(prisma) {
+  return cached(
+    "seer:requested:index",
+    6e4,
+    async () => {
+      const rows = await prisma.$queryRawUnsafe(
+        `SELECT DISTINCT media_type, tmdb_id FROM seer_requests WHERE tmdb_id > 0`
+      );
+      return new Set(rows.map((r) => `${r.media_type}:${Number(r.tmdb_id)}`));
+    },
+    { staleMs: 6e5 }
+  );
+}
+async function markRequested(prisma, items) {
+  if (items.length === 0) return;
+  try {
+    const demandes = await requestedIds(prisma);
+    if (demandes.size === 0) return;
+    for (const item of items) {
+      if (demandes.has(`${item.mediaType}:${item.tmdbId}`)) {
+        item.requestStatus = item.requestStatus ?? "processing";
+      }
+    }
+  } catch {
+  }
+}
+
+// server/calendar-service.ts
+var GLOBAL_MAX_PER_SERIES = 2;
+function sliceStore(store2, from, to) {
+  const out = [];
+  for (const it of store2.items) {
+    if (it.date < from || it.date > to) continue;
+    out.push({ ...it });
+  }
+  return out;
+}
+async function buildGlobalFromStore(prisma, cfg, opts, warn) {
+  const store2 = await getCalendarStore(prisma, cfg, opts.region, warn);
+  const from = opts.from < store2.from ? store2.from : opts.from;
+  const to = opts.to > store2.to ? store2.to : opts.to;
+  let items = from <= to ? sliceStore(store2, from, to) : [];
+  if (opts.mediaType !== "both") {
+    items = items.filter((i) => i.mediaType === opts.mediaType);
+  }
+  if (opts.providerIds.length > 0) {
+    items = items.filter((i) => i.providerIds.some((id) => opts.providerIds.includes(id)));
+  }
+  items = capPerSeriesFuture(sortCalendarItems(items), GLOBAL_MAX_PER_SERIES, todayString());
   await markRequested(prisma, items);
+  return { from: opts.from, to: opts.to, items, partial: store2.partial };
+}
+
+// server/calendar-personal-store.ts
+var PERSONAL_MAX_PER_SERIES = 3;
+async function buildPersonalFromStore(prisma, cfg, rows, opts, warn) {
+  const region = opts.region ?? DEFAULT_REGION;
+  const store2 = await getCalendarStore(prisma, cfg, region, warn);
+  if (opts.from < store2.from || opts.to > store2.to) {
+    const res = await buildPersonalCalendar(prisma, cfg, rows, opts);
+    return attachAirTimes(cfg, res);
+  }
+  const { refs, statusByKey } = collectRequestRefs(rows, opts.includeSettled ?? false);
+  const slice = sliceStore(store2, opts.from, opts.to).filter(
+    (it) => refs.has(`${it.mediaType}:${it.tmdbId}`)
+  );
+  for (const it of slice) {
+    const ctx = statusByKey.get(`${it.mediaType}:${it.tmdbId}`);
+    if (ctx) {
+      it.requestId = ctx.requestId;
+      it.requestStatus = ctx.status;
+    }
+  }
+  const covered = new Set(slice.map((it) => `${it.mediaType}:${it.tmdbId}`));
+  const residual = new Set([...refs.keys()].filter((k) => !covered.has(k)));
+  let residualItems = [];
+  let residualPartial = false;
+  if (residual.size > 0) {
+    const res = await buildPersonalCalendar(prisma, cfg, rowsSubset(rows, residual), opts);
+    const timed = await attachAirTimes(cfg, res);
+    residualItems = timed.items;
+    residualPartial = timed.partial;
+  }
+  const items = capPerSeriesFuture(
+    sortCalendarItems([...slice, ...residualItems]),
+    PERSONAL_MAX_PER_SERIES,
+    todayString()
+  );
   return {
     from: opts.from,
     to: opts.to,
-    items: capPerSeries(sortCalendarItems(items), MAX_PER_SERIES2),
-    partial: false,
-    scanned
+    items,
+    partial: store2.partial || residualPartial
   };
 }
-function collectItems(buckets, opts) {
-  let scanned = 0;
-  const unique = /* @__PURE__ */ new Map();
-  for (const bucket of buckets) {
-    if (!bucket) continue;
-    for (const r of bucket.rows) {
-      scanned++;
-      if (!r.id) continue;
-      if (r.mediaInfo?.status === MEDIA_STATUS_BLOCKLISTED2) continue;
-      const date = toDayString(r.releaseDate ?? r.firstAirDate);
-      if (!date || date < opts.from || date > opts.to) continue;
-      const mediaType = r.mediaType === "tv" || r.mediaType === "movie" ? r.mediaType : bucket.type;
-      const kind = mediaType === "movie" ? "theatrical" : "premiere";
-      const id = makeItemId(mediaType, r.id, kind, date);
-      if (unique.has(id)) continue;
-      unique.set(id, {
-        id,
-        date,
-        mediaType,
-        tmdbId: r.id,
-        title: r.title ?? r.name ?? "",
-        posterPath: r.posterPath ?? null,
-        backdropPath: r.backdropPath ?? null,
-        overview: r.overview ?? null,
-        kind,
-        seasonNumber: null,
-        episodeNumber: null,
-        networks: null,
-        voteAverage: typeof r.voteAverage === "number" ? r.voteAverage : null,
-        popularity: typeof r.popularity === "number" ? r.popularity : null,
-        originalLanguage: r.originalLanguage ?? null,
-        isAnime: detectAnime(r),
-        // Complété juste après depuis la mémoire des fiches : recopier ici la
-        // plateforme demandée revenait à jurer qu'un film est sur les quatre
-        // plateformes cochées.
-        providerIds: [],
-        requestId: null,
-        requestStatus: null
-      });
-    }
-  }
-  return { items: Array.from(unique.values()), scanned };
-}
-
-// server/sonarr-schedule.ts
-var SERIES_TTL_MS = 30 * 6e4;
-var SERIES_STALE_MS = 6 * 36e5;
-var CALENDAR_TTL_MS = 30 * 6e4;
-var CALENDAR_STALE_MS = 6 * 36e5;
-var EPISODES_TTL_MS = 36e5;
-var EPISODES_STALE_MS = 12 * 36e5;
-function airTimeKey(season, episode) {
-  return `S${season}E${episode}`;
-}
-async function sonarr(cfg) {
-  return getArrServerConfig(cfg.seerrUrl, cfg.seerrApiKey, "sonarr");
-}
-async function arrGet(server, path) {
-  try {
-    const res = await fetch(`${buildArrUrl(server)}${path}`, {
-      headers: { "X-Api-Key": server.apiKey },
-      signal: AbortSignal.timeout(15e3)
-    });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
-async function sonarrSeriesIndex(cfg) {
-  return cached(
-    "seer:sonarr:series",
-    SERIES_TTL_MS,
-    async () => {
-      const server = await sonarr(cfg);
-      if (!server) return /* @__PURE__ */ new Map();
-      const rows = await arrGet(server, "/api/v3/series");
-      const index = /* @__PURE__ */ new Map();
-      for (const s of rows ?? []) {
-        if (s.tmdbId && s.id) index.set(s.tmdbId, s.id);
-      }
-      return index;
-    },
-    { staleMs: SERIES_STALE_MS }
-  );
-}
-async function sonarrCalendarRaw(cfg, from, to) {
-  return cached(
-    `seer:sonarr:calraw:${from}:${to}`,
-    CALENDAR_TTL_MS,
-    async () => {
-      const server = await sonarr(cfg);
-      if (!server) return [];
-      const rows = await arrGet(
-        server,
-        `/api/v3/calendar?start=${from}&end=${to}&includeSeries=false`
-      );
-      return rows ?? [];
-    },
-    { staleMs: CALENDAR_STALE_MS }
-  );
-}
-async function sonarrWindowAirTimes(cfg, from, to) {
-  const rows = await sonarrCalendarRaw(cfg, from, to);
-  const times = /* @__PURE__ */ new Map();
-  for (const e of rows) {
-    if (!e.airDateUtc || e.seriesId == null || e.seasonNumber == null || e.episodeNumber == null) continue;
-    times.set(`${e.seriesId}:${airTimeKey(e.seasonNumber, e.episodeNumber)}`, e.airDateUtc);
-  }
-  return times;
-}
-async function attachAirTimes(cfg, res) {
-  const episodes = res.items.filter((i) => i.kind === "episode");
-  if (episodes.length === 0) return res;
-  try {
-    const [index, times] = await Promise.all([
-      sonarrSeriesIndex(cfg),
-      // Fenêtre élargie d'un jour : un épisode peut basculer d'une journée à
-      // l'autre une fois ramené à l'heure locale, dans un sens comme dans l'autre.
-      sonarrWindowAirTimes(cfg, shiftDay(res.from, -1), shiftDay(res.to, 1))
-    ]);
-    if (index.size === 0 || times.size === 0) return res;
-    for (const item of episodes) {
-      const seriesId = index.get(item.tmdbId);
-      if (!seriesId || item.seasonNumber == null || item.episodeNumber == null) continue;
-      const at = times.get(`${seriesId}:${airTimeKey(item.seasonNumber, item.episodeNumber)}`);
-      if (at) item.airDateUtc = at;
-    }
-  } catch {
-  }
-  return res;
-}
-function shiftDay(day, delta) {
-  const [y, m, d] = day.split("-").map(Number);
-  const date = new Date(y, m - 1, d + delta);
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
-async function sonarrSeriesAirTimes(cfg, tmdbId) {
-  return cached(
-    `seer:sonarr:eps:${tmdbId}`,
-    EPISODES_TTL_MS,
-    async () => {
-      const [server, index] = await Promise.all([sonarr(cfg), sonarrSeriesIndex(cfg)]);
-      const seriesId = index.get(tmdbId);
-      if (!server || !seriesId) return /* @__PURE__ */ new Map();
-      const rows = await arrGet(server, `/api/v3/episode?seriesId=${seriesId}`);
-      const times = /* @__PURE__ */ new Map();
-      for (const e of rows ?? []) {
-        if (!e.airDateUtc || e.seasonNumber == null || e.episodeNumber == null) continue;
-        times.set(airTimeKey(e.seasonNumber, e.episodeNumber), e.airDateUtc);
-      }
-      return times;
-    },
-    { staleMs: EPISODES_STALE_MS }
-  );
+function rowsSubset(rows, keep) {
+  return {
+    ...rows,
+    seerrRows: rows.seerrRows.filter(
+      (sr) => sr.media?.tmdbId && keep.has(`${sr.media.mediaType}:${sr.media.tmdbId}`)
+    ),
+    localOnly: rows.localOnly.filter(
+      (l) => l.tmdbId && keep.has(`${l.mediaType}:${l.tmdbId}`)
+    )
+  };
 }
 
 // server/routes-calendar.ts
@@ -4684,9 +5039,6 @@ var PERSONAL_TTL_MS = 15 * 6e4;
 var PERSONAL_STALE_MS = 6 * 36e5;
 var PARTIAL_TTL_MS = 1e4;
 var EVERYONE_FETCH_BUDGET = 60;
-var GLOBAL_TTL_MS = 6 * 36e5;
-var GLOBAL_STALE_MS = 24 * 36e5;
-var PROVIDER_TTL_MS = 12 * 36e5;
 var MAX_PROVIDERS = 8;
 var DEFAULT_WINDOW_DAYS = 90;
 var MAX_WINDOW_DAYS = 370;
@@ -4698,22 +5050,28 @@ function readWindow(q) {
   const hardMax = addDays(from, MAX_WINDOW_DAYS);
   return { from, to: to > hardMax ? hardMax : to < from ? from : to };
 }
+function readRegion(q) {
+  return typeof q.region === "string" && /^[a-z]{2}$/i.test(q.region) ? q.region.toUpperCase() : DEFAULT_REGION;
+}
 var EMPTY = (from, to) => ({ from, to, items: [], partial: false });
 function registerCalendarRoutes(app, prisma, getWorkerConfig2) {
+  const warn = (err, msg) => app.log?.warn?.({ err }, msg);
+  const stopMaintenance = initCalendarStoreMaintenance(prisma, getWorkerConfig2, warn);
+  app.addHook("onClose", async () => stopMaintenance());
   app.get("/calendar/personal", async (request) => {
     const user = getUser(request);
     const q = request.query;
     const { from, to } = readWindow(q);
     const includeSettled = q.all === "1";
     const everyone = q.everyone === "1";
+    const region = readRegion(q);
     const config = await getWorkerConfig2();
     if (!config) return EMPTY(from, to);
-    const key = everyone ? `seer:cal:everyone:${from}:${to}:${includeSettled ? "all" : "up"}` : `seer-cache:${user.userId}:cal:${from}:${to}:${includeSettled ? "all" : "up"}`;
+    const key = everyone ? `seer:cal:everyone:${region}:${from}:${to}:${includeSettled ? "all" : "up"}` : `seer-cache:${user.userId}:cal:${region}:${from}:${to}:${includeSettled ? "all" : "up"}`;
     return cached(
       key,
       PERSONAL_TTL_MS,
       async () => {
-        const warn = (err, msg) => app.log?.warn?.({ err }, msg);
         const rows = everyone ? await cached(
           "seer:rows:everyone",
           6e4,
@@ -4725,13 +5083,13 @@ function registerCalendarRoutes(app, prisma, getWorkerConfig2) {
           () => buildMergedRows(prisma, config, user, warn),
           { staleMs: 6e5 }
         );
-        const res = await buildPersonalCalendar(prisma, config, rows, {
+        return buildPersonalFromStore(prisma, config, rows, {
           from,
           to,
           includeSettled,
+          region,
           maxFetch: everyone ? EVERYONE_FETCH_BUDGET : void 0
-        });
-        return attachAirTimes(config, res);
+        }, warn);
       },
       {
         staleMs: PERSONAL_STALE_MS,
@@ -4746,19 +5104,13 @@ function registerCalendarRoutes(app, prisma, getWorkerConfig2) {
     if (!config) return EMPTY(from, to);
     const providerIds = String(q.providerIds ?? "").split(",").map(Number).filter((n) => Number.isFinite(n) && n > 0).slice(0, MAX_PROVIDERS);
     const mediaType = q.mediaType === "movie" || q.mediaType === "tv" ? q.mediaType : "both";
-    const region = typeof q.region === "string" && /^[a-z]{2}$/i.test(q.region) ? q.region.toUpperCase() : DEFAULT_REGION;
-    const scope = providerIds.length > 0 ? [...providerIds].sort((a, b) => a - b).join("-") : "all";
-    const key = `seer:cal:${scope}:${mediaType}:${region}:${from}:${to}`;
-    const ttl = providerIds.length > 0 ? PROVIDER_TTL_MS : GLOBAL_TTL_MS;
-    return cached(
-      key,
-      ttl,
-      async () => attachAirTimes(
-        config,
-        await buildGlobalCalendar(prisma, config, { providerIds, mediaType, region, from, to })
-      ),
-      { staleMs: GLOBAL_STALE_MS }
-    );
+    return buildGlobalFromStore(prisma, config, {
+      providerIds,
+      mediaType,
+      region: readRegion(q),
+      from,
+      to
+    }, warn);
   });
   app.get("/calendar/airtimes", async (request) => {
     const q = request.query;
@@ -4773,7 +5125,7 @@ function registerCalendarRoutes(app, prisma, getWorkerConfig2) {
     const q = request.query;
     const config = await getWorkerConfig2();
     if (!config) return { results: [] };
-    const region = typeof q.region === "string" && /^[a-z]{2}$/i.test(q.region) ? q.region.toUpperCase() : DEFAULT_REGION;
+    const region = readRegion(q);
     return cached(`seer:providers:all:${region}`, 24 * 36e5, async () => {
       const merged = /* @__PURE__ */ new Map();
       for (const path of ["tv", "movies"]) {

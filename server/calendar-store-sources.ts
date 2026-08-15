@@ -16,7 +16,13 @@
 
 import { cached } from "./cache";
 import { mapLimit } from "./concurrency";
+import { toDayString } from "./tmdb-fetch";
+import { detectAnime } from "./tmdb-traits";
 import type { WorkerCfg } from "./seerr-unified";
+import { type CalendarItem, type CalendarKind, makeItemId } from "./calendar-types";
+
+/** Statut Jellyseerr d'un média bloqué par tags — retiré comme sur le catalogue. */
+const MEDIA_STATUS_BLOCKLISTED = 6;
 
 const PAGES = 3;
 const SRC_TTL_MS = 3_600_000;
@@ -182,6 +188,49 @@ export async function discoverTvTopProviders(
   for (let i = 0; i < ids.length; i += UNION_CHUNK) chunks.push(ids.slice(i, i + UNION_CHUNK));
   const buckets = await mapLimit(chunks, 2, (c) => discoverTvReturningByProviders(cfg, c, region));
   return buckets.flatMap((b) => b ?? []);
+}
+
+/** Transforme des résultats de découverte en entrées, fenêtre appliquée. */
+export function discoverRowsToItems(
+  rows: DiscoverRow[], type: "movie" | "tv", from: string, to: string,
+): CalendarItem[] {
+  const out: CalendarItem[] = [];
+  for (const r of rows) {
+    if (!r.id) continue;
+    if (r.mediaInfo?.status === MEDIA_STATUS_BLOCKLISTED) continue;
+
+    const date = toDayString(r.releaseDate ?? r.firstAirDate);
+    // Garde-fou : hors fenêtre = bruit TMDB (dates 2030…), on jette.
+    if (!date || date < from || date > to) continue;
+
+    const mediaType = (r.mediaType === "tv" || r.mediaType === "movie")
+      ? (r.mediaType as "movie" | "tv")
+      : type;
+    const kind: CalendarKind = mediaType === "movie" ? "theatrical" : "premiere";
+
+    out.push({
+      id: makeItemId(mediaType, r.id, kind, date),
+      date, mediaType, tmdbId: r.id,
+      title: r.title ?? r.name ?? "",
+      posterPath: r.posterPath ?? null,
+      backdropPath: r.backdropPath ?? null,
+      overview: r.overview ?? null,
+      kind,
+      seasonNumber: null,
+      episodeNumber: null,
+      networks: null,
+      voteAverage: typeof r.voteAverage === "number" ? r.voteAverage : null,
+      popularity: typeof r.popularity === "number" ? r.popularity : null,
+      originalLanguage: r.originalLanguage ?? null,
+      isAnime: detectAnime(r),
+      // Complété par l'enrichissement final du build : recopier la plateforme
+      // demandée jurerait qu'un film est sur toutes les plateformes cochées.
+      providerIds: [],
+      requestId: null,
+      requestStatus: null,
+    });
+  }
+  return out;
 }
 
 /** Les plateformes retenues pour l'union, prioritaires en tête. */

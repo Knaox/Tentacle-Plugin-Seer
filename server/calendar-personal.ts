@@ -44,15 +44,19 @@ export interface PersonalCalendarOpts {
   includeSettled?: boolean;
 }
 
-export async function buildPersonalCalendar(
-  prisma: PrismaClient,
-  cfg: WorkerCfg,
-  rows: MergedRows,
-  opts: PersonalCalendarOpts,
-): Promise<CalendarResponse> {
-  const region = opts.region ?? DEFAULT_REGION;
+/** Ce qu'une liste de demandes donne au calendrier : les fiches à suivre, et
+ * le statut à afficher pour chacune. */
+export interface RequestRefs {
+  refs: Map<string, TmdbRef>;
+  statusByKey: Map<string, { status: RequestStatus; requestId: string | null }>;
+}
 
-  /* 1) Élagage sur les seules données déjà en main — aucun appel réseau. */
+/**
+ * Élagage sur les seules données déjà en main — aucun appel réseau.
+ * Extrait pour que le calendrier maître puisse filtrer sa tranche par les
+ * demandes d'un utilisateur sans reconstruire tout le calendrier personnel.
+ */
+export function collectRequestRefs(rows: MergedRows, includeSettled: boolean): RequestRefs {
   const refs = new Map<string, TmdbRef>();
   const statusByKey = new Map<string, { status: RequestStatus; requestId: string | null }>();
 
@@ -61,7 +65,7 @@ export async function buildPersonalCalendar(
     const ref: TmdbRef = { mediaType: sr.media.mediaType, tmdbId: sr.media.tmdbId };
     const key = tmdbKey(ref);
 
-    if (!opts.includeSettled
+    if (!includeSettled
         && sr.media.mediaType === "movie"
         && SETTLED_MEDIA_STATUS.has(sr.media.status ?? 0)) continue;
 
@@ -81,6 +85,19 @@ export async function buildPersonalCalendar(
     refs.set(key, { mediaType: l.mediaType, tmdbId: l.tmdbId });
     if (!statusByKey.has(key)) statusByKey.set(key, { status: l.status, requestId: l.id });
   }
+
+  return { refs, statusByKey };
+}
+
+export async function buildPersonalCalendar(
+  prisma: PrismaClient,
+  cfg: WorkerCfg,
+  rows: MergedRows,
+  opts: PersonalCalendarOpts,
+): Promise<CalendarResponse> {
+  const region = opts.region ?? DEFAULT_REGION;
+
+  const { refs, statusByKey } = collectRequestRefs(rows, opts.includeSettled ?? false);
 
   /* 2) Enrichissement borné : la mémoire des fiches sert déjà la plupart. */
   const list = Array.from(refs.values());

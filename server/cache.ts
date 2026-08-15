@@ -142,6 +142,7 @@ export function invalidateRequestCaches(userId?: string | null): void {
   invalidate(userId ? `seer-cache:${userId}` : "seer-cache");
   invalidate("seer:rows:everyone");
   invalidate("seer:cal:everyone");
+  invalidate("seer:requested:index");
 }
 
 /** Nettoyage périodique. Borne = `stale`, sinon on effacerait le servable. */

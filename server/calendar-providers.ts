@@ -3,7 +3,8 @@
 /* ------------------------------------------------------------------ */
 
 /*
- * Extrait de calendar-global.ts, qui frôlait la limite de trois cents lignes.
+ * Servait le mode plateformes de l'ancien calendrier global ; alimente
+ * aujourd'hui le calendrier maître (calendar-store-build).
  *
  * Deux besoins distincts se rejoignent ici : trouver les prochains épisodes
  * des séries diffusées sur les plateformes retenues, et dire honnêtement sur
