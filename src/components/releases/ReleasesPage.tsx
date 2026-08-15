@@ -19,13 +19,12 @@ import { ReleasesFilterSheet } from "./ReleasesFilterSheet";
 import { EmptyState } from "../EmptyState";
 import { SkeletonList } from "../SkeletonList";
 import { MediaDetailModal } from "../MediaDetailModal";
-import { today, addDays } from "../../utils/calendar-groups";
+import { useReleasesRange } from "../../hooks/useReleasesRange";
 import { applyLocalDays } from "../../utils/calendar-localtime";
 
 const VIEW_KEY = "seer_releases_view";
 const MODE_KEY = "seer_releases_mode";
 const SCOPE_KEY = "seer_releases_scope";
-const WINDOW_DAYS = 90;
 
 const MODES: CalendarMode[] = ["personal", "all"];
 
@@ -80,27 +79,11 @@ export function ReleasesPage() {
     try { localStorage.setItem(VIEW_KEY, next); } catch { /* stockage indisponible */ }
   }, []);
 
-  /* Fenêtre de données pilotée par la navigation de l'agenda.
-   *
-   * Elle était figée à « aujourd'hui → +90 jours » : dès qu'on avançait d'une
-   * semaine au-delà, la vue se vidait et paraissait cassée. Les vues signalent
-   * donc la période qu'elles affichent, et la fenêtre s'élargit pour la couvrir
-   * — sans jamais rétrécir, ce qui garde le résultat en cache d'un aller-retour
-   * à l'autre. */
-  const [range, setRange] = useState(() => {
-    const start = today();
-    return { from: start, to: addDays(start, WINDOW_DAYS) };
-  });
-
-  const coverRange = useCallback((wantFrom: string, wantTo: string) => {
-    setRange((cur) => {
-      const from = wantFrom < cur.from ? wantFrom : cur.from;
-      const to = wantTo > cur.to ? wantTo : cur.to;
-      return from === cur.from && to === cur.to ? cur : { from, to };
-    });
-  }, []);
-
-  const { from, to } = range;
+  /* Curseurs et fenêtre de données vivent dans ce hook, plus dans les vues :
+   * la plage AFFICHÉE est couverte au montage (les jours passés de la semaine
+   * en cours existent enfin) et la navigation survit aux rechargements. */
+  const nav = useReleasesRange(view);
+  const { from, to } = nav.range;
 
   /* Toujours l'intégralité des demandes : ne montrer que ce qui restait à venir
    * donnait une page vide dès que tout était arrivé.
@@ -258,9 +241,21 @@ export function ReleasesPage() {
       ) : items.length === 0 ? (
         <EmptyState title={t(emptyKey)} subtitle={emptyHint} />
       ) : view === "month" ? (
-        <ReleaseMonthView items={items} onOpen={openItem} onRangeChange={coverRange} />
+        <ReleaseMonthView
+          items={items}
+          cursor={nav.monthCursor}
+          onShift={nav.goMonth}
+          onThisMonth={nav.goThisMonth}
+          onOpen={openItem}
+        />
       ) : (
-        <ReleaseWeekView items={items} onOpen={openItem} onRangeChange={coverRange} />
+        <ReleaseWeekView
+          items={items}
+          anchor={nav.weekAnchor}
+          onShift={nav.goWeek}
+          onToday={nav.goThisWeek}
+          onOpen={openItem}
+        />
       )}
 
       {selected && (

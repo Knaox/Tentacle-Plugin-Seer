@@ -62,6 +62,29 @@ export function monthKey(date: string): string {
   return date.slice(0, 7);
 }
 
+/** Premier jour du mois contenant `date`. */
+export function startOfMonth(date: string): string {
+  return `${date.slice(0, 7)}-01`;
+}
+
+/** Dernier jour du mois contenant `date`. */
+export function endOfMonth(date: string): string {
+  const [y, m] = date.split("-").map(Number);
+  const last = new Date(y, m, 0);
+  return `${last.getFullYear()}-${String(last.getMonth() + 1).padStart(2, "0")}-${String(last.getDate()).padStart(2, "0")}`;
+}
+
+/**
+ * Bornes de la GRILLE d'un mois : première et dernière cellule de
+ * `monthMatrix`, cellules des mois voisins comprises. C'est cette plage-là
+ * que la vue affiche réellement — la couvrir au 1er du mois laissait vides
+ * les cases du lundi au bord de grille.
+ */
+export function monthGridBounds(year: number, month: number): { from: string; to: string } {
+  const weeks = monthMatrix(year, month);
+  return { from: weeks[0][0], to: weeks[weeks.length - 1][6] };
+}
+
 /** Lundi de la semaine contenant `date`. La semaine commence le lundi en France. */
 export function startOfWeek(date: string): string {
   const parsed = parseAirDate(date);

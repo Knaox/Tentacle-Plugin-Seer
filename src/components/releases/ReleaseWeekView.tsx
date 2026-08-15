@@ -1,18 +1,21 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import type { CalendarItem } from "../../api/types-releases";
 import { ReleaseEntry } from "./ReleaseEntry";
 import { ICON_BUTTON } from "../../styles/pills";
-import { weekDays, weekHeading, today, addDays, startOfWeek } from "../../utils/calendar-groups";
+import { weekDays, weekHeading, today, startOfWeek } from "../../utils/calendar-groups";
 import { parseAirDate } from "../../utils/episode-dates";
 import { getCurrentLanguage } from "../../utils/media-helpers";
 import { collapseSeriesInDay, type CollapsedItem } from "../../utils/calendar-collapse";
 
 interface Props {
   items: CalendarItem[];
+  /** Lundi de la semaine affichée — l'état vit dans la page, pas ici : il
+   *  survit ainsi aux rechargements qui démontaient la vue. */
+  anchor: string;
+  onShift: (deltaWeeks: number) => void;
+  onToday: () => void;
   onOpen?: (item: CalendarItem) => void;
-  /** Prévient la page quand on sort de la fenêtre chargée. */
-  onRangeChange?: (from: string, to: string) => void;
 }
 
 /**
@@ -24,9 +27,8 @@ interface Props {
  * l'autre, avec exactement les mêmes cartes. Même information, réorganisée —
  * pas une version dégradée, et surtout aucun défilement horizontal.
  */
-export function ReleaseWeekView({ items, onOpen, onRangeChange }: Props) {
+export function ReleaseWeekView({ items, anchor, onShift, onToday, onOpen }: Props) {
   const { t } = useTranslation("seer");
-  const [anchor, setAnchor] = useState(() => startOfWeek(today()));
 
   const days = useMemo(() => weekDays(anchor), [anchor]);
   const ref = today();
@@ -45,24 +47,12 @@ export function ReleaseWeekView({ items, onOpen, onRangeChange }: Props) {
     return out;
   }, [items]);
 
-  const shift = (weeks: number) => {
-    const next = addDays(anchor, weeks * 7);
-    setAnchor(next);
-    onRangeChange?.(next, addDays(next, 6));
-  };
-
-  const goToday = () => {
-    const next = startOfWeek(ref);
-    setAnchor(next);
-    onRangeChange?.(next, addDays(next, 6));
-  };
-
   const isCurrentWeek = anchor === startOfWeek(ref);
 
   return (
     <div className="pb-10">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <button onClick={() => shift(-1)} aria-label={t("seer:releasesWeekPrev")} className={ICON_BUTTON}>
+        <button onClick={() => onShift(-1)} aria-label={t("seer:releasesWeekPrev")} className={ICON_BUTTON}>
           <Chevron dir="left" />
         </button>
 
@@ -72,7 +62,7 @@ export function ReleaseWeekView({ items, onOpen, onRangeChange }: Props) {
           </span>
           {!isCurrentWeek && (
             <button
-              onClick={goToday}
+              onClick={onToday}
               className="shrink-0 rounded-full bg-tentacle-fill-subtle px-2.5 py-1 text-[11px] font-medium text-tentacle-text-secondary ring-1 ring-tentacle-border-subtle transition-colors hover:bg-tentacle-fill-medium"
             >
               {t("seer:releasesThisWeek")}
@@ -80,7 +70,7 @@ export function ReleaseWeekView({ items, onOpen, onRangeChange }: Props) {
           )}
         </div>
 
-        <button onClick={() => shift(1)} aria-label={t("seer:releasesWeekNext")} className={ICON_BUTTON}>
+        <button onClick={() => onShift(1)} aria-label={t("seer:releasesWeekNext")} className={ICON_BUTTON}>
           <Chevron dir="right" />
         </button>
       </div>

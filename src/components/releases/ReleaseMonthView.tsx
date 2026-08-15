@@ -5,13 +5,18 @@ import { ReleaseEntry } from "./ReleaseEntry";
 import { ReleaseRow } from "./ReleaseRow";
 import { ICON_BUTTON } from "../../styles/pills";
 import { monthMatrix, weekdayInitials, today, monthHeading, dayHeading } from "../../utils/calendar-groups";
-import { parseAirDate } from "../../utils/episode-dates";
 import { collapseSeriesInDay, type CollapsedItem } from "../../utils/calendar-collapse";
 
 interface Props {
   items: CalendarItem[];
+  /** Mois affiché — l'état vit dans la page : il survit aux rechargements, et
+   *  s'ouvre sur le mois COURANT, plus jamais sur celui du premier item (la
+   *  semaine, elle, restait sur la semaine courante : deux vues ouvertes sur
+   *  deux périodes, sans que rien ne l'explique). */
+  cursor: { year: number; month: number };
+  onShift: (deltaMonths: number) => void;
+  onThisMonth: () => void;
   onOpen?: (item: CalendarItem) => void;
-  onRangeChange?: (from: string, to: string) => void;
 }
 
 /** Entrées visibles dans une case avant le repli « +N ». */
@@ -25,14 +30,10 @@ const PER_CELL = 3;
  * pour l'apprendre. Chaque case porte donc maintenant les titres, repliés
  * au-delà de trois par un « +N » qui ouvre le détail du jour.
  */
-export function ReleaseMonthView({ items, onOpen, onRangeChange }: Props) {
+export function ReleaseMonthView({ items, cursor, onShift, onThisMonth, onOpen }: Props) {
   const { t } = useTranslation("seer");
   const ref = today();
 
-  const [cursor, setCursor] = useState(() => {
-    const d = parseAirDate(items[0]?.date ?? ref) ?? new Date();
-    return { year: d.getFullYear(), month: d.getMonth() };
-  });
   const [openDay, setOpenDay] = useState<string | null>(null);
 
   const byDate = useMemo(() => {
@@ -57,15 +58,13 @@ export function ReleaseMonthView({ items, onOpen, onRangeChange }: Props) {
   const firstOfMonth = `${cursor.year}-${String(cursor.month + 1).padStart(2, "0")}-01`;
 
   const shift = (delta: number) => {
-    const d = new Date(cursor.year, cursor.month + delta, 1);
-    setCursor({ year: d.getFullYear(), month: d.getMonth() });
     setOpenDay(null);
-    const p = (n: number) => String(n).padStart(2, "0");
-    const from = `${d.getFullYear()}-${p(d.getMonth() + 1)}-01`;
-    const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-    onRangeChange?.(from, `${last.getFullYear()}-${p(last.getMonth() + 1)}-${p(last.getDate())}`);
+    onShift(delta);
   };
 
+  const isCurrentMonth = ref.startsWith(
+    `${cursor.year}-${String(cursor.month + 1).padStart(2, "0")}`,
+  );
   const dayItems = openDay ? byDate.get(openDay) ?? [] : [];
 
   return (
@@ -74,9 +73,19 @@ export function ReleaseMonthView({ items, onOpen, onRangeChange }: Props) {
         <button onClick={() => shift(-1)} aria-label={t("seer:releasesMonthPrev")} className={ICON_BUTTON}>
           <Chevron dir="left" />
         </button>
-        <span className="text-sm font-semibold capitalize text-tentacle-text-primary">
-          {monthHeading(firstOfMonth)}
-        </span>
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-sm font-semibold capitalize text-tentacle-text-primary">
+            {monthHeading(firstOfMonth)}
+          </span>
+          {!isCurrentMonth && (
+            <button
+              onClick={() => { setOpenDay(null); onThisMonth(); }}
+              className="shrink-0 rounded-full bg-tentacle-fill-subtle px-2.5 py-1 text-[11px] font-medium text-tentacle-text-secondary ring-1 ring-tentacle-border-subtle transition-colors hover:bg-tentacle-fill-medium"
+            >
+              {t("seer:releasesThisMonth")}
+            </button>
+          )}
+        </div>
         <button onClick={() => shift(1)} aria-label={t("seer:releasesMonthNext")} className={ICON_BUTTON}>
           <Chevron dir="right" />
         </button>
