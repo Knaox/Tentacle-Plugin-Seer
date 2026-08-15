@@ -10,7 +10,7 @@
 
 const SURFACE = "relative overflow-hidden bg-tentacle-fill-subtle";
 
-function Shimmer({ className }: { className: string }) {
+export function Shimmer({ className }: { className: string }) {
   return (
     <div className={`${SURFACE} ${className}`}>
       <div

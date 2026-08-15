@@ -80,6 +80,8 @@ export default {
   releasesEmptyPersonalHint: "Titles already in your library are not listed here.",
   releasesEmptyGlobal: "No releases announced for this period",
   releasesPartial: "Loading dates…",
+  // First build of the shared calendar: say what is happening, not just "wait".
+  releasesBuilding: "Building the calendar — releases fill in as they load.",
   // Calendar filters — several platforms at once
   releasesFiltersTitle: "Release filters",
   filterType: "Type",

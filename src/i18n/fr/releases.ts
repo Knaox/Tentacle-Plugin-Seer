@@ -83,6 +83,10 @@ export default {
     "Les titres déjà dans votre bibliothèque n'apparaissent pas ici.",
   releasesEmptyGlobal: "Aucune sortie annoncée sur cette période",
   releasesPartial: "Chargement des dates en cours…",
+  // Première construction du calendrier partagé : dire ce qui se passe, pas
+  // seulement qu'il faut attendre — les entrées apparaissent au fil de l'eau.
+  releasesBuilding:
+    "Construction du calendrier en cours — les sorties s'ajoutent au fur et à mesure.",
   // Filtres de l'agenda — plusieurs plateformes à la fois
   releasesFiltersTitle: "Filtres des sorties",
   filterType: "Type",

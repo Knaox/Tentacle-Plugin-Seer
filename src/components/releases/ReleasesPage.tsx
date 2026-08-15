@@ -17,7 +17,7 @@ import { ReleaseWeekView } from "./ReleaseWeekView";
 import { ReleasesTabs, type ReleasesView, type ReleasesScope } from "./ReleasesTabs";
 import { ReleasesFilterSheet } from "./ReleasesFilterSheet";
 import { EmptyState } from "../EmptyState";
-import { SkeletonList } from "../SkeletonList";
+import { CalendarSkeleton } from "./CalendarSkeleton";
 import { MediaDetailModal } from "../MediaDetailModal";
 import { useReleasesRange } from "../../hooks/useReleasesRange";
 import { applyLocalDays } from "../../utils/calendar-localtime";
@@ -101,7 +101,15 @@ export function ReleasesPage() {
    * d'animation (l'ancien détour par mediaType=tv les excluait d'office). */
   const global = useGlobalCalendar(from, to, mode === "all");
 
-  const active = mode === "personal" ? personal : global;
+  /* Chargement UNIFIÉ. En mode « Toutes les sorties », les DEUX requêtes
+   * comptent : le global pouvait sortir du cache pendant que le personnel
+   * chargeait encore — calendrier incomplet, zéro indicateur. `isPending`
+   * plutôt qu'`isLoading` : il couvre la première frame d'une requête tout
+   * juste activée, où `isFetching` est encore faux — c'est elle qui faisait
+   * flasher « aucune sortie » à chaque bascule de mode. */
+  const pending = personal.isPending || (mode === "all" && global.isPending);
+  const hasData = mode === "all" ? !!(personal.data ?? global.data) : !!personal.data;
+  const partial = !!(personal.data?.partial || (mode === "all" && global.data?.partial));
 
   /* « Tout » = les sorties de la région ET les vôtres. Les demandes d'abord,
    * pour qu'au dédoublonnage ce soit LEUR version qui reste — c'est la seule
@@ -229,15 +237,15 @@ export function ReleasesPage() {
         showRequestedOnly={mode === "all"}
         onReset={releasesFilters.reset}
         activeCount={activeFilterCount}
-        resultCount={active.isLoading ? null : items.length}
+        resultCount={pending ? null : items.length}
       />
 
-      {active.data?.partial && (
-        <p className="mb-3 text-xs text-tentacle-text-quaternary">{t("seer:releasesPartial")}</p>
+      {partial && hasData && (
+        <p className="mb-3 text-xs text-tentacle-text-quaternary">{t("seer:releasesBuilding")}</p>
       )}
 
-      {active.isLoading ? (
-        <SkeletonList count={6} />
+      {pending && !hasData ? (
+        <CalendarSkeleton view={view} />
       ) : items.length === 0 ? (
         <EmptyState title={t(emptyKey)} subtitle={emptyHint} />
       ) : view === "month" ? (
