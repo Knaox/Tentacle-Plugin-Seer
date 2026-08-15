@@ -4208,7 +4208,7 @@ function capPerSeries(items, max) {
 var FETCH_BUDGET2 = 25;
 var MAX_PER_SERIES = 3;
 var SETTLED_MEDIA_STATUS = /* @__PURE__ */ new Set([5]);
-async function buildPersonalCalendar(prisma, cfg, user, rows, opts) {
+async function buildPersonalCalendar(prisma, cfg, rows, opts) {
   const region = opts.region ?? DEFAULT_REGION;
   const refs = /* @__PURE__ */ new Map();
   const statusByKey = /* @__PURE__ */ new Map();
@@ -4725,7 +4725,7 @@ function registerCalendarRoutes(app, prisma, getWorkerConfig2) {
           () => buildMergedRows(prisma, config, user, warn),
           { staleMs: 6e5 }
         );
-        const res = await buildPersonalCalendar(prisma, config, user, rows, {
+        const res = await buildPersonalCalendar(prisma, config, rows, {
           from,
           to,
           includeSettled,

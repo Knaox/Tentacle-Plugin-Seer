@@ -99,7 +99,7 @@ export function registerCalendarRoutes(
               () => buildMergedRows(prisma, config, user, warn),
               { staleMs: 600_000 },
             );
-        const res = await buildPersonalCalendar(prisma, config, user, rows, {
+        const res = await buildPersonalCalendar(prisma, config, rows, {
           from, to, includeSettled,
           maxFetch: everyone ? EVERYONE_FETCH_BUDGET : undefined,
         });

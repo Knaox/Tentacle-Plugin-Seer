@@ -60,3 +60,27 @@ export function detectAnime(raw: AnimeTraitRaw): boolean {
 
   return asiatique && lireGenres(raw).includes(GENRE_ANIMATION);
 }
+
+/**
+ * Verdict animé d'une FICHE en mémoire, avec repli.
+ *
+ * Le verdict stocké fait foi quand il est positif — il a vu les mots-clés.
+ * Mais une fiche écrite avant l'arrivée de la colonne porte `is_anime = 0`
+ * sans qu'on sache si cela signifie « non » ou « jamais évalué », et le filtre
+ * Animés restait muet le temps que le worker repasse toute l'instance. Langue
+ * et genres, eux, sont déjà dans la fiche : on retombe sur la règle de
+ * `detectAnime`, mots-clés en moins.
+ */
+export function detectAnimeLoose(m: {
+  isAnime?: boolean | null;
+  genreIds?: number[];
+  originalLanguage?: string | null;
+  originCountry?: string[];
+}): boolean {
+  if (m.isAnime === true) return true;
+  return detectAnime({
+    genreIds: m.genreIds,
+    originalLanguage: m.originalLanguage ?? undefined,
+    originCountry: m.originCountry,
+  });
+}

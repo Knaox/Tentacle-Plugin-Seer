@@ -1,0 +1,302 @@
+/* ------------------------------------------------------------------ */
+/*  Seer Plugin — Assemblage du calendrier maître                      */
+/* ------------------------------------------------------------------ */
+
+/*
+ * LE cache demandé : le calendrier général est construit UNE fois pour toute
+ * l'instance, et chaque vue (globale, mes demandes, celles de tout le monde)
+ * n'est plus qu'une tranche filtrée de ce résultat. Budget réseau d'un build
+ * à froid : ~15 pages de découverte + 2 appels Sonarr + les demandes de
+ * l'instance (souvent déjà en cache) + ≤55 fiches — une fois par 6 h et par
+ * région, là où l'ancien code payait jusqu'à ~85 appels PAR combinaison de
+ * filtres.
+ *
+ * Le store est NEUTRE : `requestId`/`requestStatus` restent nuls, aucun
+ * plafond par série n'y est appliqué. Statuts, pastilles et plafonds relèvent
+ * du service — jamais figés dans une entrée partagée par tous les comptes.
+ */
+
+import type { PrismaClient } from "@prisma/client";
+import type { WorkerCfg } from "./seerr-unified";
+import { cached } from "./cache";
+import { toDayString } from "./tmdb-fetch";
+import { detectAnime, detectAnimeLoose } from "./tmdb-traits";
+import { tmdbKey, type TmdbRef } from "./tmdb-cache";
+import { resolveTmdbMeta, scheduleTmdbBackfill } from "./tmdb-resolver";
+import { buildEveryoneRows } from "./calendar-everyone";
+import { buildPersonalCalendar } from "./calendar-personal";
+import { buildProviderEpisodes } from "./calendar-providers";
+import { attachAirTimes, sonarrWindowEpisodes, type SonarrWindowEpisode } from "./sonarr-schedule";
+import {
+  discoverUpcomingMovies, discoverRecentMovies, discoverTvFirsts,
+  discoverTvReturning, discoverTvTopProviders, type DiscoverRow,
+} from "./calendar-store-sources";
+import {
+  type CalendarItem, type CalendarKind,
+  makeItemId, sortCalendarItems,
+} from "./calendar-types";
+
+/** Fiches des demandes récupérées en direct au build — le reste part en fond. */
+const REQUESTS_FETCH_BUDGET = 60;
+/** Garde-fou mémoire : ~600 o par entrée, au-delà on tronque après tri. */
+const MAX_STORE_ITEMS = 4000;
+/** Statut Jellyseerr d'un média bloqué par tags — retiré comme sur le catalogue. */
+const MEDIA_STATUS_BLOCKLISTED = 6;
+
+export interface CalendarStore {
+  region: string;
+  from: string;
+  to: string;
+  items: CalendarItem[];
+  /** true = des fiches manquent encore ; le store se redonne un TTL court. */
+  partial: boolean;
+  builtAt: string;
+}
+
+export async function buildCalendarStore(
+  prisma: PrismaClient,
+  cfg: WorkerCfg,
+  region: string,
+  from: string,
+  to: string,
+  warn?: (err: unknown, msg: string) => void,
+): Promise<CalendarStore> {
+  const today = new Date().toISOString().slice(0, 10);
+
+  /* 1) Sources en parallèle — chacune déjà cachée individuellement. */
+  const [movUp, movRecent, tvFirsts, tvReturning, tvProviders, sonarrEps, rows] =
+    await Promise.all([
+      discoverUpcomingMovies(cfg),
+      discoverRecentMovies(cfg, from, today),
+      discoverTvFirsts(cfg, from),
+      discoverTvReturning(cfg),
+      discoverTvTopProviders(cfg, region),
+      sonarrWindowEpisodes(cfg, from, to),
+      cached("seer:rows:everyone", 60_000, () => buildEveryoneRows(prisma, cfg, warn), {
+        staleMs: 600_000,
+      }),
+    ]);
+
+  /* 2) Demandes de tout le monde → dates typées, films passés compris.
+   * `buildPersonalCalendar` porte toute la logique de fraîcheur (fiches
+   * amorcées à redemander, remplissage de fond) — on le réutilise tel quel et
+   * on NEUTRALISE ses statuts : le store ne porte l'identité de personne. */
+  const requests = await buildPersonalCalendar(prisma, cfg, rows, {
+    from, to, includeSettled: true, maxFetch: REQUESTS_FETCH_BUDGET, region,
+  });
+  const requestItems = requests.items.map((it) => ({
+    ...it, requestId: null, requestStatus: null,
+  }));
+
+  /* 3) Épisodes Sonarr (passé compris), habillés par les fiches. */
+  const { items: sonarrItems, missing: sonarrMissing } =
+    await sonarrEpisodesToItems(prisma, sonarrEps, from, to);
+  if (sonarrMissing.length > 0) scheduleTmdbBackfill(prisma, cfg, sonarrMissing, region);
+
+  /* 4) Prochains épisodes des séries en cours (popularité + plateformes). */
+  const seriesRows = dedupeRows([...tvReturning, ...tvProviders]);
+  const episodes = await buildProviderEpisodes(prisma, cfg, seriesRows, { region, from, to });
+
+  /* 5) Premières et sorties salle, fenêtre appliquée. */
+  const discoverItems = [
+    ...discoverRowsToItems(movUp, "movie", from, to),
+    ...discoverRowsToItems(movRecent, "movie", from, to),
+    ...discoverRowsToItems(tvFirsts, "tv", from, to),
+  ];
+
+  /* 6) Fusion — l'ordre EST la préférence pour les entrées non datées par
+   * Sonarr : fiches d'abord (dates régionales justes), découverte en dernier. */
+  const merged = dedupeStoreItems([
+    ...requestItems, ...sonarrItems, ...episodes.items, ...discoverItems,
+  ]);
+
+  /* 7) Enrichissement final depuis la mémoire des fiches, SQL seul. */
+  await enrichFromMeta(prisma, cfg, merged, region);
+
+  let items = sortCalendarItems(merged);
+  if (items.length > MAX_STORE_ITEMS) {
+    warn?.(null, `[seer] store ${region} tronqué : ${items.length} → ${MAX_STORE_ITEMS} entrées`);
+    items = items.slice(0, MAX_STORE_ITEMS);
+  }
+
+  const res = await attachAirTimes(cfg, { from, to, items, partial: false });
+
+  return {
+    region, from, to,
+    items: res.items,
+    partial: requests.partial || episodes.partial || sonarrMissing.length > 0,
+    builtAt: new Date().toISOString(),
+  };
+}
+
+/** Une ligne de découverte par identifiant — un doublon ferait doubler les refs. */
+function dedupeRows(rows: DiscoverRow[]): DiscoverRow[] {
+  const seen = new Set<number>();
+  const out: DiscoverRow[] = [];
+  for (const r of rows) {
+    if (!r.id || seen.has(r.id)) continue;
+    seen.add(r.id);
+    out.push(r);
+  }
+  return out;
+}
+
+/** Transforme des résultats de découverte en entrées, fenêtre appliquée. */
+export function discoverRowsToItems(
+  rows: DiscoverRow[], type: "movie" | "tv", from: string, to: string,
+): CalendarItem[] {
+  const out: CalendarItem[] = [];
+  for (const r of rows) {
+    if (!r.id) continue;
+    if (r.mediaInfo?.status === MEDIA_STATUS_BLOCKLISTED) continue;
+
+    const date = toDayString(r.releaseDate ?? r.firstAirDate);
+    // Garde-fou : hors fenêtre = bruit TMDB (dates 2030…), on jette.
+    if (!date || date < from || date > to) continue;
+
+    const mediaType = (r.mediaType === "tv" || r.mediaType === "movie")
+      ? (r.mediaType as "movie" | "tv")
+      : type;
+    const kind: CalendarKind = mediaType === "movie" ? "theatrical" : "premiere";
+
+    out.push({
+      id: makeItemId(mediaType, r.id, kind, date),
+      date, mediaType, tmdbId: r.id,
+      title: r.title ?? r.name ?? "",
+      posterPath: r.posterPath ?? null,
+      backdropPath: r.backdropPath ?? null,
+      overview: r.overview ?? null,
+      kind,
+      seasonNumber: null,
+      episodeNumber: null,
+      networks: null,
+      voteAverage: typeof r.voteAverage === "number" ? r.voteAverage : null,
+      popularity: typeof r.popularity === "number" ? r.popularity : null,
+      originalLanguage: r.originalLanguage ?? null,
+      isAnime: detectAnime(r),
+      // Complété par l'enrichissement final : recopier la plateforme demandée
+      // reviendrait à jurer qu'un film est sur toutes les plateformes cochées.
+      providerIds: [],
+      requestId: null,
+      requestStatus: null,
+    });
+  }
+  return out;
+}
+
+/**
+ * Dédoublonnage du store. L'`id` ne suffit pas : il contient la DATE, or le
+ * même épisode porte souvent deux dates — celle de la chaîne d'origine (TMDB)
+ * et le jour réel (Sonarr), à un jour d'écart.
+ *
+ *  - épisodes identifiés (S/E connus) : clé (type, tmdbId, SxE), la version
+ *    qui connaît l'instant exact (`airDateUtc`, donc Sonarr) gagne ;
+ *  - épisodes anonymes (fiche sans numéro) : jetés si un épisode identifié de
+ *    la même série tombe le même jour, sinon gardés tels quels ;
+ *  - tout le reste : clé (type, tmdbId, kind), premier arrivé gagne — d'où
+ *    l'importance de l'ordre d'entrée, fiches avant découverte.
+ */
+export function dedupeStoreItems(items: CalendarItem[]): CalendarItem[] {
+  const byKey = new Map<string, CalendarItem>();
+  const identifiedDays = new Set<string>();
+  const anonymous: CalendarItem[] = [];
+
+  for (const it of items) {
+    if (it.kind === "episode" && (it.seasonNumber == null || it.episodeNumber == null)) {
+      anonymous.push(it);
+      continue;
+    }
+    const key = it.kind === "episode"
+      ? `${it.mediaType}:${it.tmdbId}:S${it.seasonNumber}E${it.episodeNumber}`
+      : `${it.mediaType}:${it.tmdbId}:${it.kind}`;
+    const prev = byKey.get(key);
+    if (!prev) byKey.set(key, it);
+    else if (!prev.airDateUtc && it.airDateUtc) byKey.set(key, it);
+  }
+
+  for (const it of byKey.values()) {
+    if (it.kind === "episode") identifiedDays.add(`${it.tmdbId}:${it.date}`);
+  }
+  for (const it of anonymous) {
+    const key = `${it.mediaType}:${it.tmdbId}:episode:${it.date}`;
+    if (identifiedDays.has(`${it.tmdbId}:${it.date}`) || byKey.has(key)) continue;
+    byKey.set(key, it);
+  }
+
+  return Array.from(byKey.values());
+}
+
+/** Épisodes Sonarr → entrées, habillées depuis la mémoire des fiches. */
+async function sonarrEpisodesToItems(
+  prisma: PrismaClient,
+  eps: SonarrWindowEpisode[],
+  from: string,
+  to: string,
+): Promise<{ items: CalendarItem[]; missing: TmdbRef[] }> {
+  if (eps.length === 0) return { items: [], missing: [] };
+
+  const refs: TmdbRef[] = Array.from(new Set(eps.map((e) => e.tmdbId)))
+    .map((tmdbId) => ({ mediaType: "tv" as const, tmdbId }));
+  // SQL seul : le build ne paie pas un appel par série suivie — une fiche
+  // absente part en remplissage de fond et l'épisode attendra le prochain tour.
+  const { meta, missing } = await resolveTmdbMeta(prisma, null, refs, { maxFetch: 0 });
+
+  const items: CalendarItem[] = [];
+  for (const e of eps) {
+    const m = meta.get(tmdbKey({ mediaType: "tv", tmdbId: e.tmdbId }));
+    if (!m || !m.title) continue;
+    const date = e.airDate ?? e.airDateUtc.slice(0, 10);
+    if (date < from || date > to) continue;
+
+    items.push({
+      id: makeItemId("tv", e.tmdbId, "episode", date),
+      date,
+      mediaType: "tv",
+      tmdbId: e.tmdbId,
+      title: m.title,
+      posterPath: m.posterPath,
+      backdropPath: m.backdropPath,
+      overview: m.overview,
+      kind: "episode",
+      seasonNumber: e.seasonNumber,
+      episodeNumber: e.episodeNumber,
+      airDateUtc: e.airDateUtc,
+      networks: m.networks,
+      providerIds: m.providerIds ?? [],
+      voteAverage: m.voteAverage ?? null,
+      popularity: m.popularity ?? null,
+      originalLanguage: m.originalLanguage ?? null,
+      isAnime: detectAnimeLoose(m),
+      requestId: null,
+      requestStatus: null,
+    });
+  }
+
+  return { items, missing };
+}
+
+/**
+ * Complète note, langue, plateformes et verdict animé depuis les fiches déjà
+ * en mémoire (`maxFetch: 0`). C'est ce qui rend les filtres fiables sur les
+ * entrées venues de la découverte, dont la ligne d'origine est plus pauvre
+ * qu'une fiche.
+ */
+async function enrichFromMeta(
+  prisma: PrismaClient,
+  cfg: WorkerCfg,
+  items: CalendarItem[],
+  region: string,
+): Promise<void> {
+  const refs = items.map((i) => ({ mediaType: i.mediaType, tmdbId: i.tmdbId }));
+  const { meta } = await resolveTmdbMeta(prisma, cfg, refs, { maxFetch: 0, region });
+
+  for (const it of items) {
+    const m = meta.get(tmdbKey({ mediaType: it.mediaType, tmdbId: it.tmdbId }));
+    if (!m) continue;
+    if (it.providerIds.length === 0 && m.providerIds?.length) it.providerIds = m.providerIds;
+    if (it.voteAverage == null && m.voteAverage != null) it.voteAverage = m.voteAverage;
+    if (it.popularity == null && m.popularity != null) it.popularity = m.popularity;
+    if (!it.originalLanguage && m.originalLanguage) it.originalLanguage = m.originalLanguage;
+    if (it.isAnime !== true && detectAnimeLoose(m)) it.isAnime = true;
+  }
+}

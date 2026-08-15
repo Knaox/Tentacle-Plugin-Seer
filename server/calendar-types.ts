@@ -105,3 +105,22 @@ export function capPerSeries(items: CalendarItem[], max: number): CalendarItem[]
   }
   return out;
 }
+
+/**
+ * Comme `capPerSeries`, mais seules les dates >= `today` consomment le
+ * plafond : le PASSÉ n'est jamais élagué. Le calendrier remonte désormais dans
+ * la semaine et le mois écoulés — élaguer ces jours-là reviendrait à revider
+ * les cases qu'on vient d'y remplir, et le repli visuel par série s'occupe
+ * déjà de l'affichage des rafales.
+ */
+export function capPerSeriesFuture(items: CalendarItem[], max: number, today: string): CalendarItem[] {
+  const seen = new Map<number, number>();
+  const out: CalendarItem[] = [];
+  for (const item of items) {
+    if (item.mediaType !== "tv" || item.date < today) { out.push(item); continue; }
+    const n = (seen.get(item.tmdbId) ?? 0) + 1;
+    seen.set(item.tmdbId, n);
+    if (n <= max) out.push(item);
+  }
+  return out;
+}

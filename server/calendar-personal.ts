@@ -18,7 +18,7 @@ import type { PrismaClient } from "@prisma/client";
 import type { RequestStatus } from "./types";
 import type { TmdbMeta, TmdbRef } from "./tmdb-cache";
 import { tmdbKey } from "./tmdb-cache";
-import type { WorkerCfg, JellyfinUser } from "./seerr-unified";
+import type { WorkerCfg } from "./seerr-unified";
 import type { MergedRows } from "./requests-list";
 import { resolveTmdbMeta, scheduleTmdbBackfill, DEFAULT_REGION } from "./tmdb-resolver";
 import { needsDateRefresh, needsTraitsRefresh } from "./calendar-freshness";
@@ -47,7 +47,6 @@ export interface PersonalCalendarOpts {
 export async function buildPersonalCalendar(
   prisma: PrismaClient,
   cfg: WorkerCfg,
-  user: JellyfinUser,
   rows: MergedRows,
   opts: PersonalCalendarOpts,
 ): Promise<CalendarResponse> {
