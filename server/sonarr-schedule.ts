@@ -45,6 +45,17 @@ interface SonarrEpisode {
   seasonNumber?: number;
   episodeNumber?: number;
   airDateUtc?: string;
+  /** Jour « chaîne d'origine » (YYYY-MM-DD) — cohérent avec les dates TMDB. */
+  airDate?: string;
+}
+
+/** Un épisode du calendrier Sonarr, rattaché à sa série TMDB. */
+export interface SonarrWindowEpisode {
+  tmdbId: number;
+  seasonNumber: number;
+  episodeNumber: number;
+  airDateUtc: string;
+  airDate: string | null;
 }
 
 /** « S1E2 » — la clé que le client utilisera pour retrouver son épisode. */
@@ -96,31 +107,78 @@ export async function sonarrSeriesIndex(cfg: WorkerCfg): Promise<Map<number, num
 }
 
 /**
+ * Le calendrier Sonarr d'une fenêtre, BRUT et caché une seule fois : les deux
+ * dérivés (instants de diffusion, épisodes du calendrier maître) repartent de
+ * la même réponse au lieu de payer chacun leur appel.
+ */
+async function sonarrCalendarRaw(
+  cfg: WorkerCfg, from: string, to: string,
+): Promise<SonarrEpisode[]> {
+  return cached(
+    `seer:sonarr:calraw:${from}:${to}`,
+    CALENDAR_TTL_MS,
+    async () => {
+      const server = await sonarr(cfg);
+      if (!server) return [];
+      const rows = await arrGet<SonarrEpisode[]>(
+        server,
+        `/api/v3/calendar?start=${from}&end=${to}&includeSeries=false`,
+      );
+      return rows ?? [];
+    },
+    { staleMs: CALENDAR_STALE_MS },
+  );
+}
+
+/**
  * Instants de diffusion d'une fenêtre, indexés « seriesId:S1E2 ».
  * Le calendrier de Sonarr couvre les séries qu'il suit, toutes chaînes mêlées.
  */
 export async function sonarrWindowAirTimes(
   cfg: WorkerCfg, from: string, to: string,
 ): Promise<Map<string, string>> {
-  return cached(
-    `seer:sonarr:cal:${from}:${to}`,
-    CALENDAR_TTL_MS,
-    async () => {
-      const server = await sonarr(cfg);
-      if (!server) return new Map<string, string>();
-      const rows = await arrGet<SonarrEpisode[]>(
-        server,
-        `/api/v3/calendar?start=${from}&end=${to}&includeSeries=false`,
-      );
-      const times = new Map<string, string>();
-      for (const e of rows ?? []) {
-        if (!e.airDateUtc || e.seriesId == null || e.seasonNumber == null || e.episodeNumber == null) continue;
-        times.set(`${e.seriesId}:${airTimeKey(e.seasonNumber, e.episodeNumber)}`, e.airDateUtc);
-      }
-      return times;
-    },
-    { staleMs: CALENDAR_STALE_MS },
-  );
+  const rows = await sonarrCalendarRaw(cfg, from, to);
+  const times = new Map<string, string>();
+  for (const e of rows) {
+    if (!e.airDateUtc || e.seriesId == null || e.seasonNumber == null || e.episodeNumber == null) continue;
+    times.set(`${e.seriesId}:${airTimeKey(e.seasonNumber, e.episodeNumber)}`, e.airDateUtc);
+  }
+  return times;
+}
+
+/**
+ * Les épisodes de la fenêtre, passés COMPRIS, rattachés à leur série TMDB.
+ *
+ * C'est la seule source de dates passées pour les séries : les fiches TMDB ne
+ * retiennent que le PROCHAIN épisode, si bien qu'un samedi, le calendrier ne
+ * savait plus ce qui était sorti lundi. Sonarr, lui, garde toute la fenêtre.
+ */
+export async function sonarrWindowEpisodes(
+  cfg: WorkerCfg, from: string, to: string,
+): Promise<SonarrWindowEpisode[]> {
+  const [rows, index] = await Promise.all([
+    sonarrCalendarRaw(cfg, from, to),
+    sonarrSeriesIndex(cfg),
+  ]);
+  if (rows.length === 0 || index.size === 0) return [];
+
+  const tmdbBySeriesId = new Map<number, number>();
+  for (const [tmdbId, seriesId] of index) tmdbBySeriesId.set(seriesId, tmdbId);
+
+  const out: SonarrWindowEpisode[] = [];
+  for (const e of rows) {
+    if (!e.airDateUtc || e.seriesId == null || e.seasonNumber == null || e.episodeNumber == null) continue;
+    const tmdbId = tmdbBySeriesId.get(e.seriesId);
+    if (!tmdbId) continue;
+    out.push({
+      tmdbId,
+      seasonNumber: e.seasonNumber,
+      episodeNumber: e.episodeNumber,
+      airDateUtc: e.airDateUtc,
+      airDate: e.airDate && /^\d{4}-\d{2}-\d{2}$/.test(e.airDate) ? e.airDate : null,
+    });
+  }
+  return out;
 }
 
 /**

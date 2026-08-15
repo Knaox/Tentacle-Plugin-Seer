@@ -4607,26 +4607,30 @@ async function sonarrSeriesIndex(cfg) {
     { staleMs: SERIES_STALE_MS }
   );
 }
-async function sonarrWindowAirTimes(cfg, from, to) {
+async function sonarrCalendarRaw(cfg, from, to) {
   return cached(
-    `seer:sonarr:cal:${from}:${to}`,
+    `seer:sonarr:calraw:${from}:${to}`,
     CALENDAR_TTL_MS,
     async () => {
       const server = await sonarr(cfg);
-      if (!server) return /* @__PURE__ */ new Map();
+      if (!server) return [];
       const rows = await arrGet(
         server,
         `/api/v3/calendar?start=${from}&end=${to}&includeSeries=false`
       );
-      const times = /* @__PURE__ */ new Map();
-      for (const e of rows ?? []) {
-        if (!e.airDateUtc || e.seriesId == null || e.seasonNumber == null || e.episodeNumber == null) continue;
-        times.set(`${e.seriesId}:${airTimeKey(e.seasonNumber, e.episodeNumber)}`, e.airDateUtc);
-      }
-      return times;
+      return rows ?? [];
     },
     { staleMs: CALENDAR_STALE_MS }
   );
+}
+async function sonarrWindowAirTimes(cfg, from, to) {
+  const rows = await sonarrCalendarRaw(cfg, from, to);
+  const times = /* @__PURE__ */ new Map();
+  for (const e of rows) {
+    if (!e.airDateUtc || e.seriesId == null || e.seasonNumber == null || e.episodeNumber == null) continue;
+    times.set(`${e.seriesId}:${airTimeKey(e.seasonNumber, e.episodeNumber)}`, e.airDateUtc);
+  }
+  return times;
 }
 async function attachAirTimes(cfg, res) {
   const episodes = res.items.filter((i) => i.kind === "episode");
