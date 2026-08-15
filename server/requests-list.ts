@@ -38,6 +38,12 @@ export interface MergedRows {
   deletingIds: Set<number>;
   stats: RequestsStats;
   fetchedAt: string;
+  /**
+   * true = Jellyseerr n'a pas répondu et ces lignes sont un REPLI local.
+   * Le calendrier s'en sert pour se déclarer incomplet plutôt que de graver
+   * une liste amputée comme la vérité du moment.
+   */
+  seerrUnreachable?: boolean;
 }
 
 export async function buildMergedRows(
@@ -67,11 +73,13 @@ export async function buildMergedRows(
   }
 
   let seerrRows: SeerrRequestRow[] = [];
+  let seerrUnreachable = false;
   try {
     const seerUserId = await resolveJellyseerrUserId(cfg, prisma, user.userId, user.username);
     const all = await fetchAllSeerrRequests(cfg, seerUserId);
     seerrRows = all.rows;
   } catch (err) {
+    seerrUnreachable = true;
     log?.(err, "Seerr fetch failed, falling back to local only");
   }
 
@@ -98,6 +106,7 @@ export async function buildMergedRows(
     deletingIds,
     stats: computeStats(seerrRows, localOnly, localBySeerrId, deletingIds),
     fetchedAt: new Date().toISOString(),
+    seerrUnreachable,
   };
 }
 

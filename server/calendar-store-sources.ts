@@ -15,7 +15,7 @@
  */
 
 import { cached } from "./cache";
-import { mapLimit } from "./concurrency";
+import { mapLimitStrict } from "./concurrency";
 import { toDayString } from "./tmdb-fetch";
 import { detectAnime } from "./tmdb-traits";
 import type { WorkerCfg } from "./seerr-unified";
@@ -63,32 +63,37 @@ export interface DiscoverRow {
   genreIds?: number[];
 }
 
+/**
+ * Un échec LÈVE, il ne rend jamais « [] » : un vide d'échec est indiscernable
+ * d'un vrai vide, et le cache le graverait comme un succès pour des heures —
+ * c'est exactement le scénario du calendrier maigre qui ne se soigne pas.
+ * `cached()` sait quoi faire d'un chargeur qui rejette : rien n'est stocké, la
+ * dernière bonne valeur continue d'être servie, et le backoff espace les essais.
+ */
 async function discover(
   cfg: WorkerCfg, path: string, params: Record<string, string>, page: number,
 ): Promise<DiscoverRow[]> {
   const qs = new URLSearchParams({ ...params, page: String(page) });
-  try {
-    const res = await fetch(`${cfg.seerrUrl}/api/v1/discover/${path}?${qs}`, {
-      headers: { "X-Api-Key": cfg.seerrApiKey },
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!res.ok) return [];
-    const data = (await res.json()) as { results?: DiscoverRow[] };
-    return data.results ?? [];
-  } catch {
-    return [];
-  }
+  const res = await fetch(`${cfg.seerrUrl}/api/v1/discover/${path}?${qs}`, {
+    headers: { "X-Api-Key": cfg.seerrApiKey },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) throw new Error(`discover/${path} → ${res.status}`);
+  const data = (await res.json()) as { results?: DiscoverRow[] };
+  return data.results ?? [];
 }
 
 async function discoverPages(
   cfg: WorkerCfg, path: string, params: Record<string, string>,
 ): Promise<DiscoverRow[]> {
-  const pages = await mapLimit(
+  // Strict : une page en échec fait échouer la SOURCE. La variante tolérante
+  // rendait des pages nulles en silence — trois pages muettes = faux vide.
+  const pages = await mapLimitStrict(
     Array.from({ length: PAGES }, (_, i) => i + 1),
     3,
     (page) => discover(cfg, path, params, page),
   );
-  return pages.flatMap((p) => p ?? []);
+  return pages.flat();
 }
 
 /** Films à venir — la source historique du mode « Tout ». */
@@ -186,8 +191,8 @@ export async function discoverTvTopProviders(
   const ids = await topRegionProviderIds(cfg, region);
   const chunks: number[][] = [];
   for (let i = 0; i < ids.length; i += UNION_CHUNK) chunks.push(ids.slice(i, i + UNION_CHUNK));
-  const buckets = await mapLimit(chunks, 2, (c) => discoverTvReturningByProviders(cfg, c, region));
-  return buckets.flatMap((b) => b ?? []);
+  const buckets = await mapLimitStrict(chunks, 2, (c) => discoverTvReturningByProviders(cfg, c, region));
+  return buckets.flat();
 }
 
 /** Transforme des résultats de découverte en entrées, fenêtre appliquée. */
@@ -240,19 +245,23 @@ export async function topRegionProviderIds(cfg: WorkerCfg, region: string): Prom
     24 * 3_600_000,
     async () => {
       const catalog: number[] = [];
+      let pannes = 0;
       for (const path of ["tv", "movies"] as const) {
         try {
           const res = await fetch(
             `${cfg.seerrUrl}/api/v1/watchproviders/${path}?watchRegion=${region}`,
             { headers: { "X-Api-Key": cfg.seerrApiKey }, signal: AbortSignal.timeout(10_000) },
           );
-          if (!res.ok) continue;
+          if (!res.ok) throw new Error(`watchproviders/${path} → ${res.status}`);
           const data = (await res.json()) as Array<{ id?: number }>;
           for (const p of Array.isArray(data) ? data : []) {
             if (typeof p.id === "number" && !catalog.includes(p.id)) catalog.push(p.id);
           }
-        } catch { /* un catalogue indisponible ne vide pas l'autre */ }
+        } catch { pannes++; /* un catalogue indisponible ne vide pas l'autre */ }
       }
+      /* Un catalogue muet sur deux : liste appauvrie mais utilisable. Les DEUX
+       * muets : panne — lever plutôt que graver une liste vide 24 h. */
+      if (pannes === 2) throw new Error("watchproviders : aucun catalogue ne répond");
 
       const out: number[] = [];
       for (const id of PRIORITY_PROVIDER_IDS) {

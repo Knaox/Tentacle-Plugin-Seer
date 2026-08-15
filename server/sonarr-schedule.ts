@@ -93,11 +93,15 @@ export async function sonarrSeriesIndex(cfg: WorkerCfg): Promise<Map<number, num
     "seer:sonarr:series",
     SERIES_TTL_MS,
     async () => {
+      // Pas de Sonarr configuré : un vrai vide, cachable sans remords.
       const server = await sonarr(cfg);
       if (!server) return new Map<number, number>();
       const rows = await arrGet<SonarrSeries[]>(server, "/api/v3/series");
+      // Configuré mais muet : LEVER — un index vide gravé en cache ferait
+      // disparaître tous les épisodes en silence, sans rien à réparer.
+      if (rows === null) throw new Error("Sonarr injoignable (index des séries)");
       const index = new Map<number, number>();
-      for (const s of rows ?? []) {
+      for (const s of rows) {
         if (s.tmdbId && s.id) index.set(s.tmdbId, s.id);
       }
       return index;
@@ -124,7 +128,9 @@ async function sonarrCalendarRaw(
         server,
         `/api/v3/calendar?start=${from}&end=${to}&includeSeries=false`,
       );
-      return rows ?? [];
+      // Configuré mais muet ≠ semaine sans épisode : lever, ne rien graver.
+      if (rows === null) throw new Error("Sonarr injoignable (calendrier)");
+      return rows;
     },
     { staleMs: CALENDAR_STALE_MS },
   );
@@ -238,8 +244,10 @@ export async function sonarrSeriesAirTimes(
       if (!server || !seriesId) return new Map<string, string>();
 
       const rows = await arrGet<SonarrEpisode[]>(server, `/api/v3/episode?seriesId=${seriesId}`);
+      // Série suivie mais Sonarr muet : lever plutôt que cacher « aucune heure ».
+      if (rows === null) throw new Error("Sonarr injoignable (épisodes)");
       const times = new Map<string, string>();
-      for (const e of rows ?? []) {
+      for (const e of rows) {
         if (!e.airDateUtc || e.seasonNumber == null || e.episodeNumber == null) continue;
         times.set(airTimeKey(e.seasonNumber, e.episodeNumber), e.airDateUtc);
       }

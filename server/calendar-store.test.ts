@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dedupeStoreItems } from "./calendar-store-build";
+import { dedupeStoreItems, sourceOrFallback } from "./calendar-store-build";
 import { calendarStoreHorizon } from "./calendar-store";
 import { detectAnimeLoose } from "./tmdb-traits";
 import { capPerSeriesFuture, makeItemId, type CalendarItem, type CalendarKind } from "./calendar-types";
@@ -88,6 +88,22 @@ test("l'horizon du store couvre le mois précédent (grille comprise) et six moi
   assert.deepEqual(calendarStoreHorizon("2026-08-15"), { from: "2026-06-24", to: "2027-02-11" });
   // Passage d'année : janvier remonte à novembre de l'année d'avant.
   assert.deepEqual(calendarStoreHorizon("2026-01-05"), { from: "2025-11-24", to: "2026-07-04" });
+});
+
+test("sourceOrFallback : l'échec devient un repli marqué, le succès passe intact", async () => {
+  let marque: unknown = null;
+
+  const ok = await sourceOrFallback(Promise.resolve(["a", "b"]), [], () => { marque = "non"; });
+  assert.deepEqual(ok, ["a", "b"]);
+  assert.equal(marque, null);
+
+  const ko = await sourceOrFallback(
+    Promise.reject(new Error("guichet muet")),
+    ["repli"],
+    (err) => { marque = err; },
+  );
+  assert.deepEqual(ko, ["repli"]);
+  assert.ok(marque instanceof Error);
 });
 
 test("capPerSeriesFuture : le passé n'est jamais élagué, le futur reste plafonné", () => {

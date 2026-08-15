@@ -150,7 +150,10 @@ export async function buildPersonalCalendar(
     from: opts.from,
     to: opts.to,
     items: capPerSeries(sortCalendarItems(items), MAX_PER_SERIES),
-    partial: toFill.length > 0,
+    /* Des lignes de repli (Jellyseerr muet) rendent le résultat incomplet au
+     * même titre que des fiches manquantes : TTL court + sondage du client,
+     * jusqu'à ce que la vraie liste revienne. */
+    partial: toFill.length > 0 || rows.seerrUnreachable === true,
   };
 }
 

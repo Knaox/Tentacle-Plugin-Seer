@@ -173,8 +173,14 @@ export function registerCalendarRoutes(
     const config = await getWorkerConfig();
     if (!config) return { times: {} };
 
-    const times = await sonarrSeriesAirTimes(config, tmdbId);
-    return { times: Object.fromEntries(times) };
+    try {
+      const times = await sonarrSeriesAirTimes(config, tmdbId);
+      return { times: Object.fromEntries(times) };
+    } catch {
+      // Sonarr muet : réponse vide NON cachée — la fiche affiche la date
+      // seule, et le prochain passage retentera au lieu de resservir le vide.
+      return { times: {} };
+    }
   });
 
   /* ── Catalogue des plateformes de la région ──
@@ -190,25 +196,34 @@ export function registerCalendarRoutes(
 
     const region = readRegion(q);
 
-    return cached(`seer:providers:all:${region}`, 24 * 3_600_000, async () => {
-      const merged = new Map<number, { id: number; name: string; logoPath: string | null }>();
+    try {
+      return await cached(`seer:providers:all:${region}`, 24 * 3_600_000, async () => {
+        const merged = new Map<number, { id: number; name: string; logoPath: string | null }>();
+        let pannes = 0;
 
-      for (const path of ["tv", "movies"] as const) {
-        try {
-          const res = await fetch(
-            `${config.seerrUrl}/api/v1/watchproviders/${path}?watchRegion=${region}`,
-            { headers: { "X-Api-Key": config.seerrApiKey }, signal: AbortSignal.timeout(10_000) },
-          );
-          if (!res.ok) continue;
-          const data = (await res.json()) as Array<{ id?: number; name?: string; logoPath?: string }>;
-          for (const p of Array.isArray(data) ? data : []) {
-            if (typeof p.id !== "number" || !p.name || merged.has(p.id)) continue;
-            merged.set(p.id, { id: p.id, name: p.name, logoPath: p.logoPath ?? null });
-          }
-        } catch { /* un catalogue indisponible ne doit pas vider l'autre */ }
-      }
+        for (const path of ["tv", "movies"] as const) {
+          try {
+            const res = await fetch(
+              `${config.seerrUrl}/api/v1/watchproviders/${path}?watchRegion=${region}`,
+              { headers: { "X-Api-Key": config.seerrApiKey }, signal: AbortSignal.timeout(10_000) },
+            );
+            if (!res.ok) throw new Error(`watchproviders/${path} → ${res.status}`);
+            const data = (await res.json()) as Array<{ id?: number; name?: string; logoPath?: string }>;
+            for (const p of Array.isArray(data) ? data : []) {
+              if (typeof p.id !== "number" || !p.name || merged.has(p.id)) continue;
+              merged.set(p.id, { id: p.id, name: p.name, logoPath: p.logoPath ?? null });
+            }
+          } catch { pannes++; /* un catalogue indisponible ne doit pas vider l'autre */ }
+        }
+        // Les DEUX catalogues muets = panne : lever, ne pas graver un sélecteur
+        // de plateformes vide pour vingt-quatre heures.
+        if (pannes === 2) throw new Error("watchproviders : aucun catalogue ne répond");
 
-      return { results: Array.from(merged.values()) };
-    });
+        return { results: Array.from(merged.values()) };
+      });
+    } catch {
+      // Réponse vide NON cachée : le prochain ouvrage du filtre retentera.
+      return { results: [] };
+    }
   });
 }

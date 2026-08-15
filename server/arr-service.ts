@@ -28,14 +28,18 @@ export async function getArrServerConfig(
       signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) {
-      setCacheForType(type, null);
+      // Échec, pas une absence : mémorisé court, sinon une panne au démarrage
+      // masquait Sonarr dix minutes SANS qu'aucune source n'échoue — et le
+      // calendrier maître pouvait se figer « complet » sans les épisodes.
+      setCacheForType(type, null, FAIL_TTL_MS);
       return null;
     }
 
     const servers = (await res.json()) as Record<string, unknown>[];
     const defaultServer = servers.find((s) => s.isDefault);
     if (!defaultServer) {
-      setCacheForType(type, null);
+      // Vraie absence (réponse saine, aucun serveur par défaut) : cachable long.
+      setCacheForType(type, null, OK_TTL_MS);
       return null;
     }
 
@@ -47,16 +51,21 @@ export async function getArrServerConfig(
       baseUrl: (defaultServer.baseUrl as string) || "",
     };
 
-    setCacheForType(type, data);
+    setCacheForType(type, data, OK_TTL_MS);
     return data;
   } catch {
-    setCacheForType(type, null);
+    setCacheForType(type, null, FAIL_TTL_MS);
     return null;
   }
 }
 
-function setCacheForType(type: "sonarr" | "radarr", data: ArrServerConfig | null) {
-  const entry = { data, expires: Date.now() + 600_000 };
+/** Réponse saine (config ou vraie absence de serveur) : dix minutes. */
+const OK_TTL_MS = 600_000;
+/** Échec de récupération : trente secondes, le temps que ça revienne. */
+const FAIL_TTL_MS = 30_000;
+
+function setCacheForType(type: "sonarr" | "radarr", data: ArrServerConfig | null, ttlMs: number) {
+  const entry = { data, expires: Date.now() + ttlMs };
   if (type === "sonarr") sonarrCache = entry;
   else radarrCache = entry;
 }

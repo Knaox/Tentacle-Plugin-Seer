@@ -58,10 +58,12 @@ export async function buildEveryoneRows(
   /* `null` retire le filtre `requestedBy` : Jellyseerr renvoie alors les
    * demandes de tous les comptes. */
   let seerrRows: SeerrRequestRow[] = [];
+  let seerrUnreachable = false;
   try {
     const all = await fetchAllSeerrRequests(cfg, null);
     seerrRows = all.rows;
   } catch (err) {
+    seerrUnreachable = true;
     log?.(err, "Seerr fetch (tous) failed, falling back to local only");
   }
 
@@ -77,5 +79,6 @@ export async function buildEveryoneRows(
     deletingIds: new Set<number>(),
     stats: NO_STATS,
     fetchedAt: new Date().toISOString(),
+    seerrUnreachable,
   };
 }

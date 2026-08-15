@@ -84,6 +84,22 @@ async function mapLimit(items, limit, fn) {
   );
   return out;
 }
+async function mapLimitStrict(items, limit, fn) {
+  const out = new Array(items.length);
+  if (items.length === 0) return out;
+  const workers = Math.max(1, Math.min(limit, items.length));
+  let cursor = 0;
+  await Promise.all(
+    Array.from({ length: workers }, async () => {
+      for (; ; ) {
+        const i = cursor++;
+        if (i >= items.length) return;
+        out[i] = await fn(items[i], i);
+      }
+    })
+  );
+  return out;
+}
 function chunk(items, size) {
   if (size <= 0) return [items.slice()];
   const out = [];
@@ -1179,13 +1195,13 @@ async function getArrServerConfig(seerrUrl, apiKey, type) {
       signal: AbortSignal.timeout(1e4)
     });
     if (!res.ok) {
-      setCacheForType(type, null);
+      setCacheForType(type, null, FAIL_TTL_MS);
       return null;
     }
     const servers = await res.json();
     const defaultServer = servers.find((s) => s.isDefault);
     if (!defaultServer) {
-      setCacheForType(type, null);
+      setCacheForType(type, null, OK_TTL_MS);
       return null;
     }
     const data = {
@@ -1195,15 +1211,17 @@ async function getArrServerConfig(seerrUrl, apiKey, type) {
       useSsl: !!defaultServer.useSsl,
       baseUrl: defaultServer.baseUrl || ""
     };
-    setCacheForType(type, data);
+    setCacheForType(type, data, OK_TTL_MS);
     return data;
   } catch {
-    setCacheForType(type, null);
+    setCacheForType(type, null, FAIL_TTL_MS);
     return null;
   }
 }
-function setCacheForType(type, data) {
-  const entry = { data, expires: Date.now() + 6e5 };
+var OK_TTL_MS = 6e5;
+var FAIL_TTL_MS = 3e4;
+function setCacheForType(type, data, ttlMs) {
+  const entry = { data, expires: Date.now() + ttlMs };
   if (type === "sonarr") sonarrCache = entry;
   else radarrCache = entry;
 }
@@ -2687,11 +2705,13 @@ async function buildMergedRows(prisma, cfg, user, log) {
     if (r.seerrRequestId) localBySeerrId.set(r.seerrRequestId, r);
   }
   let seerrRows = [];
+  let seerrUnreachable = false;
   try {
     const seerUserId = await resolveJellyseerrUserId(cfg, prisma, user.userId, user.username);
     const all = await fetchAllSeerrRequests(cfg, seerUserId);
     seerrRows = all.rows;
   } catch (err) {
+    seerrUnreachable = true;
     log?.(err, "Seerr fetch failed, falling back to local only");
   }
   const seerrSeenIds = new Set(seerrRows.map((r) => r.id));
@@ -2713,7 +2733,8 @@ async function buildMergedRows(prisma, cfg, user, log) {
     localOnly,
     deletingIds,
     stats: computeStats(seerrRows, localOnly, localBySeerrId, deletingIds),
-    fetchedAt: (/* @__PURE__ */ new Date()).toISOString()
+    fetchedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    seerrUnreachable
   };
 }
 function computeStats(seerrRows, localOnly, localBySeerrId, deletingIds) {
@@ -4201,8 +4222,9 @@ async function sonarrSeriesIndex(cfg) {
       const server = await sonarr(cfg);
       if (!server) return /* @__PURE__ */ new Map();
       const rows = await arrGet(server, "/api/v3/series");
+      if (rows === null) throw new Error("Sonarr injoignable (index des s\xE9ries)");
       const index = /* @__PURE__ */ new Map();
-      for (const s of rows ?? []) {
+      for (const s of rows) {
         if (s.tmdbId && s.id) index.set(s.tmdbId, s.id);
       }
       return index;
@@ -4221,7 +4243,8 @@ async function sonarrCalendarRaw(cfg, from, to) {
         server,
         `/api/v3/calendar?start=${from}&end=${to}&includeSeries=false`
       );
-      return rows ?? [];
+      if (rows === null) throw new Error("Sonarr injoignable (calendrier)");
+      return rows;
     },
     { staleMs: CALENDAR_STALE_MS }
   );
@@ -4294,8 +4317,9 @@ async function sonarrSeriesAirTimes(cfg, tmdbId) {
       const seriesId = index.get(tmdbId);
       if (!server || !seriesId) return /* @__PURE__ */ new Map();
       const rows = await arrGet(server, `/api/v3/episode?seriesId=${seriesId}`);
+      if (rows === null) throw new Error("Sonarr injoignable (\xE9pisodes)");
       const times = /* @__PURE__ */ new Map();
-      for (const e of rows ?? []) {
+      for (const e of rows) {
         if (!e.airDateUtc || e.seasonNumber == null || e.episodeNumber == null) continue;
         times.set(airTimeKey(e.seasonNumber, e.episodeNumber), e.airDateUtc);
       }
@@ -4378,10 +4402,12 @@ async function buildEveryoneRows(prisma, cfg, log) {
     if (r.seerrRequestId) localBySeerrId.set(r.seerrRequestId, r);
   }
   let seerrRows = [];
+  let seerrUnreachable = false;
   try {
     const all = await fetchAllSeerrRequests(cfg, null);
     seerrRows = all.rows;
   } catch (err) {
+    seerrUnreachable = true;
     log?.(err, "Seerr fetch (tous) failed, falling back to local only");
   }
   const seerrSeenIds = new Set(seerrRows.map((r) => r.id));
@@ -4394,7 +4420,8 @@ async function buildEveryoneRows(prisma, cfg, log) {
     localOnly,
     deletingIds: /* @__PURE__ */ new Set(),
     stats: NO_STATS,
-    fetchedAt: (/* @__PURE__ */ new Date()).toISOString()
+    fetchedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    seerrUnreachable
   };
 }
 
@@ -4477,7 +4504,10 @@ async function buildPersonalCalendar(prisma, cfg, rows, opts) {
     from: opts.from,
     to: opts.to,
     items: capPerSeries(sortCalendarItems(items), MAX_PER_SERIES),
-    partial: toFill.length > 0
+    /* Des lignes de repli (Jellyseerr muet) rendent le résultat incomplet au
+     * même titre que des fiches manquantes : TTL court + sondage du client,
+     * jusqu'à ce que la vraie liste revienne. */
+    partial: toFill.length > 0 || rows.seerrUnreachable === true
   };
 }
 function metaToCalendarItems(m, from, to) {
@@ -4578,25 +4608,21 @@ var UNION_PROVIDERS_MAX = 16;
 var PRIORITY_PROVIDER_IDS = [8, 119, 337, 283, 350, 381, 415, 1899];
 async function discover(cfg, path, params, page) {
   const qs = new URLSearchParams({ ...params, page: String(page) });
-  try {
-    const res = await fetch(`${cfg.seerrUrl}/api/v1/discover/${path}?${qs}`, {
-      headers: { "X-Api-Key": cfg.seerrApiKey },
-      signal: AbortSignal.timeout(1e4)
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.results ?? [];
-  } catch {
-    return [];
-  }
+  const res = await fetch(`${cfg.seerrUrl}/api/v1/discover/${path}?${qs}`, {
+    headers: { "X-Api-Key": cfg.seerrApiKey },
+    signal: AbortSignal.timeout(1e4)
+  });
+  if (!res.ok) throw new Error(`discover/${path} \u2192 ${res.status}`);
+  const data = await res.json();
+  return data.results ?? [];
 }
 async function discoverPages(cfg, path, params) {
-  const pages = await mapLimit(
+  const pages = await mapLimitStrict(
     Array.from({ length: PAGES }, (_, i) => i + 1),
     3,
     (page) => discover(cfg, path, params, page)
   );
-  return pages.flatMap((p) => p ?? []);
+  return pages.flat();
 }
 async function discoverUpcomingMovies(cfg) {
   return cached(
@@ -4659,8 +4685,8 @@ async function discoverTvTopProviders(cfg, region) {
   const ids = await topRegionProviderIds(cfg, region);
   const chunks = [];
   for (let i = 0; i < ids.length; i += UNION_CHUNK) chunks.push(ids.slice(i, i + UNION_CHUNK));
-  const buckets = await mapLimit(chunks, 2, (c) => discoverTvReturningByProviders(cfg, c, region));
-  return buckets.flatMap((b) => b ?? []);
+  const buckets = await mapLimitStrict(chunks, 2, (c) => discoverTvReturningByProviders(cfg, c, region));
+  return buckets.flat();
 }
 function discoverRowsToItems(rows, type, from, to) {
   const out = [];
@@ -4703,20 +4729,23 @@ async function topRegionProviderIds(cfg, region) {
     24 * 36e5,
     async () => {
       const catalog = [];
+      let pannes = 0;
       for (const path of ["tv", "movies"]) {
         try {
           const res = await fetch(
             `${cfg.seerrUrl}/api/v1/watchproviders/${path}?watchRegion=${region}`,
             { headers: { "X-Api-Key": cfg.seerrApiKey }, signal: AbortSignal.timeout(1e4) }
           );
-          if (!res.ok) continue;
+          if (!res.ok) throw new Error(`watchproviders/${path} \u2192 ${res.status}`);
           const data = await res.json();
           for (const p of Array.isArray(data) ? data : []) {
             if (typeof p.id === "number" && !catalog.includes(p.id)) catalog.push(p.id);
           }
         } catch {
+          pannes++;
         }
       }
+      if (pannes === 2) throw new Error("watchproviders : aucun catalogue ne r\xE9pond");
       const out = [];
       for (const id of PRIORITY_PROVIDER_IDS) {
         if (catalog.includes(id) && !out.includes(id)) out.push(id);
@@ -4735,17 +4764,24 @@ var REQUESTS_FETCH_BUDGET = 60;
 var MAX_STORE_ITEMS = 4e3;
 async function buildCalendarStore(prisma, cfg, region, from, to, warn) {
   const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  let degraded = false;
+  const fail = (name) => (err) => {
+    degraded = true;
+    warn?.(err, `[seer] source \xAB ${name} \xBB en \xE9chec \u2014 calendrier ma\xEEtre incomplet`);
+  };
   const [movUp, movRecent, tvFirsts, tvReturning, tvProviders, sonarrEps, rows] = await Promise.all([
-    discoverUpcomingMovies(cfg),
-    discoverRecentMovies(cfg, from, today),
-    discoverTvFirsts(cfg, from),
-    discoverTvReturning(cfg),
-    discoverTvTopProviders(cfg, region),
-    sonarrWindowEpisodes(cfg, from, to),
+    sourceOrFallback(discoverUpcomingMovies(cfg), [], fail("films \xE0 venir")),
+    sourceOrFallback(discoverRecentMovies(cfg, from, today), [], fail("films r\xE9cents")),
+    sourceOrFallback(discoverTvFirsts(cfg, from), [], fail("d\xE9buts de s\xE9ries")),
+    sourceOrFallback(discoverTvReturning(cfg), [], fail("s\xE9ries en cours")),
+    sourceOrFallback(discoverTvTopProviders(cfg, region), [], fail("plateformes")),
+    sourceOrFallback(sonarrWindowEpisodes(cfg, from, to), [], fail("calendrier Sonarr")),
+    // Ne lève jamais : repli local interne + drapeau seerrUnreachable.
     cached("seer:rows:everyone", 6e4, () => buildEveryoneRows(prisma, cfg, warn), {
       staleMs: 6e5
     })
   ]);
+  if (rows.seerrUnreachable === true) degraded = true;
   const requests = await buildPersonalCalendar(prisma, cfg, rows, {
     from,
     to,
@@ -4785,9 +4821,17 @@ async function buildCalendarStore(prisma, cfg, region, from, to, warn) {
     from,
     to,
     items: res.items,
-    partial: requests.partial || episodes.partial || sonarrMissing.length > 0,
+    partial: requests.partial || episodes.partial || sonarrMissing.length > 0 || degraded,
     builtAt: (/* @__PURE__ */ new Date()).toISOString()
   };
+}
+async function sourceOrFallback(p, fallback, onFail) {
+  try {
+    return await p;
+  } catch (err) {
+    onFail(err);
+    return fallback;
+  }
 }
 function dedupeRows(rows) {
   const seen = /* @__PURE__ */ new Set();
@@ -5118,33 +5162,44 @@ function registerCalendarRoutes(app, prisma, getWorkerConfig2) {
     if (!Number.isFinite(tmdbId) || tmdbId <= 0) return { times: {} };
     const config = await getWorkerConfig2();
     if (!config) return { times: {} };
-    const times = await sonarrSeriesAirTimes(config, tmdbId);
-    return { times: Object.fromEntries(times) };
+    try {
+      const times = await sonarrSeriesAirTimes(config, tmdbId);
+      return { times: Object.fromEntries(times) };
+    } catch {
+      return { times: {} };
+    }
   });
   app.get("/calendar/providers", async (request) => {
     const q = request.query;
     const config = await getWorkerConfig2();
     if (!config) return { results: [] };
     const region = readRegion(q);
-    return cached(`seer:providers:all:${region}`, 24 * 36e5, async () => {
-      const merged = /* @__PURE__ */ new Map();
-      for (const path of ["tv", "movies"]) {
-        try {
-          const res = await fetch(
-            `${config.seerrUrl}/api/v1/watchproviders/${path}?watchRegion=${region}`,
-            { headers: { "X-Api-Key": config.seerrApiKey }, signal: AbortSignal.timeout(1e4) }
-          );
-          if (!res.ok) continue;
-          const data = await res.json();
-          for (const p of Array.isArray(data) ? data : []) {
-            if (typeof p.id !== "number" || !p.name || merged.has(p.id)) continue;
-            merged.set(p.id, { id: p.id, name: p.name, logoPath: p.logoPath ?? null });
+    try {
+      return await cached(`seer:providers:all:${region}`, 24 * 36e5, async () => {
+        const merged = /* @__PURE__ */ new Map();
+        let pannes = 0;
+        for (const path of ["tv", "movies"]) {
+          try {
+            const res = await fetch(
+              `${config.seerrUrl}/api/v1/watchproviders/${path}?watchRegion=${region}`,
+              { headers: { "X-Api-Key": config.seerrApiKey }, signal: AbortSignal.timeout(1e4) }
+            );
+            if (!res.ok) throw new Error(`watchproviders/${path} \u2192 ${res.status}`);
+            const data = await res.json();
+            for (const p of Array.isArray(data) ? data : []) {
+              if (typeof p.id !== "number" || !p.name || merged.has(p.id)) continue;
+              merged.set(p.id, { id: p.id, name: p.name, logoPath: p.logoPath ?? null });
+            }
+          } catch {
+            pannes++;
           }
-        } catch {
         }
-      }
-      return { results: Array.from(merged.values()) };
-    });
+        if (pannes === 2) throw new Error("watchproviders : aucun catalogue ne r\xE9pond");
+        return { results: Array.from(merged.values()) };
+      });
+    } catch {
+      return { results: [] };
+    }
   });
 }
 

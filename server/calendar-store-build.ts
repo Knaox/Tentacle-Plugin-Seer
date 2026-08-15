@@ -58,19 +58,33 @@ export async function buildCalendarStore(
 ): Promise<CalendarStore> {
   const today = new Date().toISOString().slice(0, 10);
 
-  /* 1) Sources en parallèle — chacune déjà cachée individuellement. */
+  /* 1) Sources en parallèle — chacune déjà cachée individuellement.
+   *
+   * Une source qui LÈVE (guichet muet) est remplacée par du vide, mais le
+   * store se déclare alors incomplet : TTL court, bandeau, reconstruction
+   * chaque minute. Sans ce marquage, une panne au démarrage gravait un
+   * calendrier maigre et satisfait pour six heures — le seul scénario qui ne
+   * se soignait pas tout seul. */
+  let degraded = false;
+  const fail = (name: string) => (err: unknown) => {
+    degraded = true;
+    warn?.(err, `[seer] source « ${name} » en échec — calendrier maître incomplet`);
+  };
+
   const [movUp, movRecent, tvFirsts, tvReturning, tvProviders, sonarrEps, rows] =
     await Promise.all([
-      discoverUpcomingMovies(cfg),
-      discoverRecentMovies(cfg, from, today),
-      discoverTvFirsts(cfg, from),
-      discoverTvReturning(cfg),
-      discoverTvTopProviders(cfg, region),
-      sonarrWindowEpisodes(cfg, from, to),
+      sourceOrFallback(discoverUpcomingMovies(cfg), [], fail("films à venir")),
+      sourceOrFallback(discoverRecentMovies(cfg, from, today), [], fail("films récents")),
+      sourceOrFallback(discoverTvFirsts(cfg, from), [], fail("débuts de séries")),
+      sourceOrFallback(discoverTvReturning(cfg), [], fail("séries en cours")),
+      sourceOrFallback(discoverTvTopProviders(cfg, region), [], fail("plateformes")),
+      sourceOrFallback(sonarrWindowEpisodes(cfg, from, to), [], fail("calendrier Sonarr")),
+      // Ne lève jamais : repli local interne + drapeau seerrUnreachable.
       cached("seer:rows:everyone", 60_000, () => buildEveryoneRows(prisma, cfg, warn), {
         staleMs: 600_000,
       }),
     ]);
+  if (rows.seerrUnreachable === true) degraded = true;
 
   /* 2) Demandes de tout le monde → dates typées, films passés compris.
    * `buildPersonalCalendar` porte toute la logique de fraîcheur (fiches
@@ -119,9 +133,28 @@ export async function buildCalendarStore(
   return {
     region, from, to,
     items: res.items,
-    partial: requests.partial || episodes.partial || sonarrMissing.length > 0,
+    partial: requests.partial || episodes.partial || sonarrMissing.length > 0 || degraded,
     builtAt: new Date().toISOString(),
   };
+}
+
+/**
+ * Un échec de source ne vaut JAMAIS « rien à signaler » : repli fourni par
+ * l'appelant, échec signalé pour que le résultat se déclare incomplet.
+ * Le cache de la source, lui, n'a rien stocké — sa dernière bonne valeur
+ * reste servie et le prochain passage réessaie.
+ */
+export async function sourceOrFallback<T>(
+  p: Promise<T>,
+  fallback: T,
+  onFail: (err: unknown) => void,
+): Promise<T> {
+  try {
+    return await p;
+  } catch (err) {
+    onFail(err);
+    return fallback;
+  }
 }
 
 /** Une ligne de découverte par identifiant — un doublon ferait doubler les refs. */
