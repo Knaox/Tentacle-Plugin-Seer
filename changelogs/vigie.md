@@ -19,6 +19,18 @@ auto-bumpé par le message du commit (`feat`→mineure, `fix`→patch, `!`→maj
 
 ---
 
+## [1.14.2]
+### FR
+- **Une panne n'est plus jamais confondue avec « rien à signaler ».** Quand une des sources du calendrier (Jellyseerr/TMDB, Sonarr) ne répondait pas — réseau pas encore prêt juste après un redémarrage, service momentanément indisponible — le plugin pouvait retenir un calendrier maigre comme s'il était complet, pendant six heures, sans bandeau ni nouvelle tentative
+- Désormais : un échec n'est **jamais mis en cache comme un succès**, la dernière bonne réponse connue continue d'être servie, le calendrier se déclare **incomplet** (bandeau « Construction du calendrier en cours… ») et la reconstruction se relance chaque minute jusqu'à ce que tout réponde
+- Une instance **sans Sonarr** reste parfaitement normale : « pas de Sonarr configuré » est un vrai « rien à signaler » — seul « Sonarr configuré mais muet » compte comme une panne (et n'est plus masqué dix minutes par le cache de configuration)
+- Le sélecteur de plateformes et les heures de diffusion ne peuvent plus retenir un résultat vide pendant des heures après une panne passagère
+### EN
+- **An outage can no longer be mistaken for "nothing to report".** When one of the calendar's sources (Jellyseerr/TMDB, Sonarr) failed to answer — network not ready right after a restart, service briefly down — the plugin could cache a thin calendar as if it were complete, for six hours, with no banner and no retry
+- Now: a failure is **never cached as a success**, the last known good answer keeps being served, the calendar declares itself **incomplete** (the "Building the calendar…" banner shows) and rebuilds every minute until everything answers
+- Instances **without Sonarr** stay perfectly normal: "no Sonarr configured" is a genuine "nothing to report" — only "configured but silent" counts as an outage (and is no longer hidden for ten minutes by the settings cache)
+- The platform picker and episode air times can no longer hold an empty result for hours after a transient failure
+
 ## [1.14.1]
 ### FR
 - **La page Sorties devient « Calendrier »**, et ses onglets disent enfin ce qu'ils montrent : **« Mes demandes »** (avec « Toutes mes demandes » / « Toutes les demandes ») et **« Toutes les sorties »** — tous les calendriers de la période, contenus non demandés compris
