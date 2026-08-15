@@ -4,7 +4,7 @@
 
 import type { PrismaClient } from "@prisma/client";
 import { getRequestsToSync, updateRequestStatus, upsertContentClaim, purgeExpiredContentClaims } from "./db";
-import { invalidate } from "./cache";
+import { invalidateRequestCaches } from "./cache";
 import { fetchMediaDetail } from "./anime";
 import { releasedSuffix } from "./season-availability";
 import { notifyAvailableSeasons } from "./seer-availability-notify";
@@ -69,7 +69,7 @@ export async function syncStatuses(prisma: PrismaClient, config: WorkerConfig): 
       // Échec → retry/suppression (commun film/série).
       if (globalStatus === "failed" && request.status !== "failed") {
         await handleFailedSync(prisma, config, request, data);
-        invalidate(`seer-cache:${request.jellyfinUserId}`);
+        invalidateRequestCaches(request.jellyfinUserId);
         continue;
       }
 
@@ -103,7 +103,7 @@ async function syncGlobal(
   const extra: Record<string, unknown> = { seerrMediaStatus: mediaStatus };
   if (newStatus === "available") extra.completedAt = new Date();
   await updateRequestStatus(prisma, request.id, newStatus, extra as any);
-  invalidate(`seer-cache:${request.jellyfinUserId}`);
+  invalidateRequestCaches(request.jellyfinUserId);
 
   const notif = statusNotification(request, newStatus);
   if (notif) {
@@ -141,7 +141,7 @@ async function syncTvSeasons(
     const extra: Record<string, unknown> = { seerrMediaStatus: mediaStatus };
     if (newStatus === "available") extra.completedAt = new Date();
     await updateRequestStatus(prisma, request.id, newStatus, extra as any);
-    invalidate(`seer-cache:${request.jellyfinUserId}`);
+    invalidateRequestCaches(request.jellyfinUserId);
     console.log(`[SeerWorker] "${request.title}" status: ${request.status} → ${newStatus}`);
   }
 }

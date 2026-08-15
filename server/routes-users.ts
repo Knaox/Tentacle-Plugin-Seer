@@ -11,7 +11,7 @@ import {
   createPlaceholderJellyseerrUser,
   invalidateStaleJellyseerrCache,
 } from "./jellyseerr-user";
-import { invalidate } from "./cache";
+import { invalidateRequestCaches } from "./cache";
 
 interface JellyfinUser { userId: string; username: string; isAdmin: boolean; }
 
@@ -357,8 +357,8 @@ export function registerUsersRoutes(
         }
       }
 
-      // 5) Invalider les caches des users touchés
-      for (const uid of usersTouched) invalidate(`seer-cache:${uid}`);
+      // 5) Invalider les caches des users touchés (+ vues partagées)
+      for (const uid of usersTouched) invalidateRequestCaches(uid);
 
       return {
         total: rows.length,

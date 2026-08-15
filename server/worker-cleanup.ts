@@ -15,7 +15,7 @@ import {
   triggerSeerrJob,
 } from "./arr-service";
 import { reconcileSeerrSeasons } from "./seerr-reconcile";
-import { invalidate } from "./cache";
+import { invalidateRequestCaches } from "./cache";
 import type { WorkerConfig } from "./worker-sync";
 
 const CLEANUP_BATCH = 25;
@@ -43,7 +43,7 @@ export async function processCleanupQueue(prisma: PrismaClient, config: WorkerCo
  * l'identifiant utilisateur.
  */
 function invalidateForJob(job: CleanupJob): void {
-  invalidate(job.jellyfinUserId ? `seer-cache:${job.jellyfinUserId}` : "seer-cache");
+  invalidateRequestCaches(job.jellyfinUserId);
 }
 
 async function processCleanupJob(

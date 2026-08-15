@@ -128,6 +128,22 @@ export function invalidate(prefix: string): void {
   }
 }
 
+/**
+ * Purge tout ce qui dérive des demandes : la vue du compte touché, et les vues
+ * PARTAGÉES de l'instance (lignes fusionnées « tout le monde », calendrier
+ * « Toutes les demandes »).
+ *
+ * Les vues partagées n'ont pas le préfixe `seer-cache:` — voulu, une seule
+ * entrée sert tout le monde — mais elles échappaient du coup aux purges par
+ * compte : une nouvelle demande mettait jusqu'à un quart d'heure à paraître
+ * dans « Toutes les demandes ». Sans identifiant, on purge tous les comptes.
+ */
+export function invalidateRequestCaches(userId?: string | null): void {
+  invalidate(userId ? `seer-cache:${userId}` : "seer-cache");
+  invalidate("seer:rows:everyone");
+  invalidate("seer:cal:everyone");
+}
+
 /** Nettoyage périodique. Borne = `stale`, sinon on effacerait le servable. */
 setInterval(() => {
   const now = Date.now();

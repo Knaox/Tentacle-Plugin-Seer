@@ -10,7 +10,7 @@ import { syncStatuses, retryFailedRequests, type WorkerConfig } from "./worker-s
 import { processCleanupQueue } from "./worker-cleanup";
 import { resolveJellyseerrUserId } from "./jellyseerr-user";
 import { warmTmdbCache, seedTmdbCacheOnce, discoverSeerrRefs } from "./worker-tmdb";
-import { invalidate } from "./cache";
+import { invalidateRequestCaches } from "./cache";
 import type { SeerProfile } from "./types";
 
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -244,7 +244,7 @@ async function processNextRequest(
           seerrMediaStatus: mediaStatus,
           sentAt: new Date(),
         });
-        invalidate(`seer-cache:${request.jellyfinUserId}`);
+        invalidateRequestCaches(request.jellyfinUserId);
         // Notifier la dispo MÊME si déjà présent (rien à télécharger) — sinon
         // une demande de contenu déjà en bibliothèque ne notifie jamais.
         if (request.mediaType === "tv") {
@@ -266,7 +266,7 @@ async function processNextRequest(
       seerrMediaStatus: data.media?.status,
       sentAt: new Date(),
     });
-    invalidate(`seer-cache:${request.jellyfinUserId}`);
+    invalidateRequestCaches(request.jellyfinUserId);
 
     // Anti-doublon : revendiquer ce contenu dès l'envoi (couvre un téléchargement
     // très rapide avant la 1re passe de sync). Rafraîchi ensuite par syncStatuses.

@@ -10,7 +10,7 @@ import {
 } from "./db";
 import { uuid } from "./db-helpers";
 import type { RequestStatus } from "./types";
-import { invalidate } from "./cache";
+import { invalidateRequestCaches } from "./cache";
 import { kickWorkerNow } from "./worker";
 import {
   getUser, type WorkerCfg, parseRequestId,
@@ -68,7 +68,7 @@ export function registerRequestActionRoutes(
         overview: req.overview, year: req.year, seasons: retrySeasons, priority: 1,
         profileId: newProfileId, isAnime: req.isAnime,
       });
-      invalidate(`seer-cache:${user.userId}`);
+      invalidateRequestCaches(user.userId);
       kickWorkerNow();
       return reply.status(201).send(newReq);
     }
@@ -126,7 +126,7 @@ export function registerRequestActionRoutes(
       profileId: body.profileId ?? null,
       isAnime: false,
     });
-    invalidate(`seer-cache:${user.userId}`);
+    invalidateRequestCaches(user.userId);
     kickWorkerNow();
     return reply.status(201).send(newReq);
   });
@@ -223,7 +223,7 @@ export function registerRequestActionRoutes(
       }
     }
 
-    invalidate(`seer-cache:${user.userId}`);
+    invalidateRequestCaches(user.userId);
     return { success: true, target };
   });
 

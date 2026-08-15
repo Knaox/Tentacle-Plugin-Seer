@@ -1154,6 +1154,11 @@ function invalidate(prefix) {
     }
   }
 }
+function invalidateRequestCaches(userId) {
+  invalidate(userId ? `seer-cache:${userId}` : "seer-cache");
+  invalidate("seer:rows:everyone");
+  invalidate("seer:cal:everyone");
+}
 setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of store.entries()) {
@@ -1398,7 +1403,7 @@ async function syncStatuses(prisma, config) {
       const globalStatus = mapSeerrStatus(data.status, data.media?.status, data.media?.downloadStatus);
       if (globalStatus === "failed" && request.status !== "failed") {
         await handleFailedSync(prisma, config, request, data);
-        invalidate(`seer-cache:${request.jellyfinUserId}`);
+        invalidateRequestCaches(request.jellyfinUserId);
         continue;
       }
       if (request.mediaType === "tv" && (request.seasons?.length ?? 0) > 0) {
@@ -1420,7 +1425,7 @@ async function syncGlobal(prisma, request, newStatus, mediaStatus) {
   const extra = { seerrMediaStatus: mediaStatus };
   if (newStatus === "available") extra.completedAt = /* @__PURE__ */ new Date();
   await updateRequestStatus(prisma, request.id, newStatus, extra);
-  invalidate(`seer-cache:${request.jellyfinUserId}`);
+  invalidateRequestCaches(request.jellyfinUserId);
   const notif = statusNotification(request, newStatus);
   if (notif) {
     await prisma.notification.create({
@@ -1446,7 +1451,7 @@ async function syncTvSeasons(prisma, config, request, fallbackStatus, mediaStatu
     const extra = { seerrMediaStatus: mediaStatus };
     if (newStatus === "available") extra.completedAt = /* @__PURE__ */ new Date();
     await updateRequestStatus(prisma, request.id, newStatus, extra);
-    invalidate(`seer-cache:${request.jellyfinUserId}`);
+    invalidateRequestCaches(request.jellyfinUserId);
     console.log(`[SeerWorker] "${request.title}" status: ${request.status} \u2192 ${newStatus}`);
   }
 }
@@ -1607,7 +1612,7 @@ async function processCleanupQueue(prisma, config) {
   }
 }
 function invalidateForJob(job) {
-  invalidate(job.jellyfinUserId ? `seer-cache:${job.jellyfinUserId}` : "seer-cache");
+  invalidateRequestCaches(job.jellyfinUserId);
 }
 async function processCleanupJob(prisma, config, job) {
   const headers = { "X-Api-Key": config.seerrApiKey };
@@ -2362,7 +2367,7 @@ async function processNextRequest(prisma, config, skipIds) {
           seerrMediaStatus: mediaStatus,
           sentAt: /* @__PURE__ */ new Date()
         });
-        invalidate(`seer-cache:${request.jellyfinUserId}`);
+        invalidateRequestCaches(request.jellyfinUserId);
         if (request.mediaType === "tv") {
           await notifyAvailableSeasons(prisma, request, detail?.mediaInfo?.seasons);
         } else if (mediaStatus === 5) {
@@ -2380,7 +2385,7 @@ async function processNextRequest(prisma, config, skipIds) {
       seerrMediaStatus: data.media?.status,
       sentAt: /* @__PURE__ */ new Date()
     });
-    invalidate(`seer-cache:${request.jellyfinUserId}`);
+    invalidateRequestCaches(request.jellyfinUserId);
     await upsertContentClaim(
       prisma,
       request.tmdbId,
@@ -2929,7 +2934,7 @@ function registerRequestActionRoutes(app, prisma, getWorkerConfig2) {
         profileId: newProfileId,
         isAnime: req.isAnime
       });
-      invalidate(`seer-cache:${user.userId}`);
+      invalidateRequestCaches(user.userId);
       kickWorkerNow();
       return reply.status(201).send(newReq2);
     }
@@ -2981,7 +2986,7 @@ function registerRequestActionRoutes(app, prisma, getWorkerConfig2) {
       profileId: body.profileId ?? null,
       isAnime: false
     });
-    invalidate(`seer-cache:${user.userId}`);
+    invalidateRequestCaches(user.userId);
     kickWorkerNow();
     return reply.status(201).send(newReq);
   });
@@ -3052,7 +3057,7 @@ function registerRequestActionRoutes(app, prisma, getWorkerConfig2) {
         });
       }
     }
-    invalidate(`seer-cache:${user.userId}`);
+    invalidateRequestCaches(user.userId);
     return { success: true, target };
   });
   app.post("/requests/:id/retry-delete", async (request, reply) => {
@@ -3174,7 +3179,7 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
           isAnime
         });
         const updated = await getRequestById(prisma, existing.id);
-        invalidate(`seer-cache:${user.userId}`);
+        invalidateRequestCaches(user.userId);
         kickWorkerNow();
         return reply.status(201).send(updated);
       }
@@ -3197,7 +3202,7 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
       profileId: body.profileId,
       isAnime
     });
-    invalidate(`seer-cache:${user.userId}`);
+    invalidateRequestCaches(user.userId);
     kickWorkerNow();
     return reply.status(201).send(req);
   });
@@ -3239,7 +3244,7 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
       } else {
         await updateRequestStatus(prisma, parsed.id, "deleting");
       }
-      invalidate(`seer-cache:${user.userId}`);
+      invalidateRequestCaches(user.userId);
       kickWorkerNow();
       return { success: true, status: partial2 ? "updated" : "deleting" };
     }
@@ -3275,7 +3280,7 @@ function registerRequestRoutes(app, prisma, getWorkerConfig2) {
       requestId: null,
       jellyfinUserId: user.userId
     });
-    invalidate(`seer-cache:${user.userId}`);
+    invalidateRequestCaches(user.userId);
     kickWorkerNow();
     return { success: true, status: partial ? "updated" : "deleting" };
   });
@@ -3743,7 +3748,7 @@ function registerUsersRoutes(app, prisma, getWorkerConfig2, requireAdmin) {
           });
         }
       }
-      for (const uid of usersTouched) invalidate(`seer-cache:${uid}`);
+      for (const uid of usersTouched) invalidateRequestCaches(uid);
       return {
         total: rows.length,
         reassigned,

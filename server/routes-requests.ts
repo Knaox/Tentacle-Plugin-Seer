@@ -13,7 +13,7 @@ import {
 } from "./db";
 import type { CreateRequestBody } from "./types";
 import { fetchMediaDetail, isAnimeFromKeywords } from "./anime";
-import { invalidate } from "./cache";
+import { invalidateRequestCaches } from "./cache";
 import { kickWorkerNow } from "./worker";
 import { getUser, type WorkerCfg, parseRequestId, fetchSeerrRequestById } from "./seerr-unified";
 import { registerRequestReadRoutes } from "./routes-requests-read";
@@ -99,7 +99,7 @@ export function registerRequestRoutes(
         });
 
         const updated = await getRequestById(prisma, existing.id);
-        invalidate(`seer-cache:${user.userId}`);
+        invalidateRequestCaches(user.userId);
         kickWorkerNow();
         return reply.status(201).send(updated);
       }
@@ -120,7 +120,7 @@ export function registerRequestRoutes(
       isAnime,
     });
 
-    invalidate(`seer-cache:${user.userId}`);
+    invalidateRequestCaches(user.userId);
     kickWorkerNow();
     return reply.status(201).send(req);
   });
@@ -174,7 +174,7 @@ export function registerRequestRoutes(
       } else {
         await updateRequestStatus(prisma, parsed.id, "deleting");
       }
-      invalidate(`seer-cache:${user.userId}`);
+      invalidateRequestCaches(user.userId);
       kickWorkerNow();
       return { success: true, status: partial ? "updated" : "deleting" };
     }
@@ -225,7 +225,7 @@ export function registerRequestRoutes(
       jellyfinUserId: user.userId,
     });
 
-    invalidate(`seer-cache:${user.userId}`);
+    invalidateRequestCaches(user.userId);
     kickWorkerNow();
     return { success: true, status: partial ? "updated" : "deleting" };
   });
