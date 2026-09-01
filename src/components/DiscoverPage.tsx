@@ -68,6 +68,24 @@ export function DiscoverPage() {
     setSelectedItem(item);
   }, []);
 
+  // Deep-link hôte : « /discover?media=movie:603 » ouvre la fiche à l'arrivée.
+  // La query de la route hôte arrive par `__tentacle_env.query` (hôtes >= 1.16 ;
+  // champ ADDITIF, absent avant — d'où l'optionnel). La modale charge ensuite
+  // le détail elle-même : un item minimal { id, mediaType } lui suffit.
+  useEffect(() => {
+    const query = (window as { __tentacle_env?: { query?: string } }).__tentacle_env?.query;
+    if (!query) return;
+    const media = new URLSearchParams(query).get("media");
+    const match = media?.match(/^(movie|tv):(\d+)$/);
+    if (!match) return;
+    const id = Number(match[2]);
+    if (!Number.isFinite(id) || id <= 0) return;
+    setSelectedItem({ id, mediaType: match[1] as "movie" | "tv" });
+    // Au montage uniquement : le deep-link est un point d'ENTRÉE, pas un état
+    // suivi — fermer la fiche ne doit pas la rouvrir.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const closeModal = useCallback(() => {
     setSelectedItem(null);
     requestAnimationFrame(() => window.scrollTo(0, savedScrollY.current));

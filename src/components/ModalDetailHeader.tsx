@@ -20,10 +20,14 @@ export function ModalDetailHeader({ item, detail, mediaType, navStack, onBack, o
   const [backdropLoaded, setBackdropLoaded] = useState(false);
   const [posterLoaded, setPosterLoaded] = useState(false);
 
-  const title = mediaTitle(item) || t("seer:untitled");
-  const year = mediaYear(item);
-  const backdrop = backdropUrl(item.backdropPath);
-  const poster = posterUrl(item.posterPath);
+  // Deep-link : l'item d'entrée peut être minimal ({ id, mediaType }) — le
+  // détail chargé fournit alors titre, année et images en repli, sinon la
+  // fiche s'ouvre sans nom ni affiche.
+  const detailInfo = detail as unknown as SeerrSearchResult | undefined;
+  const title = mediaTitle(item) || (detailInfo ? mediaTitle(detailInfo) : "") || t("seer:untitled");
+  const year = mediaYear(item) || (detailInfo ? mediaYear(detailInfo) : "");
+  const backdrop = backdropUrl(item.backdropPath ?? detail?.backdropPath);
+  const poster = posterUrl(item.posterPath ?? detail?.posterPath);
   const tvDetail = detail as SeerrTvDetail | undefined;
   const movieDetail = detail as SeerrMovieDetail | undefined;
   const rating = detail?.voteAverage ?? item.voteAverage;
