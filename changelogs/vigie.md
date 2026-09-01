@@ -19,6 +19,17 @@ auto-bumpé par le message du commit (`feat`→mineure, `fix`→patch, `!`→maj
 
 ---
 
+## [1.15.0]
+### FR
+- **La fiche s'ouvre à l'arrivée.** Un lien `?media=movie:123` (ou `tv:456`) sur la page Découvrir ouvre directement le détail du titre — c'est la porte d'entrée des recommandations de Tentacle (« Voir dans le catalogue »). Point d'entrée uniquement : fermer la fiche ne la rouvre pas
+- **Une fiche ouverte par lien se complète toute seule** : titre, année et images sont tirés du détail chargé — plus jamais de carte sans nom ni affiche
+- Nécessite un hôte Tentacle ≥ 1.16 pour transmettre le lien (`__tentacle_env.query`) ; sur un hôte plus ancien, rien ne change
+
+### EN
+- **The details open on arrival.** A `?media=movie:123` (or `tv:456`) link on the Discover page opens the title's details directly — the landing door for Tentacle's recommendations ("View in catalog"). Entry point only: closing the details does not reopen them
+- **A link-opened card completes itself**: title, year and artwork are pulled from the loaded detail — never again a card with no name or poster
+- Requires a Tentacle host ≥ 1.16 to pass the link through (`__tentacle_env.query`); on an older host, nothing changes
+
 ## [1.14.2]
 ### FR
 - **Une panne n'est plus jamais confondue avec « rien à signaler ».** Quand une des sources du calendrier (Jellyseerr/TMDB, Sonarr) ne répondait pas — réseau pas encore prêt juste après un redémarrage, service momentanément indisponible — le plugin pouvait retenir un calendrier maigre comme s'il était complet, pendant six heures, sans bandeau ni nouvelle tentative
