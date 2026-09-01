@@ -19,7 +19,7 @@ auto-bumpé par le message du commit (`feat`→mineure, `fix`→patch, `!`→maj
 
 ---
 
-## [1.15.0]
+## [1.14.3]
 ### FR
 - **La fiche s'ouvre à l'arrivée.** Un lien `?media=movie:123` (ou `tv:456`) sur la page Découvrir ouvre directement le détail du titre — c'est la porte d'entrée des recommandations de Tentacle (« Voir dans le catalogue »). Point d'entrée uniquement : fermer la fiche ne la rouvre pas
 - **Une fiche ouverte par lien se complète toute seule** : titre, année et images sont tirés du détail chargé — plus jamais de carte sans nom ni affiche

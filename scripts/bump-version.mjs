@@ -32,8 +32,11 @@ function getCommitMessage() {
 
 function detectLevel(msg) {
   if (/\[skip release\]?/i.test(msg)) return "skip";
-  if (/BREAKING CHANGE/.test(msg) || /^\s*\w+(\([^)]*\))?!:/m.test(msg)) return "major";
-  if (/^\s*feat(\([^)]*\))?:/m.test(msg)) return "minor";
+  // Le style maison écrit « feat(scope) : sujet » — espace typographique
+  // français avant le deux-points. Le regex le tolère : sans ça, un feat
+  // partait en patch (mesuré : la 1.14.3 aurait dû être une 1.15.0).
+  if (/BREAKING CHANGE/.test(msg) || /^\s*\w+(\([^)]*\))?!\s*:/m.test(msg)) return "major";
+  if (/^\s*feat(\([^)]*\))?\s*:/m.test(msg)) return "minor";
   return "patch";
 }
 
