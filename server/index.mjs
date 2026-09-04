@@ -1053,6 +1053,13 @@ function releasedSuffix(gender, plural) {
   const v = plural ? gender === "f" ? "sont sorties" : "sont sortis" : gender === "f" ? "est sortie" : "est sorti";
   return `${v} sur Tentacle TV`;
 }
+var DELETED = 7;
+function goneSeasons(requested, mediaSeasons) {
+  const deleted = new Set(
+    (mediaSeasons ?? []).filter((s) => s.status === DELETED).map((s) => s.seasonNumber)
+  );
+  return (requested ?? []).filter((s) => deleted.has(s)).sort((a, b) => a - b);
+}
 function evaluateSeasons(requested, mediaSeasons) {
   const req = requested ?? [];
   const availSet = new Set(
@@ -1075,43 +1082,6 @@ function seasonNotification(request, newly, totalAvailable) {
     title: request.title,
     message: `${label} ${releasedSuffix("f", multi)}${partial}`
   };
-}
-
-// server/seer-availability-notify.ts
-async function notifyAvailableSeasons(prisma, request, mediaSeasons) {
-  const ev = evaluateSeasons(request.seasons, mediaSeasons);
-  if (ev.available.length === 0) return null;
-  const notified = new Set(request.notifiedSeasons ?? []);
-  const newly = ev.available.filter((s) => !notified.has(s));
-  if (newly.length > 0) {
-    const n = seasonNotification(request, newly, ev.available.length);
-    await prisma.notification.create({
-      data: {
-        jellyfinUserId: request.jellyfinUserId,
-        type: "request_status",
-        title: n.title,
-        body: n.message,
-        refId: request.id
-      }
-    });
-    await setNotifiedSeasons(prisma, request.id, ev.available);
-    console.log(`[SeerWorker] "${request.title}" saisons dispo [${newly.join(",")}] \u2192 notif`);
-  }
-  return ev.allAvailable ? "available" : "partially_available";
-}
-async function notifyMovieAvailable(prisma, request) {
-  if ((request.notifiedSeasons ?? []).length > 0) return;
-  await prisma.notification.create({
-    data: {
-      jellyfinUserId: request.jellyfinUserId,
-      type: "request_status",
-      title: request.title,
-      body: `\xAB ${request.title} \xBB ${releasedSuffix("m", false)}`,
-      refId: request.id
-    }
-  });
-  await setNotifiedSeasons(prisma, request.id, [0]);
-  console.log(`[SeerWorker] "${request.title}" (film) dispo \u2192 notif`);
 }
 
 // server/cache.ts
@@ -1182,6 +1152,60 @@ setInterval(() => {
     if (entry.stale <= now) store.delete(key);
   }
 }, 6e4).unref?.();
+
+// server/seer-availability-notify.ts
+async function notifyAvailableSeasons(prisma, request, mediaSeasons) {
+  const ev = evaluateSeasons(request.seasons, mediaSeasons);
+  if (ev.available.length === 0) return null;
+  const notified = new Set(request.notifiedSeasons ?? []);
+  const newly = ev.available.filter((s) => !notified.has(s));
+  if (newly.length > 0) {
+    const n = seasonNotification(request, newly, ev.available.length);
+    await prisma.notification.create({
+      data: {
+        jellyfinUserId: request.jellyfinUserId,
+        type: "request_status",
+        title: n.title,
+        body: n.message,
+        refId: request.id
+      }
+    });
+    await setNotifiedSeasons(prisma, request.id, ev.available);
+    console.log(`[SeerWorker] "${request.title}" saisons dispo [${newly.join(",")}] \u2192 notif`);
+  }
+  return ev.allAvailable ? "available" : "partially_available";
+}
+async function notifyMovieAvailable(prisma, request) {
+  if ((request.notifiedSeasons ?? []).length > 0) return;
+  await prisma.notification.create({
+    data: {
+      jellyfinUserId: request.jellyfinUserId,
+      type: "request_status",
+      title: request.title,
+      body: `\xAB ${request.title} \xBB ${releasedSuffix("m", false)}`,
+      refId: request.id
+    }
+  });
+  await setNotifiedSeasons(prisma, request.id, [0]);
+  console.log(`[SeerWorker] "${request.title}" (film) dispo \u2192 notif`);
+}
+async function releaseGoneSeasons(prisma, request, mediaSeasons) {
+  const gone = goneSeasons(request.seasons, mediaSeasons);
+  if (gone.length === 0) return request;
+  const remaining = (request.seasons ?? []).filter((s) => !gone.includes(s));
+  if (remaining.length === 0) {
+    await updateRequestStatus(prisma, request.id, "deleted", {
+      lastError: "Saisons supprim\xE9es c\xF4t\xE9 Jellyseerr"
+    });
+    invalidateRequestCaches(request.jellyfinUserId);
+    console.log(`[SeerWorker] "${request.title}" : S${gone.join(", S")} supprim\xE9e(s) c\xF4t\xE9 Jellyseerr \u2192 demande close`);
+    return null;
+  }
+  await addSeasonsToRequest(prisma, request.id, remaining);
+  invalidateRequestCaches(request.jellyfinUserId);
+  console.log(`[SeerWorker] "${request.title}" : S${gone.join(", S")} supprim\xE9e(s) c\xF4t\xE9 Jellyseerr \u2192 reste S${remaining.join(", S")}`);
+  return { ...request, seasons: remaining };
+}
 
 // server/arr-service.ts
 var sonarrCache = null;
@@ -1462,7 +1486,11 @@ async function syncGlobal(prisma, request, newStatus, mediaStatus) {
 }
 async function syncTvSeasons(prisma, config, request, fallbackStatus, mediaStatus) {
   const detail = await fetchMediaDetail(config.seerrUrl, config.seerrApiKey, "tv", request.tmdbId);
-  const newStatus = await notifyAvailableSeasons(prisma, request, detail?.mediaInfo?.seasons);
+  const mediaSeasons = detail?.mediaInfo?.seasons;
+  const kept = await releaseGoneSeasons(prisma, request, mediaSeasons);
+  if (!kept) return;
+  request = kept;
+  const newStatus = await notifyAvailableSeasons(prisma, request, mediaSeasons);
   if (newStatus === null) {
     await syncGlobal(prisma, request, fallbackStatus, mediaStatus);
     return;
@@ -2974,7 +3002,10 @@ function registerRequestActionRoutes(app, prisma, getWorkerConfig2) {
     }
     if (!config) return reply.status(503).send({ message: "Seerr not configured" });
     const seerrReq = await fetchSeerrRequestById(config, parsed.seerrId);
-    if (!seerrReq) return reply.status(404).send({ message: "Seerr request not found" });
+    if (!seerrReq) {
+      invalidateRequestCaches(user.userId);
+      return reply.status(404).send({ errorKey: "seer:errRequestGone", message: "Request no longer exists in Jellyseerr" });
+    }
     if (!user.isAdmin) {
       const settingsRows = await prisma.$queryRawUnsafe(
         `SELECT jellyseerr_user_id FROM seer_user_settings WHERE jellyfin_user_id = ? LIMIT 1`,
@@ -3046,7 +3077,10 @@ function registerRequestActionRoutes(app, prisma, getWorkerConfig2) {
       ownerJellyfinUserId = req.jellyfinUserId;
     } else {
       seerrReq = await fetchSeerrRequestById(config, parsed.seerrId);
-      if (!seerrReq) return reply.status(404).send({ message: "Seerr request not found" });
+      if (!seerrReq) {
+        invalidateRequestCaches(user.userId);
+        return reply.status(404).send({ errorKey: "seer:errRequestGone", message: "Request no longer exists in Jellyseerr" });
+      }
       seerrMediaId = seerrReq.media?.id ?? null;
       if (seerrReq.requestedBy?.id) {
         const rows = await prisma.$queryRawUnsafe(
