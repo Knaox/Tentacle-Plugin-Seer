@@ -19,7 +19,7 @@ auto-bumpé par le message du commit (`feat`→mineure, `fix`→patch, `!`→maj
 
 ---
 
-## [1.14.4]
+## [1.14.5]
 ### FR
 - **Une demande supprimée dans Jellyseerr reste supprimée.** Le plugin la classait « en échec » et l'auto-retry la recréait quelques minutes plus tard : la saison qu'on venait de libérer réapparaissait « Demandée ». Elle est désormais close côté plugin — ni nouvelle tentative, ni verrou de saison
 - **Les affiches de la première rangée du Catalogue s'affichent** quand la fiche s'ouvre à l'arrivée (`?media=…`) : les cartes montées pendant que la fiche couvrait la grille ne recevaient jamais leur verdict de visibilité
