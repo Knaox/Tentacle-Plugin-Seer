@@ -7,7 +7,7 @@ import { getRequestsToSync, updateRequestStatus, upsertContentClaim, purgeExpire
 import { invalidateRequestCaches } from "./cache";
 import { fetchMediaDetail } from "./anime";
 import { releasedSuffix } from "./season-availability";
-import { notifyAvailableSeasons } from "./seer-availability-notify";
+import { notifyAvailableSeasons, releaseGoneSeasons } from "./seer-availability-notify";
 import { triggerSeerrJob } from "./arr-service";
 import type { SeerRequest, SeerProfile } from "./types";
 
@@ -133,7 +133,14 @@ async function syncTvSeasons(
   fallbackStatus: SeerRequest["status"], mediaStatus?: number,
 ): Promise<void> {
   const detail = await fetchMediaDetail(config.seerrUrl, config.seerrApiKey, "tv", request.tmdbId);
-  const newStatus = await notifyAvailableSeasons(prisma, request, detail?.mediaInfo?.seasons);
+  const mediaSeasons = detail?.mediaInfo?.seasons;
+
+  // Saisons demandées que Jellyseerr dit SUPPRIMÉES : libérées (null = demande close).
+  const kept = await releaseGoneSeasons(prisma, request, mediaSeasons);
+  if (!kept) return;
+  request = kept;
+
+  const newStatus = await notifyAvailableSeasons(prisma, request, mediaSeasons);
 
   // Aucune saison demandée encore dispo (ou pas de granularité) → repli global.
   if (newStatus === null) {

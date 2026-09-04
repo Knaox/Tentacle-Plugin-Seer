@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { STATUS_STYLE } from "../styles/status";
+import { isRequestedSeasonStatus } from "../utils/media-status";
 import type { SeerrSeason } from "../api/types";
 import { EpisodeList } from "./EpisodeList";
 
@@ -25,7 +26,8 @@ function statusBadge(status: number | undefined, locked: boolean | undefined, t:
   if (status === 4) return { label: t("seer:seasonPartial"), cls: STATUS_STYLE.partially_available.chip };
   // 2 (en attente) et 3 (en acquisition) : Jellyseerr affiche « Demandé »
   // dans les deux cas — pas de « Téléchargement » sans download réellement actif.
-  if ((status !== undefined && status >= 2) || locked) return { label: t("seer:seasonRequested"), cls: STATUS_STYLE.requested.chip };
+  // 7 (supprimée) n'y est PAS : une saison dont les données ont été retirées est libre.
+  if (isRequestedSeasonStatus(status) || locked) return { label: t("seer:seasonRequested"), cls: STATUS_STYLE.requested.chip };
   return null;
 }
 
@@ -38,8 +40,8 @@ export function SeasonRow({
 }: SeasonRowProps) {
   const { t } = useTranslation("seer");
   const badge = statusBadge(status, locked, t);
-  const canCheck = selectable && !locked && (status === undefined || status < 2);
-  const isChecked = !!checked || !!locked || (status !== undefined && status >= 2);
+  const canCheck = selectable && !locked && !isRequestedSeasonStatus(status);
+  const isChecked = !!checked || !!locked || isRequestedSeasonStatus(status);
 
   return (
     <div className={`overflow-hidden rounded-xl border transition-colors ${

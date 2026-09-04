@@ -7,6 +7,10 @@ export function useMediaDetail(mediaType: MediaType, tmdbId: number) {
     queryKey: ["seer-media-detail", mediaType, tmdbId],
     queryFn: () => (mediaType === "movie" ? getMovieDetail(tmdbId) : getTvDetail(tmdbId)),
     enabled: tmdbId > 0,
+    // Le cache d'une journée peint la fiche d'un coup ; mais `mediaInfo`
+    // (demandes, saisons disponibles ou supprimées) bouge côté Jellyseerr sans
+    // que le plugin en soit averti : chaque ouverture relit, en silence.
     staleTime: 24 * 60 * 60_000,
+    refetchOnMount: "always",
   });
 }

@@ -71,6 +71,7 @@ export default {
 
   // Permissions / quotas (business errors returned by the backend)
   errUserBlocked: "You are not allowed to make requests",
+  errRequestGone: "This request no longer exists in Jellyseerr: it was deleted there.",
   errMoviesDenied: "You are not allowed to request movies",
   errTvDenied: "You are not allowed to request TV series",
   errAnimeDenied: "You are not allowed to request anime",

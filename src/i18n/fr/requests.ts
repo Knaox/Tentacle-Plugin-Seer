@@ -71,6 +71,7 @@ export default {
 
   // Permissions / quotas (erreurs métier renvoyées par le backend)
   errUserBlocked: "Tu n'as pas la permission de faire des demandes",
+  errRequestGone: "Cette demande n'existe plus dans Jellyseerr : elle y a été supprimée.",
   errMoviesDenied: "Tu n'as pas le droit de demander des films",
   errTvDenied: "Tu n'as pas le droit de demander des séries",
   errAnimeDenied: "Tu n'as pas le droit de demander des animés",

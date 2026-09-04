@@ -8,6 +8,7 @@ import { useRichTrailers } from "../hooks/useRichTrailers";
 import { useRequestMedia } from "../hooks/useRequestMedia";
 import { useToast } from "../hooks/useToast";
 import { formatSeerError } from "../api/seer-client";
+import { MEDIA_STATUS_DELETED } from "../utils/media-status";
 import { ModalDetailHeader } from "./ModalDetailHeader";
 import { MediaDetailBody } from "./MediaDetailBody";
 import { TrailerModal } from "./TrailerModal";
@@ -99,31 +100,42 @@ export function MediaDetailModal({ item, onClose, lockedSeasons, defaultProfileI
 
   const requestedSeasonMap = useMemo(() => {
     const map = new Map<number, number>();
+    const info = tvDetail?.mediaInfo;
+    // Saisons que Jellyseerr dit SUPPRIMÉES : données retirées, saison libre —
+    // quoi qu'en disent une demande survivante ou la file locale (le worker
+    // les aligne dans la minute). Média entier supprimé : ses demandes ne
+    // verrouillent plus rien.
+    const deleted = new Set<number>();
     // 1) Statuts de disponibilité par saison (présents seulement une fois dispo).
-    if (tvDetail?.mediaInfo?.seasons) {
-      for (const s of tvDetail.mediaInfo.seasons) map.set(s.seasonNumber, s.status);
+    for (const s of info?.seasons ?? []) {
+      if (s.status === MEDIA_STATUS_DELETED) deleted.add(s.seasonNumber);
+      else map.set(s.seasonNumber, s.status);
     }
     // 2) Saisons couvertes par une demande active : Jellyseerr ne remplit
     //    mediaInfo.seasons qu'à la disponibilité ; une saison seulement demandée
     //    (en attente/traitement) n'est QUE dans mediaInfo.requests[].seasons. On la
     //    marque « en traitement » (3) pour la verrouiller, sans rétrograder une
     //    saison déjà disponible. (statut demande : 3=refusée, 4=échouée → ignorées)
-    for (const r of tvDetail?.mediaInfo?.requests ?? []) {
-      if (r.status === 3 || r.status === 4) continue;
-      for (const se of r.seasons ?? []) {
-        const existing = map.get(se.seasonNumber);
-        if (existing === undefined || existing < 3) map.set(se.seasonNumber, 3);
+    if (info?.status !== MEDIA_STATUS_DELETED) {
+      for (const r of info?.requests ?? []) {
+        if (r.status === 3 || r.status === 4) continue;
+        for (const se of r.seasons ?? []) {
+          if (deleted.has(se.seasonNumber)) continue;
+          const existing = map.get(se.seasonNumber);
+          if (existing === undefined || existing < 3) map.set(se.seasonNumber, 3);
+        }
       }
     }
     // 3) Saisons demandées LOCALEMENT (file du plugin) : verrou immédiat et
     //    durable, même si Jellyseerr ne connaît pas encore la demande (worker
     //    async). Ne rétrograde pas une saison déjà disponible (garde existing<3).
     for (const sn of localSeasons ?? []) {
+      if (deleted.has(sn)) continue;
       const existing = map.get(sn);
       if (existing === undefined || existing < 3) map.set(sn, 3);
     }
     return map;
-  }, [tvDetail?.mediaInfo?.seasons, tvDetail?.mediaInfo?.requests, localSeasons]);
+  }, [tvDetail?.mediaInfo, localSeasons]);
 
   const handleSeasonRequest = (seasons: number[], profileId?: string | null) => {
     requestMedia.mutate({

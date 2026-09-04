@@ -33,6 +33,24 @@ export interface SeasonEval {
  * statut global du média — qui reste « partiel » tant que d'autres saisons non
  * demandées manquent.
  */
+/** Statut Jellyseerr d'une saison dont les données ont été retirées. */
+const DELETED = 7;
+
+/**
+ * Saisons DEMANDÉES que Jellyseerr dit SUPPRIMÉES : les données ont été
+ * retirées côté serveur, la saison est redevenue libre — la demande locale ne
+ * doit plus la porter, sinon la fiche la verrouillerait encore.
+ */
+export function goneSeasons(
+  requested: number[] | null,
+  mediaSeasons: { seasonNumber: number; status: number }[] | undefined,
+): number[] {
+  const deleted = new Set(
+    (mediaSeasons ?? []).filter((s) => s.status === DELETED).map((s) => s.seasonNumber),
+  );
+  return (requested ?? []).filter((s) => deleted.has(s)).sort((a, b) => a - b);
+}
+
 export function evaluateSeasons(
   requested: number[] | null,
   mediaSeasons: { seasonNumber: number; status: number }[] | undefined,

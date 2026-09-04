@@ -76,7 +76,12 @@ export function registerRequestActionRoutes(
     // ── Retry d'une demande Jellyseerr sans pendant local ──
     if (!config) return reply.status(503).send({ message: "Seerr not configured" });
     const seerrReq = await fetchSeerrRequestById(config, parsed.seerrId);
-    if (!seerrReq) return reply.status(404).send({ message: "Seerr request not found" });
+    if (!seerrReq) {
+      // Supprimée côté Jellyseerr entre-temps : la liste servie la montrait
+      // encore (cache) — on la purge pour que l'affichage suive.
+      invalidateRequestCaches(user.userId);
+      return reply.status(404).send({ errorKey: "seer:errRequestGone", message: "Request no longer exists in Jellyseerr" });
+    }
 
     // Ownership
     if (!user.isAdmin) {
@@ -162,7 +167,12 @@ export function registerRequestActionRoutes(
       ownerJellyfinUserId = req.jellyfinUserId;
     } else {
       seerrReq = await fetchSeerrRequestById(config, parsed.seerrId);
-      if (!seerrReq) return reply.status(404).send({ message: "Seerr request not found" });
+      if (!seerrReq) {
+        // Supprimée côté Jellyseerr entre-temps : la liste servie la montrait
+        // encore (cache) — on la purge pour que l'affichage suive.
+        invalidateRequestCaches(user.userId);
+        return reply.status(404).send({ errorKey: "seer:errRequestGone", message: "Request no longer exists in Jellyseerr" });
+      }
       seerrMediaId = seerrReq.media?.id ?? null;
       // Trouver le jellyfinUserId via le mapping seer_user_settings
       if (seerrReq.requestedBy?.id) {

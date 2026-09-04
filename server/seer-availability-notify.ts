@@ -4,8 +4,9 @@
 
 import type { PrismaClient } from "@prisma/client";
 import type { SeerRequest } from "./types";
-import { evaluateSeasons, seasonNotification, releasedSuffix } from "./season-availability";
-import { setNotifiedSeasons } from "./db";
+import { evaluateSeasons, seasonNotification, releasedSuffix, goneSeasons } from "./season-availability";
+import { setNotifiedSeasons, addSeasonsToRequest, updateRequestStatus } from "./db";
+import { invalidateRequestCaches } from "./cache";
 
 /**
  * TV : évalue la dispo PAR-SAISON, notifie le DELTA de saisons devenues dispo
@@ -54,4 +55,32 @@ export async function notifyMovieAvailable(
   });
   await setNotifiedSeasons(prisma, request.id, [0]); // flag « film notifié »
   console.log(`[SeerWorker] "${request.title}" (film) dispo → notif`);
+}
+
+/**
+ * Saisons demandées que Jellyseerr dit SUPPRIMÉES (données retirées) : elles
+ * quittent la demande locale, sinon la file locale les verrouillerait encore
+ * dans la fiche alors qu'elles sont libres. Rend la demande mise à jour, ou
+ * null quand plus aucune saison ne reste — la demande est alors close.
+ */
+export async function releaseGoneSeasons(
+  prisma: PrismaClient,
+  request: SeerRequest,
+  mediaSeasons: { seasonNumber: number; status: number }[] | undefined,
+): Promise<SeerRequest | null> {
+  const gone = goneSeasons(request.seasons, mediaSeasons);
+  if (gone.length === 0) return request;
+  const remaining = (request.seasons ?? []).filter((s) => !gone.includes(s));
+  if (remaining.length === 0) {
+    await updateRequestStatus(prisma, request.id, "deleted", {
+      lastError: "Saisons supprimées côté Jellyseerr",
+    });
+    invalidateRequestCaches(request.jellyfinUserId);
+    console.log(`[SeerWorker] "${request.title}" : S${gone.join(", S")} supprimée(s) côté Jellyseerr → demande close`);
+    return null;
+  }
+  await addSeasonsToRequest(prisma, request.id, remaining);
+  invalidateRequestCaches(request.jellyfinUserId);
+  console.log(`[SeerWorker] "${request.title}" : S${gone.join(", S")} supprimée(s) côté Jellyseerr → reste S${remaining.join(", S")}`);
+  return { ...request, seasons: remaining };
 }
