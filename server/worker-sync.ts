@@ -49,9 +49,14 @@ export async function syncStatuses(prisma: PrismaClient, config: WorkerConfig): 
 
       if (!res.ok) {
         if (res.status === 404) {
-          await updateRequestStatus(prisma, request.id, "failed", {
-            lastError: "Request no longer exists on Seerr",
+          // Supprimée côté Jellyseerr (par l'utilisateur ou un admin) : une
+          // DÉCISION, pas une panne. Classée « failed », l'auto-retry la
+          // recréait quelques minutes plus tard — la saison qu'on venait de
+          // libérer réapparaissait « Demandée ». Terminal : ni retry, ni verrou.
+          await updateRequestStatus(prisma, request.id, "deleted", {
+            lastError: "Demande supprimée côté Jellyseerr",
           });
+          invalidateRequestCaches(request.jellyfinUserId);
         }
         continue;
       }
@@ -192,8 +197,11 @@ async function handleFailedSync(
 
 export async function retryFailedRequests(prisma: PrismaClient): Promise<void> {
   const failed = await prisma.$queryRawUnsafe<Array<{ id: string; title: string; retry_count: number; max_retries: number }>>(
+    // Les lignes héritées de l'ancien classement (404 → « failed ») ne sont
+    // plus recréées non plus : une suppression côté Jellyseerr est acquise.
     `SELECT id, title, retry_count, max_retries FROM seer_requests
-     WHERE status = 'failed' AND retry_count < max_retries LIMIT 3`,
+     WHERE status = 'failed' AND retry_count < max_retries
+       AND (last_error IS NULL OR last_error != 'Request no longer exists on Seerr') LIMIT 3`,
   );
 
   for (const req of failed) {
