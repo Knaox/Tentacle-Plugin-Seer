@@ -19,6 +19,14 @@ auto-bumpé par le message du commit (`feat`→mineure, `fix`→patch, `!`→maj
 
 ---
 
+## [1.14.4]
+### FR
+- **Une demande supprimée dans Jellyseerr reste supprimée.** Le plugin la classait « en échec » et l'auto-retry la recréait quelques minutes plus tard : la saison qu'on venait de libérer réapparaissait « Demandée ». Elle est désormais close côté plugin — ni nouvelle tentative, ni verrou de saison
+- **Les affiches de la première rangée du Catalogue s'affichent** quand la fiche s'ouvre à l'arrivée (`?media=…`) : les cartes montées pendant que la fiche couvrait la grille ne recevaient jamais leur verdict de visibilité
+### EN
+- **A request deleted in Jellyseerr stays deleted.** The plugin filed it as "failed" and the auto-retry recreated it minutes later: the season you had just freed showed up as "Requested" again. It is now closed on the plugin side — no retry, no season lock
+- **First-row posters in the Catalog show up** when the detail opens on arrival (`?media=…`): cards mounted while the detail covered the grid never received their visibility verdict
+
 ## [1.14.3]
 ### FR
 - **La fiche s'ouvre à l'arrivée.** Un lien `?media=movie:123` (ou `tv:456`) sur la page Découvrir ouvre directement le détail du titre — c'est la porte d'entrée des recommandations de Tentacle (« Voir dans le catalogue »). Point d'entrée uniquement : fermer la fiche ne la rouvre pas
