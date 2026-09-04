@@ -23,9 +23,11 @@ auto-bumpé par le message du commit (`feat`→mineure, `fix`→patch, `!`→maj
 ### FR
 - **Une demande supprimée dans Jellyseerr reste supprimée.** Le plugin la classait « en échec » et l'auto-retry la recréait quelques minutes plus tard : la saison qu'on venait de libérer réapparaissait « Demandée ». Elle est désormais close côté plugin — ni nouvelle tentative, ni verrou de saison
 - **Les affiches de la première rangée du Catalogue s'affichent** quand la fiche s'ouvre à l'arrivée (`?media=…`) : les cartes montées pendant que la fiche couvrait la grille ne recevaient jamais leur verdict de visibilité
+- **Une saison dont les données ont été supprimées dans Jellyseerr redevient libre** dans la fiche : elle quitte la demande locale (qui se ferme s'il n'en reste aucune), la fiche ne la compte plus « demandée », et elle relit l'état Jellyseerr à chaque ouverture au lieu de le garder un jour en cache. Agir sur une demande disparue de Jellyseerr le dit clairement et rafraîchit la liste
 ### EN
 - **A request deleted in Jellyseerr stays deleted.** The plugin filed it as "failed" and the auto-retry recreated it minutes later: the season you had just freed showed up as "Requested" again. It is now closed on the plugin side — no retry, no season lock
 - **First-row posters in the Catalog show up** when the detail opens on arrival (`?media=…`): cards mounted while the detail covered the grid never received their visibility verdict
+- **A season whose data was deleted in Jellyseerr becomes free again** in the detail: it leaves the local request (which closes when none remains), the detail no longer counts it as requested, and it re-reads the Jellyseerr state on every opening instead of caching it for a day. Acting on a request gone from Jellyseerr says so clearly and refreshes the list
 
 ## [1.14.3]
 ### FR
