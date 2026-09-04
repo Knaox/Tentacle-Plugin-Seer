@@ -1412,9 +1412,10 @@ async function syncStatuses(prisma, config) {
       );
       if (!res.ok) {
         if (res.status === 404) {
-          await updateRequestStatus(prisma, request.id, "failed", {
-            lastError: "Request no longer exists on Seerr"
+          await updateRequestStatus(prisma, request.id, "deleted", {
+            lastError: "Demande supprim\xE9e c\xF4t\xE9 Jellyseerr"
           });
+          invalidateRequestCaches(request.jellyfinUserId);
         }
         continue;
       }
@@ -1516,8 +1517,11 @@ async function handleFailedSync(prisma, config, request, data) {
 }
 async function retryFailedRequests(prisma) {
   const failed = await prisma.$queryRawUnsafe(
+    // Les lignes héritées de l'ancien classement (404 → « failed ») ne sont
+    // plus recréées non plus : une suppression côté Jellyseerr est acquise.
     `SELECT id, title, retry_count, max_retries FROM seer_requests
-     WHERE status = 'failed' AND retry_count < max_retries LIMIT 3`
+     WHERE status = 'failed' AND retry_count < max_retries
+       AND (last_error IS NULL OR last_error != 'Request no longer exists on Seerr') LIMIT 3`
   );
   for (const req of failed) {
     const newRetry = req.retry_count + 1;
