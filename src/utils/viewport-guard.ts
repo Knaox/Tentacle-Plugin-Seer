@@ -68,7 +68,13 @@ export function createViewportGuard(
       targets.add(target);
       // Création paresseuse : une page sans grille ne monte aucun observateur.
       observer ??= makeObserver(handle, { rootMargin });
-      observer.observe(target);
+      /* Suspendue, la garde n'inscrit PAS la cible. Un observateur réel ignore
+       * un second `observe()` sur une cible déjà inscrite : inscrite pendant la
+       * suspension (son verdict jeté par le filet ci-dessus), la cible n'aurait
+       * jamais reçu d'état initial à la reprise — affiche jamais chargée. C'est
+       * ce qui vidait la première rangée quand la fiche s'ouvrait par deep-link
+       * avant l'arrivée de la grille. La reprise inscrit tout, elle. */
+      if (!paused) observer.observe(target);
     },
 
     release(target) {

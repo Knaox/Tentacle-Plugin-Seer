@@ -161,6 +161,27 @@ test("à la reprise, toutes les cibles sont ré-observées", () => {
   assert.equal(built.length, 1, "la reprise ne construit pas un second observateur");
 });
 
+test("une cible montée PENDANT la suspension reçoit son verdict à la reprise", () => {
+  // Fiche ouverte par deep-link : la grille arrive alors que la garde est déjà
+  // suspendue. Un observateur réel ignore un second `observe()` sur une cible
+  // déjà inscrite — inscrite sous suspension, elle n'aurait jamais eu d'état.
+  const { built, make } = spyFactory();
+  const guard = createViewportGuard("100px", make);
+  const a = el();
+  const b = el();
+  let verdictB: boolean | null = null;
+
+  guard.observe(a, () => {});
+  guard.setPaused(true);
+  guard.observe(b, (near) => (verdictB = near));
+  assert.equal(built[0].watched.has(b), false, "suspendue, la garde n'inscrit rien");
+
+  guard.setPaused(false);
+  assert.equal(built[0].watched.has(b), true, "la reprise inscrit aussi les cibles montées sous suspension");
+  built[0].emit(b, true);
+  assert.equal(verdictB, true);
+});
+
 test("dégeler une garde qui ne l'est pas ne double pas les observations", () => {
   // Le dégel se joue aussi au démontage de la page, y compris quand rien
   // n'était figé : il doit rester sans effet.
